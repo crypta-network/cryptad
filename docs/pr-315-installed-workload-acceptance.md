@@ -2,7 +2,51 @@
 
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
-The latest frozen helper `521c2e6fda` produced 35 independent development
+
+The latest formal campaign used frozen helper and candidate `72dd14f93a67`,
+the original predecessor `e2d65ca9ab9c`, and launcher policy v37. It verified
+35 installed cases under one campaign: positive eight (suite251), role/file
+boundary five (252), authority nine (253 retired preparation and 254 successor),
+network/AppHost six (255), output-symlink (256), output-fifo (257),
+output-hardlink (258), output-replacement (259), output-flood (260),
+resource-exhaustion (262), and lost-start-response (263). Each completed guest
+has its full original Mac staging and signed host cleanup. Suite261 was a
+sealed `pve-admission-pressure-high` rejection without a VM; suite262 used a
+new unique number and completed the resource group.
+
+Suite264 failed the predecessor's initial FCP GetNode readiness after 13
+attempts, before the observer-death fault. Retained Wrapper evidence records
+a first JVM startup-signal timeout and termination, followed by a second JVM
+still initializing ECDH when readiness expired. Role cgroup OOM counters were
+zero. The bounded jcmd operations expired, and fatal-log locations were not
+proven; those observations do not rule out a JVM defect. The guest stopped,
+the host watcher completed, and the campaign was sealed `failed` with unknown
+probe-start phase. The coordinator terminated before another allocation.
+The 35 results remain historical evidence; this campaign did not pass 45 cases.
+
+The complete failed attempt and campaign signature history are separately
+preserved on encrypted private storage, with every selected file byte and mode
+verified. Successful full staging and its original source archives remain on
+Mac. The preservation manifest explicitly states that this failure archive is
+not a standalone archive of the entire campaign. Verified remote failed disk
+and generated duplicates were released only after fresh ownership, stop,
+open-user, backing-dependency, and checksum checks.
+
+The authorized next reference is an explicitly identified predecessor startup
+backport, `29f6db309abd5b340f65528bf18776a935c24a99`, based on the original
+`e2d65ca9ab9c15f25369b50b8728a614161b6a9d`. Its only production change is
+NodeStarter's proven Wrapper/provider/logging initialization order. The three
+ordering regressions fail on the original predecessor and all 23 focused
+NodeStarter tests pass after backporting. Original startup notification values,
+configured limits, product entry point, crypto initialization, and self-tests
+are preserved. No premain agent is included: a native delayed-class regression
+disproved a premain-only prototype. This reference is a separately measured
+source-built variant, not the unchanged historical product or a release.
+Its native full tests and product build must complete before freezing new
+fixture/product identities and rerunning all 45 cases. None of the 35 results
+is imported into that future campaign.
+
+Historical frozen helper `521c2e6fda` produced 35 independent development
 case results with complete raw archives and signed host cleanup: positive
 eight (suite 237), output-symlink (238), authority nine (239 retired
 preparation and 240 successor), role/file boundary five (241), network/AppHost
