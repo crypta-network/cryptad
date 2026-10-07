@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import time
+import signal
+import select
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -197,6 +200,94 @@ class ArchiveTest(unittest.TestCase):
 @unittest.skipUnless(sys.platform == 'linux' and os.geteuid() == 0,
                      'requires disposable Linux root for real preparation pidfd and request directory')
 class AdministratorGateTest(unittest.TestCase):
+    def test_full_parent_witness_rejects_an_actual_remaining_role_process(self):
+        """Fixture manager data plus real UID/pidfd checks; no installed verdict."""
+        import pr314_workload_driver as driver
+        import pr315_workload_evidence as evidence
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root/'probe-requests').mkdir(mode=0o755)
+            (root/'authority').mkdir()
+            deadline = time.monotonic_ns() + 30 * 10**9
+            boot = driver._administrator_collector_epoch('preparation')['bootId']
+            _proof, _diagnostics, terminal = copy.deepcopy(fixture())
+            campaign = dict(terminal['controllerRecords']['campaign']['record'],
+                            bootId=boot, deadlineMonotonicNs=deadline)
+            (root/'campaign.json').write_text(json.dumps(campaign))
+            users = {}
+            for i, role in enumerate(preparation.ROLES):
+                users[role] = 43991 + i
+                authority = dict(terminal['controllerRecords'][role]['record'], bootId=boot,
+                    handle='private-unit-handle')
+                (root/'authority'/(role+'.json')).write_text(json.dumps(authority))
+                terminal['controllerRecords'][role]['record'] = {
+                    k: authority[k] for k in evidence.ROLE_FIELDS if k in authority}
+                if i < 2:
+                    receipt = dict(terminal['stopReceipts'][role]['current']['record'], bootId=boot)
+                    receipt = {k: receipt[k] for k in evidence.STOP_FIELDS if k in receipt}
+                    terminal['stopReceipts'][role]['current']['record'] = receipt
+                    (root/'authority'/(role+'-stop.json')).write_text(json.dumps(receipt))
+            terminal['controllerRecords']['campaign']['record'] = campaign
+            workload = SimpleNamespace(ROOT=root,
+                read=lambda p: json.loads(p.read_bytes()),
+                account=lambda role: SimpleNamespace(pw_uid=users[role]),
+                manager=lambda role, method: {'ActiveState':'inactive','SubState':'dead','MainPID':'0'},
+                group=lambda role: root/'absent-cgroups'/role,
+                quiescent=lambda role: True)
+            gate = preparation.PreparationGate('role-boundary', workload,
+                lambda: driver._administrator_collector_epoch('preparation'), deadline)
+            children = []
+            def child(uid):
+                read_fd, write_fd = os.pipe()
+                pid = os.fork()
+                if pid == 0:
+                    os.close(read_fd)
+                    gate.close()
+                    os.setgroups([])
+                    os.setgid(uid)
+                    os.setuid(uid)
+                    os.write(write_fd, b'R')
+                    os.close(write_fd)
+                    time.sleep(15)
+                    os._exit(0)
+                os.close(write_fd)
+                children.append(pid)
+                try:
+                    self.assertTrue(select.select([read_fd], [], [], 3)[0])
+                    self.assertEqual(b'R', os.read(read_fd, 1))
+                finally:os.close(read_fd)
+                return pid
+            try:
+                observer_pid = child(1000)
+                observer = driver._positive_observer_epoch(observer_pid, 1000, deadline)
+                os.kill(observer_pid, signal.SIGTERM)
+                os.waitpid(observer_pid, 0)
+                children.remove(observer_pid)
+                now = time.monotonic_ns()
+                readiness = dict(_proof['readiness'], startRequestNs=observer['observedMonotonicNs']+1,
+                    startResponseNs=observer['observedMonotonicNs']+2,
+                    readinessDeadlineNs=now-1, failedAtNs=now)
+                diagnostics = dict(_diagnostics, observerFailure={'privateTranscript':json.dumps({
+                    'observerFailure':'RuntimeFailure','privateDetail':'workload-daemon-readiness-timeout',
+                    'readinessDiagnostic':readiness})})
+                gate.readiness_failed(diagnostics, observer)
+                role_pid = child(users['candidate-sender'])
+                with self.assertRaisesRegex(ValueError, 'role-process-remains'):
+                    gate.after_cleanup()
+                os.kill(role_pid, signal.SIGTERM)
+                os.waitpid(role_pid, 0)
+                children.remove(role_pid)
+                proof = gate.after_cleanup()
+                self.assertNotIn('private-unit-handle', json.dumps(proof))
+                self.assertTrue(preparation.verify_failure(proof, diagnostics, terminal,
+                    'role-boundary', gate.before['sourceDigest'],
+                    hashlib.sha256(Path(preparation.__file__).read_bytes()).hexdigest()))
+            finally:
+                for pid in children:
+                    os.kill(pid, signal.SIGTERM)
+                    os.waitpid(pid, 0)
+                gate.close()
+
     def test_real_pidfd_gate_latches_prepared_before_any_later_failure(self):
         import pr314_workload_driver as driver
         with tempfile.TemporaryDirectory() as temporary:
