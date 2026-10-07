@@ -106,9 +106,6 @@ public class NodeStarter implements WrapperListener {
     // Initialize the wrapper backend before priority/provider setup can delay its first handshake.
     WrapperManager.isControlledByNativeWrapper();
 
-    // Enter background mode early so class loading also uses reduced priority.
-    ProcessPriority.enterBackgroundMode();
-
     // Start the application. If launched by the native Wrapper, it will call start(); otherwise
     // start() is called immediately here.
     WrapperManager.start(new NodeStarter(), args);
@@ -534,8 +531,9 @@ public class NodeStarter implements WrapperListener {
   public Integer start(String[] args) {
     markStarted(false);
 
-    // Notify the wrapper before provider and configuration initialization can delay startup.
+    // Notify the wrapper before priority, logging, or provider setup can delay startup.
     WrapperManager.signalStarting(500000);
+    ProcessPriority.enterBackgroundMode();
     JceLoader.dumpLoaded();
 
     NodeCli cli = new NodeCli();

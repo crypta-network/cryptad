@@ -76,7 +76,7 @@ class NodeStarterClassInitializationTest {
       fresh.getMethod("main", String[].class).invoke(null, (Object) args);
 
       // Assert
-      assertEquals(List.of("wrapper-initialized", "priority", "wrapper-start"), calls);
+      assertEquals(List.of("wrapper-initialized", "wrapper-start"), calls);
       assertNotNull(listener.get());
 
       // Act
@@ -84,8 +84,7 @@ class NodeStarterClassInitializationTest {
       assertEquals(9, listener.get().stop(9));
 
       // Assert
-      assertEquals(
-          List.of("wrapper-initialized", "priority", "wrapper-start", "node-logger"), calls);
+      assertEquals(List.of("wrapper-initialized", "wrapper-start", "node-logger"), calls);
       logging.verify(() -> LoggerFactory.getLogger(fresh), times(1));
       wrapper.verify(() -> WrapperManager.signalStopping(120000), times(2));
     }

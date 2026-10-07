@@ -3,14 +3,49 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 
-The latest formal campaign used frozen helper and candidate `72dd14f93a67`,
+The latest formal campaign used helper `f8b5ea754b9a`, candidate
+`72dd14f93a67`, explicitly backported predecessor `29f6db309abd`, and the
+unchanged v37 runtime. Suite268 completed the eight positive cases, independently
+rebuilt from raw observations and full staging, with signed host cleanup.
+Suite269 was a signed PSI admission rejection without a VM. Suite270 then
+failed recipient's initial FCP GetNode readiness before the role/file probes;
+the campaign was sealed failed with unknown probe-start phase and stopped
+before suite271. Its eight results are historical, not complete acceptance.
+
+Suite270 retained a first recipient JVM that initialized WrapperManager and
+three seconds later exhausted the original startup-signal deadline. A second
+JVM was still bootstrapping the HTTP/app services when FCP readiness expired.
+Earlier suite265 failed controller readiness before installation verification;
+suite266 completed controller startup but failed recipient readiness. The two
+subsequently authorized diagnostic guests are exhausted. Suite267 completed
+four-role readiness and normal shutdown, without CHK/AppHost positive testing
+or any case credit. Its original signal selector chose the short-lived Wrapper
+bootstrap, so sent no signal. A documented same-guest correction issued one
+pidfd-bound SIGQUIT to the first actual recipient application JVM at age
+219.8 seconds; that late dump does not explain its initial 30-second window.
+Complete private archives retain these observations and the selector history.
+
+A controlled native counterexample uses the actual candidate package and
+NodeStarter entry point. Ordinary logging exits zero; an eight-second test
+Logback initialization delay causes the independent four-second test Wrapper
+window to expire after backend initialization. Production deadlines are not
+changed by this experiment. This demonstrates the remaining priority/logging
+initialization gap before lifecycle registration. Two ordering regressions
+fail on the original source; the prospective correction moves the existing
+priority call into start(), immediately after the existing startup notification.
+All 23 focused NodeStarter and fresh-class tests pass, together with module
+format and ownership checks. Native fixed-product repetition, final source
+gates, an updated identified predecessor backport, and a new complete 45-case
+campaign remain required. No prior installed case transfers to this source.
+
+The earlier formal campaign used frozen helper and candidate `72dd14f93a67`,
 the original predecessor `e2d65ca9ab9c`, and launcher policy v37. It verified
 35 installed cases under one campaign: positive eight (suite251), role/file
 boundary five (252), authority nine (253 retired preparation and 254 successor),
 network/AppHost six (255), output-symlink (256), output-fifo (257),
 output-hardlink (258), output-replacement (259), output-flood (260),
 resource-exhaustion (262), and lost-start-response (263). Each completed guest
-has its full original Mac staging and signed host cleanup. Suite261 was a
+has its full original private staging and signed host cleanup. Suite261 was a
 sealed `pve-admission-pressure-high` rejection without a VM; suite262 used a
 new unique number and completed the resource group.
 
@@ -26,13 +61,18 @@ The 35 results remain historical evidence; this campaign did not pass 45 cases.
 
 The complete failed attempt and campaign signature history are separately
 preserved on encrypted private storage, with every selected file byte and mode
-verified. Successful full staging and its original source archives remain on
-Mac. The preservation manifest explicitly states that this failure archive is
-not a standalone archive of the entire campaign. Verified remote failed disk
+verified. The separate failure archive is not a standalone archive of the entire
+campaign. A complete content-addressed cold archive subsequently preserved all
+167,225 original campaign files through 7,115 unique blobs, with original
+directory and file modes; every blob and original path was reverified. A real
+critical-file restoration verified startup/history signatures and independently
+materialized duplicate disk bytes before expanded Mac copies were released.
+Historical full replay requires complete restoration and the exact source.
+Verified remote failed disk
 and generated duplicates were released only after fresh ownership, stop,
 open-user, backing-dependency, and checksum checks.
 
-The authorized next reference is an explicitly identified predecessor startup
+The first authorized startup reference is an explicitly identified predecessor
 backport, `29f6db309abd5b340f65528bf18776a935c24a99`, based on the original
 `e2d65ca9ab9c15f25369b50b8728a614161b6a9d`. Its only production change is
 NodeStarter's proven Wrapper/provider/logging initialization order. The three
@@ -42,9 +82,13 @@ configured limits, product entry point, crypto initialization, and self-tests
 are preserved. No premain agent is included: a native delayed-class regression
 disproved a premain-only prototype. This reference is a separately measured
 source-built variant, not the unchanged historical product or a release.
-Its native full tests and product build must complete before freezing new
-fixture/product identities and rerunning all 45 cases. None of the 35 results
-is imported into that future campaign.
+Its native source build completed 17,353 Java tests with zero failures/errors
+and ten individually reviewed skips; all 1,411 raw XML reports are retained.
+The candidate's reviewed full run completed 17,416 tests, zero failures/errors,
+and ten explained skips across 1,413 XML reports. The helper's documentation-only
+commit retained explicit provenance to that tested code and product. The next
+priority/lifecycle correction requires new product identities and fresh gates;
+none of the 35 earlier results or the eight suite268 results transfers.
 
 Historical frozen helper `521c2e6fda` produced 35 independent development
 case results with complete raw archives and signed host cleanup: positive

@@ -72,7 +72,7 @@ class NodeStarterTest {
   }
 
   @Test
-  void main_whenStarting_registersLifecycleBeforeCryptoProviderInitialization() {
+  void main_whenStarting_registersLifecycleBeforePriorityAndProviderInitialization() {
     // Arrange
     String[] args = {"--config-file", "cryptad.ini"};
     List<String> calls = new ArrayList<>();
@@ -117,7 +117,7 @@ class NodeStarterTest {
       NodeStarter.main(args);
 
       // Assert
-      assertEquals(List.of("wrapper-initialized", "priority", "start"), calls);
+      assertEquals(List.of("wrapper-initialized", "start"), calls);
       assertNotNull(listener.get());
       assertSame(args, forwardedArgs.get());
       wrapper.verify(() -> WrapperManager.start(listener.get(), args), times(1));
@@ -126,11 +126,12 @@ class NodeStarterTest {
   }
 
   @Test
-  void start_whenEnteringLifecycle_notifiesWrapperBeforeCryptoProviderInitialization()
+  void start_whenEnteringLifecycle_notifiesWrapperBeforePriorityAndProviderInitialization()
       throws ReflectiveOperationException {
     // Arrange
     List<String> calls = new ArrayList<>();
     try (MockedStatic<WrapperManager> wrapper = Mockito.mockStatic(WrapperManager.class);
+        MockedStatic<ProcessPriority> priority = Mockito.mockStatic(ProcessPriority.class);
         MockedStatic<JceLoader> providers = Mockito.mockStatic(JceLoader.class)) {
       NodeStarter listener = newNodeStarterViaReflection();
       calls.clear();
@@ -140,6 +141,13 @@ class NodeStarterTest {
               _ -> {
                 calls.add("startup-signal");
                 return null;
+              });
+      priority
+          .when(ProcessPriority::enterBackgroundMode)
+          .thenAnswer(
+              _ -> {
+                calls.add("priority");
+                return true;
               });
       providers
           .when(JceLoader::dumpLoaded)
@@ -154,7 +162,7 @@ class NodeStarterTest {
 
       // Assert
       assertEquals(0, exitCode);
-      assertEquals(List.of("startup-signal", "providers"), calls);
+      assertEquals(List.of("startup-signal", "priority", "providers"), calls);
       wrapper.verify(() -> WrapperManager.signalStarting(500000), times(1));
       providers.verify(JceLoader::dumpLoaded, times(1));
     }
