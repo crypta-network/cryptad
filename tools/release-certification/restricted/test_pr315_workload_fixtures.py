@@ -40,6 +40,10 @@ class AdmissionTests(unittest.TestCase):
                 policy['wrapperStartupTimeoutSeconds'], previous=60.0))
             for change in ({'schemaVersion': 2}, {'schemaVersion': 3.0}, {'runtimePolicy': None},
                            {'runtimePolicy': altered}, {'runtimePolicy': noninteger},
+                           {'runtimePolicy': dict(policy, jvmActiveProcessorCount=4)},
+                           {'runtimePolicy': {key: item for key, item in policy.items()
+                                              if key != 'jvmActiveProcessorCount'}},
+                           {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v37')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v8')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v9')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v10')},

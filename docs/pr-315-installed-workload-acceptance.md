@@ -3,7 +3,34 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 
-The latest formal campaign froze helper/candidate `754bb0174c69`, predecessor
+The latest formal campaign froze helper `f3e2de6b469e`, candidate
+`754bb0174c69`, predecessor `9a8c8b905bc1`, and v37. Suite277 failed
+sender's initial FCP GetNode at its original 180-second deadline; no case
+passed. Controller readiness completed in 40.2 seconds. The sender consumed
+180.9 CPU seconds under its unchanged one-core quota, with zero captured
+cgroup OOM events. Wrapper logs reported node initialization shortly after
+the deadline, but receipt timestamps do not establish exact endpoint readiness
+or the cause. Bounded jcmd operations expired and fatal-log locations were not
+proven. Guest stop, watcher completion and complete private failed-original
+preservation were verified; the campaign is terminally failed.
+
+Independent native observations under the same four-CPU affinity, one-core
+quota, memory/pid limits and sandbox without /sys found that the pinned JVM
+reported four available processors. The single fixed option
+`-XX:ActiveProcessorCount=1` changed that report to one, including the actual
+packaged Wrapper entry path. Kernel observations independently verified the
+unchanged cgroup limits. This supplies a diagnostic hypothesis, not an installed
+root-cause finding.
+
+The user authorized at most one additional TCG diagnostic guest. Prospective
+launcher v38 applies only that additional JVM option to
+`BOOTSTRAP_DRYRUN_APP`; QEMU/JDK binaries, four guest vCPUs, 5,632-MiB memory,
+role quotas, existing untiered compilation policy and deadlines remain fixed.
+It must execute the actual eight positive cases with full host cleanup under a
+separate diagnostic campaign key. Its results cannot grant formal acceptance;
+adopting this profile requires a new frozen identity and all 45 cases again.
+
+The preceding formal campaign froze helper/candidate `754bb0174c69`, predecessor
 `9a8c8b905bc1`, and the unchanged v37 runtime. Suite271's eight positives and
 suite273's five role/file cases passed raw-evidence, full-staging and signed
 cleanup verification: 13/45 under one campaign. Suite272 and suite274 were

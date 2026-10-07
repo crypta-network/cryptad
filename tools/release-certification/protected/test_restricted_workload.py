@@ -249,6 +249,14 @@ with open(sys.argv[3], 'wb') as stream:
         with patch.object(preparation, 'launcher_policy', return_value=changed):
             self.assertNotEqual(original, preparation.configuration_identity('previous', None))
 
+    def test_configuration_identity_binds_jvm_processor_policy(self):
+        original = preparation.configuration_identity('candidate-sender', None)
+        changed = launcher.launcher_policy()
+        changed['jvmActiveProcessorCount'] = 4
+        with patch.object(preparation, 'launcher_policy', return_value=changed):
+            self.assertNotEqual(original,
+                                preparation.configuration_identity('candidate-sender', None))
+
 
 class BootstrapHttpTest(unittest.TestCase):
     def test_connected_loopback_listener_receives_its_real_host_port(self):
@@ -1407,7 +1415,7 @@ class LauncherTest(unittest.TestCase):
 
     def test_all_roles_pin_untiered_bootstrap_and_app_compilation(self):
         policy = launcher.launcher_policy()
-        self.assertEqual('workload-launcher-policy-v37', policy['revision'])
+        self.assertEqual('workload-launcher-policy-v38', policy['revision'])
         self.assertEqual('untiered-bootstrap-and-app-diagnostic-v2',
                          policy['jvmCompilationPolicy'])
         for role in workload.ROLES:
@@ -1421,6 +1429,21 @@ class LauncherTest(unittest.TestCase):
                                  properties['wrapper.java.additional.11.scope'])
                 self.assertEqual('-Dcrypta.log.dir=/node/logs',
                                  properties['wrapper.java.additional.10'])
+
+    def test_one_processor_diagnostic_covers_each_wrapper_jvm_without_changing_limits(self):
+        self.assertEqual(1, launcher.launcher_policy()['jvmActiveProcessorCount'])
+        for role in workload.ROLES:
+            with self.subTest(role=role):
+                command, _environment = launcher.command(role)
+                properties = dict(item.split('=', 1)
+                                  for item in command[command.index('--') + 2:])
+                self.assertEqual('-XX:ActiveProcessorCount=1',
+                                 properties['wrapper.java.additional.12'])
+                self.assertEqual('BOOTSTRAP_DRYRUN_APP',
+                                 properties['wrapper.java.additional.12.scope'])
+                self.assertEqual('256', properties['wrapper.java.maxmemory'])
+                self.assertEqual('60' if role in ('candidate-sender', 'previous') else '30',
+                                 properties['wrapper.startup.timeout'])
 
     def test_only_role_state_and_exact_inputs_are_mounted(self):
         for role in workload.ROLES:

@@ -32,8 +32,13 @@ def launcher_policy():
     C1 SIGILL. Apply that option to the Wrapper bootstrap as well: the default
     option scope omitted the bootstrap JVM that crashed in suite 129. The JDK
     binary, role limits, daemon readiness and campaign deadline do not change.
+
+    The v38 single-variable diagnostic fixes JVM processor ergonomics at one.
+    Independent native kernel observations found four reported processors under
+    the unchanged one-core role quota and sandbox without /sys. This is a
+    prospective diagnostic policy, not proof of the installed readiness cause.
     """
-    return {'revision': 'workload-launcher-policy-v37',
+    return {'revision': 'workload-launcher-policy-v38',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
@@ -52,6 +57,7 @@ def launcher_policy():
             'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
             'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',
             'jvmCompilationPolicy': 'untiered-bootstrap-and-app-diagnostic-v2',
+            'jvmActiveProcessorCount': 1,
             'privateVolatileMaxBytes': 128 * 1024,
             'wrapperStartupTimeoutSeconds': {
                 role: 60 if role in ('candidate-sender', 'previous') else 30
@@ -260,7 +266,9 @@ def command(role):
              'wrapper.logfile.maxsize=2M', 'wrapper.logfile.maxfiles=3',
              'wrapper.java.additional.10=-Dcrypta.log.dir=/node/logs',
              'wrapper.java.additional.11=-XX:-TieredCompilation',
-             'wrapper.java.additional.11.scope=BOOTSTRAP_DRYRUN_APP']
+             'wrapper.java.additional.11.scope=BOOTSTRAP_DRYRUN_APP',
+             'wrapper.java.additional.12=-XX:ActiveProcessorCount=1',
+             'wrapper.java.additional.12.scope=BOOTSTRAP_DRYRUN_APP']
     values = ['--config-file', '/node/config/cryptad.ini']
     for name in ('config', 'data', 'cache', 'run', 'logs'):
         values += ['--' + name + '-dir', '/node/' + name]
