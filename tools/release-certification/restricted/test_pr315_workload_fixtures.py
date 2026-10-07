@@ -44,6 +44,9 @@ class AdmissionTests(unittest.TestCase):
                            {'runtimePolicy': {key: item for key, item in policy.items()
                                               if key != 'jvmActiveProcessorCount'}},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v37')},
+                           {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v38')},
+                           {'runtimePolicy': {key: item for key, item in policy.items()
+                                              if key != 'preparationFailureProof'}},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v8')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v9')},
                            {'runtimePolicy': dict(policy, revision='workload-launcher-policy-v10')},

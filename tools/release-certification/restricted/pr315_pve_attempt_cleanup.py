@@ -49,7 +49,9 @@ def apply(plan, expected_check_digest):
     finally:
         os.close(descriptor)
     return {**checked, 'checkDigest': expected_check_digest,
-            'release': 'completed-remote-success-duplicates-only'}
+            'release': ('completed-remote-preparation-duplicates-only'
+                if plan['kind'] == 'pr315-host-preparation-copy-release-plan-v1'
+                else 'completed-remote-success-duplicates-only')}
 
 
 def main(argv=None):

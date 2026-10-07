@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import subprocess
 
 import pr315_campaign_seal as seal
 
@@ -111,6 +112,27 @@ class CampaignSealTest(unittest.TestCase):
             target[path[-1]] = changed
             with self.assertRaises(ValueError):
                 seal.verify_cleanup(self.root, self.plan, mutated)
+
+    def test_launched_preparation_cleanup_requires_its_own_signature_domain(self):
+        attempt = seal.attempt_receipt(self.plan, 'role-boundary', 'suite-201', SOURCE,
+            'setup-failed', False, {}, '1' * 64, '2' * 64, '3' * 64, '4' * 64,
+            sequence=1, previous_digest='0' * 64)
+        cleanup = seal.cleanup_receipt(self.plan, attempt, *[str(i) * 64 for i in range(1, 7)])
+        self.assertEqual(seal.PREPARATION_CLEANUP_KIND, cleanup['kind'])
+        signed = seal.sign_cleanup(self.root, self.plan, attempt, cleanup)
+        self.assertEqual((attempt, cleanup), seal.verify_cleanup(self.root, self.plan, signed))
+        wrong = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'sign', '-f',
+            str(self.root / seal.KEY_NAME), '-n', seal.CLEANUP_DOMAIN],
+            input=seal._canonical(signed['payload']), capture_output=True, check=True).stdout.decode()
+        with self.assertRaisesRegex(ValueError, 'signature-mismatch'):
+            seal.verify_cleanup(self.root, self.plan, dict(signed, signature=wrong))
+
+    def test_no_vm_preparation_cannot_acquire_a_guest_cleanup_receipt(self):
+        attempt = seal.attempt_receipt(self.plan, 'role-boundary', 'suite-201', SOURCE,
+            'setup-failed', False, {}, '1' * 64, None, None, '4' * 64,
+            sequence=1, previous_digest='0' * 64)
+        with self.assertRaisesRegex(ValueError, 'input-invalid'):
+            seal.cleanup_receipt(self.plan, attempt, *[str(i) * 64 for i in range(1, 7)])
 
     def test_retired_authority_handoff_is_signed_without_raw_handle(self):
         provenance = {'schemaVersion': 1,

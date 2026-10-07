@@ -512,9 +512,11 @@ def verify_completed_cleanup_receipts(root, source, campaign, receipt):
         root, suite, receipt['sourceCommit'])
     file_digests = {name: manifest['files'][
         'attempt-01/' + name]['sha256'] for name in (
-        'guest.qcow2', 'prepared.qcow2', 'source.tar.gz')}
+                'guest.qcow2', 'prepared.qcow2', 'source.tar.gz')}
+    preparation_failure = receipt['status'] == 'setup-failed'
     expected_plan = {'schemaVersion': 1,
-        'kind': 'pr315-host-success-copy-release-plan-v1',
+        'kind': ('pr315-host-preparation-copy-release-plan-v1' if preparation_failure
+                 else 'pr315-host-success-copy-release-plan-v1'),
         'suite': suite, 'sourceCommit': receipt['sourceCommit'],
         'campaignPlanDigest': campaign['planDigest'],
         'sealedReceiptDigest': seal._digest(receipt),
@@ -532,7 +534,8 @@ def verify_completed_cleanup_receipts(root, source, campaign, receipt):
     if (planned != expected_plan
             or check.get('checkDigest') != seal._digest(core)
             or core.get('kind') !=
-                'pr315-pve-success-copy-release-check-v1'
+                ('pr315-pve-preparation-copy-release-check-v1' if preparation_failure
+                 else 'pr315-pve-success-copy-release-check-v1')
             or core.get('suite') != suite
             or core.get('sourceCommit') != receipt['sourceCommit']
             or core.get('campaignPlanDigest') != campaign['planDigest']
@@ -548,7 +551,8 @@ def verify_completed_cleanup_receipts(root, source, campaign, receipt):
                 'taskQemuPids', 'openUserPids',
                 'externalBackingDependents'))
             or complete != {**core, 'checkDigest': check['checkDigest'],
-                'release': 'completed-remote-success-duplicates-only'}
+                'release': ('completed-remote-preparation-duplicates-only' if preparation_failure
+                            else 'completed-remote-success-duplicates-only')}
             or signed != seal.cleanup_receipt(campaign, receipt,
                 manifest_digest, check['checkDigest'],
                 seal._digest(complete), seal._digest(planned),
@@ -634,6 +638,17 @@ def _recovered_verdict(root, source, *, expected_plan_digest,
     selected = {}
     statuses = {}
     blockers = []
+    # Every preparation failure belongs to the accepted campaign's history too.
+    # A signed status cannot substitute for its original evidence or cleanup.
+    import pr315_workload_coordinator as coordinator
+    import pr315_preparation as preparation
+    for receipt in history:
+        if receipt['status'] != 'setup-failed':
+            continue
+        manifest = coordinator.verify_preparation_archive(root, campaign, receipt)
+        if (manifest['kind'] == preparation.ARCHIVE_KIND
+                and not verify_completed_cleanup_receipts(root, source, campaign, receipt)):
+            blockers.append(receipt['attemptId'] + ':preparation-cleanup-incomplete')
     for group_id, owned in groups.GROUPS:
         if development_group is not None and group_id != development_group:
             continue

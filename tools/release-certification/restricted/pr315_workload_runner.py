@@ -4308,7 +4308,7 @@ def run(args):
             resources = (native_runner.private_json(diagnostic)
                          if diagnostic.exists() and diagnostic.stat().st_size else None)
             retired_proof = None
-            if retired_preparation:
+            if retired_preparation and report.get('guestExitCode') == 0:
                 retained_path = selected.attempt / 'pr315-retired-authority.private.json'
                 info = retained_path.lstat()
                 if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()

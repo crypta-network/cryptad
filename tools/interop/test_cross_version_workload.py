@@ -717,6 +717,17 @@ class ObserverPolicyTests(unittest.TestCase):
             adapter.run_group_preparation('lost-start-response')
         adapter.cleanup.assert_called_once()
 
+    def test_readiness_failure_cannot_acknowledge_prepared_or_run_observer_probes(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.start = mock.Mock(side_effect=workload.runtime.RuntimeFailure(
+            'workload-daemon-readiness-timeout'))
+        adapter.cleanup = mock.Mock(return_value='complete')
+        prepared = mock.Mock()
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'readiness-timeout'):
+            adapter.run_group_preparation('role-boundary', on_prepared=prepared)
+        prepared.assert_not_called()
+        adapter.cleanup.assert_called_once()
+
     def test_authority_preparation_binds_signed_app_session_for_role_origin_probe(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.nodes = {}
@@ -749,11 +760,13 @@ class ObserverPolicyTests(unittest.TestCase):
         order.attach_mock(adapter.probe_observer_control, 'observer')
         order.attach_mock(adapter.probe_arbitrary_endpoint, 'endpoint')
         order.attach_mock(adapter.provision_apps, 'apps')
+        prepared = mock.Mock(side_effect=lambda: self.assertEqual(4, len(adapter.nodes)))
+        order.attach_mock(prepared, 'prepared')
         with mock.patch.object(workload, 'kernel_roster', return_value={'roles': []}):
             result = adapter.run_group_preparation('authority',
-                leave_running_for_administrator=True)
+                leave_running_for_administrator=True, on_prepared=prepared)
         self.assertEqual('authority', result['groupPreparation'])
-        self.assertEqual([mock.call.roster(), mock.call.observer(),
+        self.assertEqual([mock.call.prepared(), mock.call.roster(), mock.call.observer(),
                           mock.call.endpoint(), mock.call.apps()],
                          order.mock_calls)
         self.assertEqual(3, result['signedAppWorkers'])

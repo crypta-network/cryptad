@@ -26,6 +26,7 @@ import pr315_campaign_owner as owner
 import pr315_workload_fixtures as fixtures
 import pr315_workload_campaign as campaign
 import pr315_pve_host_admission as host_admission
+import pr315_preparation as preparation
 
 CT = 'codex@192.168.1.180'
 PVE = 'root@192.168.1.200'
@@ -1171,7 +1172,9 @@ def _release_plan(root, plan, receipt, staging, staging_digest):
                 for name in ('guest.qcow2', 'prepared.qcow2',
                              'source.tar.gz')}
     value = {'schemaVersion': 1,
-        'kind': 'pr315-host-success-copy-release-plan-v1',
+        'kind': ('pr315-host-preparation-copy-release-plan-v1'
+            if receipt['status'] == 'setup-failed'
+            else 'pr315-host-success-copy-release-plan-v1'),
         'suite': receipt['attemptId'],
         'sourceCommit': receipt['sourceCommit'],
         'campaignPlanDigest': plan['planDigest'],
@@ -1232,7 +1235,9 @@ def _recover_postdelete_cleanup(remote, root, source, plan, receipt,
                 'taskQemuPids', 'openUserPids',
                 'externalBackingDependents'))
             or complete != {**core, 'checkDigest': check_digest,
-                'release': 'completed-remote-success-duplicates-only'}):
+                'release': ('completed-remote-preparation-duplicates-only'
+                    if receipt['status'] == 'setup-failed'
+                    else 'completed-remote-success-duplicates-only')}):
         raise ValueError('pr315-release-postdelete-record-changed')
     _postrelease_absence(remote, suite)
     relative = Path('tools/release-certification/restricted')
@@ -1255,7 +1260,7 @@ def release_completed_attempt(remote, root, source, plan, receipt,
     source = Path(source).resolve(strict=True)
     if (receipt not in history
             or receipt.get('status') not in
-                ('completed', 'preparation-completed')
+                ('completed', 'preparation-completed', 'setup-failed')
             or receipt.get('sourceCommit') !=
                 plan['identity']['helperSourceCommit']):
         raise ValueError('pr315-release-unsealed-attempt')
@@ -1263,9 +1268,13 @@ def release_completed_attempt(remote, root, source, plan, receipt,
     if receipt['status'] == 'completed':
         owner.verify_completed_archive(plan, receipt, archive, source,
             history=history, campaign_root=root)
-    else:
+    elif receipt['status'] == 'preparation-completed':
         verify_retired_preparation_for_resume(root, plan, history)
         owner._archive_manifest(archive, plan, receipt)
+    else:
+        manifest = verify_preparation_archive(root, plan, receipt)
+        if manifest['kind'] != preparation.ARCHIVE_KIND:
+            raise ValueError('pr315-release-launched-preparation-required')
     _stage, staging, staging_digest = verify_full_staging_copy(
         root, receipt['attemptId'], receipt['sourceCommit'])
     selected = _release_plan(root, plan, receipt, staging,
@@ -1288,7 +1297,11 @@ def release_completed_attempt(remote, root, source, plan, receipt,
     checked = _pve_release_audit(remote, receipt['sourceCommit'],
         'pr315_pve_attempt_inventory.py', common)
     check_digest = checked.pop('checkDigest', None)
-    if (checked.get('suite') != receipt['attemptId']
+    expected_kind = ('pr315-pve-preparation-copy-release-check-v1'
+        if receipt['status'] == 'setup-failed'
+        else 'pr315-pve-success-copy-release-check-v1')
+    if (checked.get('kind') != expected_kind
+            or checked.get('suite') != receipt['attemptId']
             or checked.get('sourceCommit') != receipt['sourceCommit']
             or checked.get('campaignPlanDigest') != plan['planDigest']
             or checked.get('sealedReceiptDigest') !=
@@ -1307,8 +1320,10 @@ def release_completed_attempt(remote, root, source, plan, receipt,
     completed = _pve_release_audit(remote, receipt['sourceCommit'],
         'pr315_pve_attempt_cleanup.py',
         [*common, '--check-digest', check_digest])
-    if (completed.get('release') !=
-            'completed-remote-success-duplicates-only'
+    expected_release = ('completed-remote-preparation-duplicates-only'
+        if receipt['status'] == 'setup-failed'
+        else 'completed-remote-success-duplicates-only')
+    if (completed.get('release') != expected_release
             or completed.get('checkDigest') != check_digest
             or any(completed.get(key) != checked[key] for key in checked)):
         raise ValueError('pr315-release-pve-completion-invalid')
@@ -1684,12 +1699,14 @@ def _seal_failed_attempt(root, config, plan, suite, group_id,
 
 
 def verify_preparation_archive(root, plan, receipt):
-    """Rehash a sealed no-VM failure before permitting another attempt."""
+    """Rehash a sealed preparation failure before permitting another attempt."""
     if receipt.get('status') != 'setup-failed':
         raise ValueError('pr315-preparation-receipt-status-invalid')
     archive = seal._private_directory(Path(root) / 'attempts' /
                                       receipt['attemptId'])
     manifest = owner._json(archive, 'preparation-archive.private.json', 65536)
+    if manifest.get('kind') == preparation.ARCHIVE_KIND:
+        return verify_launched_preparation_archive(root, archive, plan, receipt, manifest)
     if manifest.get('kind') == 'pr315-pre-admission-rejection-archive-v1':
         return verify_pre_admission_archive(root, archive, plan, receipt,
                                             manifest)
@@ -1739,6 +1756,70 @@ def verify_preparation_archive(root, plan, receipt):
             or receipt['stopDigest'] is not None):
         raise ValueError('pr315-preparation-archive-receipt-changed')
     return manifest
+
+
+def verify_launched_preparation_archive(root, archive, plan, receipt, manifest):
+    """Rebuild a positively observed pre-probe failure, including every disk byte."""
+    expected_fields = {'schemaVersion', 'kind', 'attemptId', 'sourceCommit',
+        'planDigest', 'groupId', 'guestAllocated', 'retiredPreparation',
+        'fullStageDigest', 'proofDigest'}
+    if (set(manifest) != expected_fields or manifest['schemaVersion'] != 1
+            or manifest['kind'] != preparation.ARCHIVE_KIND
+            or manifest['attemptId'] != receipt['attemptId']
+            or manifest['sourceCommit'] != receipt['sourceCommit']
+            or manifest['planDigest'] != plan['planDigest']
+            or manifest['groupId'] != receipt['groupId']
+            or manifest['guestAllocated'] is not True
+            or type(manifest['retiredPreparation']) is not bool
+            or (manifest['retiredPreparation'] and receipt['groupId'] != 'authority')
+            or receipt['probeStarted'] is not False or receipt['caseDigests'] != {}
+            or receipt['archiveDigest'] != seal._digest(manifest)
+            or {p.name for p in archive.iterdir()} != {
+                'preparation-archive.private.json', 'preparation-proof.private.json'}):
+        raise ValueError('pr315-launched-preparation-archive-invalid')
+    stage, files, stage_digest = verify_full_staging_copy(
+        root, receipt['attemptId'], receipt['sourceCommit'])
+    proof = preparation.verify_received_stage(stage, plan, receipt['groupId'],
+        retired=manifest['retiredPreparation'])
+    saved = owner._json(archive, 'preparation-proof.private.json', 65536)
+    if (proof is None or saved != proof or stage_digest != manifest['fullStageDigest']
+            or seal._digest(proof) != manifest['proofDigest']
+            or receipt['evidenceDigest'] != seal._digest(proof)
+            or receipt['stopDigest'] != files['files']['host-stop.private.json']['sha256']
+            or receipt['monitorDigest'] != files['files']['host-monitor.private.json']['sha256']):
+        raise ValueError('pr315-launched-preparation-proof-changed')
+    return manifest
+
+
+def archive_launched_preparation_failure(root, config, plan, suite, group,
+                                        staging, stage_digest, *, retired=False):
+    """Return no receipt on uncertainty; a formal operation is never retried."""
+    proof = preparation.verify_received_stage(staging, plan, group, retired=retired)
+    if proof is None:
+        return None
+    verified_stage, full, verified_digest = verify_full_staging_copy(
+        root, suite, config['sourceCommit'])
+    if Path(staging) != verified_stage or verified_digest != stage_digest:
+        raise ValueError('pr315-launched-preparation-staging-changed')
+    destination = Path(root) / 'attempts' / suite
+    destination.mkdir(mode=0o700, exist_ok=False)
+    manifest = {'schemaVersion': 1, 'kind': preparation.ARCHIVE_KIND,
+        'attemptId': suite, 'sourceCommit': config['sourceCommit'],
+        'planDigest': plan['planDigest'], 'groupId': group,
+        'guestAllocated': True, 'retiredPreparation': retired,
+        'fullStageDigest': stage_digest, 'proofDigest': seal._digest(proof)}
+    _exclusive_json(destination / 'preparation-proof.private.json', proof)
+    _exclusive_json(destination / 'preparation-archive.private.json', manifest)
+    receipt = seal.append_verified_attempt(root, plan,
+        pinned_source_commit=config['sourceCommit'],
+        pinned_fingerprint=config['hostKeyFingerprint'], group_id=group,
+        attempt_id=suite, status='setup-failed', probe_started=False,
+        case_digests={}, evidence_digest=seal._digest(proof),
+        stop_digest=full['files']['host-stop.private.json']['sha256'],
+        monitor_digest=full['files']['host-monitor.private.json']['sha256'],
+        archive_digest=seal._digest(manifest))
+    verify_preparation_archive(root, plan, receipt)
+    return receipt
 
 
 def verify_pre_admission_archive(root, archive, plan, receipt, manifest):
@@ -2044,9 +2125,12 @@ def run_campaign(root, source, *, case_group=None, development_group=None):
             pinned_source_commit=config['sourceCommit'],
             pinned_fingerprint=config['hostKeyFingerprint'])
         for prior in history:
+            launched_preparation = False
             if prior['status'] == 'setup-failed':
-                verify_preparation_archive(root, plan, prior)
-            if (prior['status'] in ('completed', 'preparation-completed')
+                manifest = verify_preparation_archive(root, plan, prior)
+                launched_preparation = manifest['kind'] == preparation.ARCHIVE_KIND
+            if ((prior['status'] in ('completed', 'preparation-completed')
+                    or launched_preparation)
                     and not owner.verify_completed_cleanup_receipts(
                         root, source, plan, prior)):
                 release_completed_attempt(remote, root, source, plan,
@@ -2127,6 +2211,17 @@ def run_campaign(root, source, *, case_group=None, development_group=None):
             _seal_failed_attempt(root, config, plan, suite,
                                  group_id, staging, stage_digest)
             return recover(root, source, **pin)
+        prepared_failure = archive_launched_preparation_failure(
+            root, config, plan, suite, group_id, staging, stage_digest,
+            retired=selected['action'] == 'retired-authority-preparation')
+        if prepared_failure is not None:
+            sealed_history = seal.load_verified_history(root, plan,
+                pinned_source_commit=config['sourceCommit'],
+                pinned_fingerprint=config['hostKeyFingerprint'])
+            release_completed_attempt(remote, root, source, plan,
+                                      prepared_failure, sealed_history)
+            recover(root, source, **pin)
+            continue
         if selected['action'] == 'retired-authority-preparation':
             if not retired_preparation_complete(execution):
                 _seal_failed_attempt(root, config, plan, suite,

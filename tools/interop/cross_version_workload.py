@@ -1200,7 +1200,7 @@ class InstalledWorkloadAdapter:
         return 'complete' if complete else 'reconciliation-required'
 
     def run_group_preparation(self, group, *, leave_running_for_administrator=False,
-                              on_start_failure=None):
+                              on_start_failure=None, on_prepared=None):
         """Prove the selected installed role epochs before its own fixed probe."""
         if group not in ('output-symlink', 'output-fifo', 'output-hardlink',
                          'output-flood', 'output-replacement', 'role-boundary',
@@ -1210,7 +1210,8 @@ class InstalledWorkloadAdapter:
                          'role-readiness-diagnostic', 'lost-start-response',
                          'resource-exhaustion', 'partial-launch',
                          'stuck-output', 'late-child', 'cleanup-race') or (
-                on_start_failure is not None and not callable(on_start_failure)):
+                on_start_failure is not None and not callable(on_start_failure)) or (
+                on_prepared is not None and not callable(on_prepared)):
             fail('workload-group-preparation-invalid')
         completed = False
         try:
@@ -1258,6 +1259,10 @@ class InstalledWorkloadAdapter:
                 for role in (runtime.ROLES[:2] if group == 'partial-launch'
                              else runtime.ROLES):
                     self.start(role)
+            # Root must close the preparation retry window before observer
+            # authority probes or signed AppHost code can execute.
+            if on_prepared is not None:
+                on_prepared()
             started = time.monotonic_ns()
             samples = {role: self.observe(role) for role in
                        (runtime.ROLES[:2] if group == 'partial-launch'

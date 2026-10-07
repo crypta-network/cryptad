@@ -3,7 +3,54 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 
-The latest formal campaign froze helper `f3e2de6b469e`, candidate
+The most recent formal campaign froze helper `026951b578f3`, candidate
+`754bb0174c69`, predecessor `9a8c8b905bc1` and launcher v38. Suite279's eight
+positive v10 cases passed independent raw-evidence, complete staging and signed
+cleanup verification. Suite280 then failed recipient's initial FCP GetNode
+readiness at the original 180-second deadline after thirteen attempts, before
+the role/file probes. The coordinator sealed failure and stopped before
+suite281. Its eight results are historical; the complete campaign did not pass.
+The role consumed about 173 CPU seconds with zero cgroup OOM events. Both
+bounded jcmd operations expired. A partial Wrapper thread dump records about
+64.7 CPU seconds in C2 and a waiting FCP server; this does not establish the
+readiness root cause. Complete original bytes, disk contents, private keys and
+both attempt signatures were verified in a content-addressed cold archive and
+through actual critical-file restoration before duplicate release.
+
+The separately authorized single-variable diagnostic suite278 completed its
+actual eight legacy v8 positives, but failed v10 campaign binding. The private
+plan generator incorrectly replaced `profileDigest`, whose meaning is the
+installed dependency closure, with a runtime-policy summary. The v10 verifier
+correctly rejected that mismatch. The original failed signature history was
+not changed. Suite279 used the measured dependency closure and the independently
+bound v38 runtime-policy digest, then reran the actual positives. No diagnostic
+guest allowance remains and no further diagnostic guest is authorized here.
+
+Prospective v39 adds administrator evidence for the initial preparation retry
+boundary. Existing code could retry a no-VM rejection, but had no complete
+trusted archive path for a launched guest's pre-probe readiness failure. A
+missing marker remains unknown. The prospective root process holds a pidfd,
+captures its kernel epoch and the observer epoch, and observes an unchanged,
+root-owned empty probe-release directory. An explicit fixed acknowledgement
+after initial role readiness irreversibly closes the preparation window before
+observer authority probes or signed AppHost probes can execute. The first root
+probe-start record is retained. Only an initial FCP readiness timeout before
+that acknowledgement can produce the new witness, and only after actual role
+termination, original stop receipts for launched roles, no fabricated instance
+or stop receipt for unstarted roles, and terminal campaign fencing.
+
+The host rechecks installed identity, source/test-kit commitments, all original
+staging bytes, watcher completion and QEMU stop before sealing such a failure
+with zero case results. Its remote-copy cleanup has a separate signed purpose.
+The shared three-slot limit remains unchanged, including retired authority
+preparation. Missing or inconsistent observations and all post-boundary errors
+remain terminal failures. Positive, lost-start-response and partial-launch
+operations do not use this retry witness. No old failure can be reclassified
+with it. It implements bounded preparation retry evidence and does not claim a
+JVM/QEMU root-cause fix. New source, fixture and policy identities, source gates
+and all 45 cases in one fresh formal campaign remain required.
+
+The preceding formal campaign froze helper `f3e2de6b469e`, candidate
 `754bb0174c69`, predecessor `9a8c8b905bc1`, and v37. Suite277 failed
 sender's initial FCP GetNode at its original 180-second deadline; no case
 passed. Controller readiness completed in 40.2 seconds. The sender consumed

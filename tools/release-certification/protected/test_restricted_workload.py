@@ -1415,7 +1415,7 @@ class LauncherTest(unittest.TestCase):
 
     def test_all_roles_pin_untiered_bootstrap_and_app_compilation(self):
         policy = launcher.launcher_policy()
-        self.assertEqual('workload-launcher-policy-v38', policy['revision'])
+        self.assertEqual('workload-launcher-policy-v39', policy['revision'])
         self.assertEqual('untiered-bootstrap-and-app-diagnostic-v2',
                          policy['jvmCompilationPolicy'])
         for role in workload.ROLES:

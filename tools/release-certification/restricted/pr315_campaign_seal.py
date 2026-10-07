@@ -32,6 +32,8 @@ DEVELOPMENT_START_DOMAIN = 'pr315-development-start-v1'
 DEVELOPMENT_START_KIND = 'pr315-development-start-v1'
 CLEANUP_DOMAIN = 'pr315-host-success-cleanup-v1'
 CLEANUP_KIND = 'pr315-host-success-cleanup-receipt-v1'
+PREPARATION_CLEANUP_KIND = 'pr315-host-preparation-cleanup-receipt-v1'
+PREPARATION_CLEANUP_DOMAIN = 'pr315-host-preparation-cleanup-v1'
 AUTHORITY_HANDOFF = 'pr315-retired-authority-handoff-v1'
 AUTHORITY_DOMAIN = 'pr315-retired-authority-v1'
 KEY_NAME = 'campaign-ed25519'
@@ -386,7 +388,12 @@ def cleanup_receipt(campaign, attempt, mac_full_archive_digest,
             or not isinstance(attempt, dict)
             or attempt.get('kind') != RECEIPT
             or attempt.get('status') not in
-                ('completed', 'preparation-completed')
+                ('completed', 'preparation-completed', 'setup-failed')
+            or (attempt.get('status') == 'setup-failed' and (
+                attempt.get('probeStarted') is not False
+                or attempt.get('caseDigests') != {}
+                or any(attempt.get(key) is None for key in
+                       ('stopDigest', 'monitorDigest', 'archiveDigest'))))
             or attempt.get('planDigest') != campaign.get('planDigest')
             or attempt.get('campaignNonce') != campaign.get('campaignNonce')
             or attempt.get('sourceCommit') !=
@@ -396,7 +403,8 @@ def cleanup_receipt(campaign, attempt, mac_full_archive_digest,
                 pve_complete_digest, release_plan_digest,
                 inventory_module_digest, cleanup_module_digest))):
         raise ValueError('pr315-cleanup-receipt-input-invalid')
-    return {'schemaVersion': 1, 'kind': CLEANUP_KIND,
+    return {'schemaVersion': 1, 'kind': (PREPARATION_CLEANUP_KIND
+        if attempt['status'] == 'setup-failed' else CLEANUP_KIND),
         'planDigest': campaign['planDigest'],
         'campaignNonce': campaign['campaignNonce'],
         'sourceCommit': attempt['sourceCommit'],
@@ -455,7 +463,9 @@ def sign_cleanup(root, campaign, attempt, cleanup):
                 campaign['hostKeyFingerprint']):
         raise ValueError('pr315-cleanup-signing-key-invalid')
     signed = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'sign', '-f',
-        str(key), '-n', CLEANUP_DOMAIN], input=_canonical(payload),
+        str(key), '-n', (PREPARATION_CLEANUP_DOMAIN
+            if cleanup['kind'] == PREPARATION_CLEANUP_KIND else CLEANUP_DOMAIN)],
+        input=_canonical(payload),
         capture_output=True, timeout=15, check=True)
     signature = signed.stdout.decode('ascii')
     if (not signature.startswith('-----BEGIN SSH SIGNATURE-----\n')
@@ -491,7 +501,9 @@ def verify_cleanup(root, campaign, envelope):
         allowed.write_bytes(b'pr315-campaign ' + public + b'\n')
         sig.write_text(signature, encoding='ascii')
         checked = subprocess.run(['/usr/bin/ssh-keygen', '-Y', 'verify',
-            '-f', str(allowed), '-I', 'pr315-campaign', '-n', CLEANUP_DOMAIN,
+            '-f', str(allowed), '-I', 'pr315-campaign', '-n',
+            (PREPARATION_CLEANUP_DOMAIN if value['kind'] == PREPARATION_CLEANUP_KIND
+             else CLEANUP_DOMAIN),
             '-s', str(sig)], input=_canonical(payload), capture_output=True,
             timeout=15)
     if checked.returncode:

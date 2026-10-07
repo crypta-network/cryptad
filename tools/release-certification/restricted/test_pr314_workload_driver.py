@@ -427,6 +427,29 @@ class RunnerControlProbeTest(unittest.TestCase):
 
 
 class AdministratorFnpSamplerTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux AF_UNIX seqpacket required')
+    def test_preparation_acknowledgement_latches_before_observer_probes(self):
+        diagnostics = {}
+        sampler = driver.AdministratorFnpSampler(SimpleNamespace(), 'fixed', diagnostics)
+        prepared = []
+        def latch():
+            if prepared:
+                raise ValueError('already-prepared')
+            prepared.append(True)
+        sampler.preparation_gate = SimpleNamespace(group='authority', prepared=latch)
+        parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        with parent, child:
+            child.sendall(b'G')
+            sampler.serve(parent)
+            self.assertEqual({'phase': 'preparation-complete'}, json.loads(child.recv(8192)))
+            marker = dict(diagnostics['probeStart'])
+            driver.mark_selected_probe_started(diagnostics, 'authority')
+            self.assertEqual(marker, diagnostics['probeStart'])
+            child.sendall(b'G')
+            sampler.serve(parent)
+            self.assertIn('error', json.loads(child.recv(8192)))
+            self.assertEqual(marker, diagnostics['probeStart'])
+
     @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
                          'requires disposable Linux root for real authority lease')
     def test_lost_start_sampling_does_not_reject_the_real_controller_start_lock(self):

@@ -43,6 +43,12 @@ class CleanupPlanTest(unittest.TestCase):
                      'requires disposable native Linux root directory')
 class DisposableRootReleaseTest(unittest.TestCase):
     def test_check_then_apply_removes_only_owned_success_copies(self):
+        self.assert_release(False)
+
+    def test_preparation_copies_require_the_exact_failed_outcome(self):
+        self.assert_release(True)
+
+    def assert_release(self, preparation):
         with tempfile.TemporaryDirectory(dir='/root',
                                          prefix='pr315-release-test-') as temporary:
             task = Path(temporary)
@@ -61,8 +67,8 @@ class DisposableRootReleaseTest(unittest.TestCase):
                 raw = ('copied-' + name).encode()
                 (base / name).write_bytes(raw)
                 file_digests[name] = hashlib.sha256(raw).hexdigest()
-            report = {'status': 'guest-report-retained',
-                'guestStopped': True, 'guestExitCode': 0,
+            report = {'status': 'guest-operation-failed' if preparation else 'guest-report-retained',
+                'guestStopped': True, 'guestExitCode': 1 if preparation else 0,
                 'helperSourceCommit': 'a' * 40,
                 'sourceArchiveDigest': file_digests['source.tar.gz'],
                 'preparedImageDigest': file_digests['prepared.qcow2'],
@@ -77,7 +83,8 @@ class DisposableRootReleaseTest(unittest.TestCase):
             sentinel = task / 'unrelated-sentinel'
             sentinel.write_text('preserve')
             plan = {'schemaVersion': 1,
-                'kind': 'pr315-host-success-copy-release-plan-v1',
+                'kind': ('pr315-host-preparation-copy-release-plan-v1' if preparation
+                         else 'pr315-host-success-copy-release-plan-v1'),
                 'suite': 'suite-201', 'sourceCommit': 'a' * 40,
                 'campaignPlanDigest': 'b' * 64,
                 'sealedReceiptDigest': 'c' * 64,
@@ -102,12 +109,17 @@ class DisposableRootReleaseTest(unittest.TestCase):
                                  side_effect=image_info):
                 checked = inventory.inspect(plan)
                 self.assertEqual('suite-201', checked['suite'])
+                wrong_kind = ('pr315-host-success-copy-release-plan-v1' if preparation
+                              else 'pr315-host-preparation-copy-release-plan-v1')
+                with self.assertRaisesRegex(ValueError, 'stop-proof-invalid'):
+                    inventory.inspect(dict(plan, kind=wrong_kind))
                 with self.assertRaisesRegex(ValueError, 'check-changed'):
                     cleanup.apply(plan, '0' * 64)
                 self.assertTrue((base / 'guest.qcow2').exists())
                 receipt = cleanup.apply(plan,
                     hashlib.sha256(inventory._canonical(checked)).hexdigest())
-            self.assertEqual('completed-remote-success-duplicates-only',
+            self.assertEqual('completed-remote-preparation-duplicates-only' if preparation
+                             else 'completed-remote-success-duplicates-only',
                              receipt['release'])
             self.assertFalse((base / 'guest.qcow2').exists())
             self.assertFalse((base / 'cryptad').exists())

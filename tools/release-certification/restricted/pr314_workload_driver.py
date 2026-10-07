@@ -2003,7 +2003,8 @@ def _administrator_collector_epoch(case_id):
             'namespacePids': namespace_pids, 'namespaces': namespaces,
             'cgroupIdentity': identity,
             'cgroupDigest': runtime.canonical_digest({
-                'role': ('positive-administrator' if case_id == 'positive'
+                'role': ('preparation-administrator' if case_id == 'preparation'
+                         else 'positive-administrator' if case_id == 'positive'
                          else 'lifecycle-administrator' if case_id in
                          ('cancellation', 'controller-restart', 'deadline',
                           'revocation-running', 'setsid-double-fork',
@@ -2991,6 +2992,23 @@ def stop_child(pid):
     wait_child(pid, time.monotonic() + 5)
 
 
+def mark_selected_probe_started(diagnostics, group):
+    """Retain the first root acknowledgement, including observer-owned probes."""
+    marker = diagnostics.get('probeStart')
+    if marker is not None:
+        if (not isinstance(marker, dict) or set(marker) != {
+                'schemaVersion', 'kind', 'caseId', 'startedMonotonicNs'}
+                or marker['schemaVersion'] != 1 or marker['caseId'] != group
+                or marker['kind'] != 'pr315-workload-probe-start'
+                or type(marker['startedMonotonicNs']) is not int
+                or not 0 < marker['startedMonotonicNs'] <= time.monotonic_ns()):
+            raise ValueError('workload-probe-start-marker-changed')
+        return
+    diagnostics['probeStart'] = {'schemaVersion': 1,
+        'kind': 'pr315-workload-probe-start', 'caseId': group,
+        'startedMonotonicNs': time.monotonic_ns()}
+
+
 class AdministratorFnpSampler:
     """Fixed administrator observations over this attempt's inherited private socket."""
 
@@ -3333,7 +3351,7 @@ class AdministratorFnpSampler:
                                 b'E': 'daemon-epoch', b'J': 'journal-node-start'}.get(message[2:3])
                                if readiness_role is not None else None)
             if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC) or (
-                    message not in (b'B', b'A', b'P', b'Q', b'L')
+                    message not in (b'B', b'A', b'P', b'Q', b'L', b'G')
                     and not message.startswith(b'H') and readiness_stage is None):
                 raise ValueError('workload-admin-fnp-request-invalid')
             result = (self.readiness(readiness_role, readiness_stage)
@@ -3342,6 +3360,7 @@ class AdministratorFnpSampler:
                       if message.startswith(b'H') else
                       self.lost_start_prepare() if message == b'Q' else
                       self.lost_start_intent() if message == b'L' else
+                      self.preparation_complete() if message == b'G' else
                       self.probe() if message == b'P' else
                       self.sample('before' if message == b'B' else 'after'))
         except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -3350,6 +3369,10 @@ class AdministratorFnpSampler:
                 self.diagnostics['readinessAdminFailure'] = {
                     'role': readiness_role, 'exceptionType': type(error).__name__[:128]}
                 result = {'error': 'pr315-admin-readiness-capture-failed'}
+            elif message == b'G':
+                self.diagnostics['preparationBarrierFailure'] = {
+                    'status': 'unavailable-or-unsafe'}
+                result = {'error': 'pr315-admin-preparation-barrier-failed'}
             elif message == b'P':
                 self.diagnostics['probeAdminFailure'] = {
                     'phase': 'probe', 'exceptionType': type(error).__name__[:128]}
@@ -3383,6 +3406,15 @@ class AdministratorFnpSampler:
         channel.sendall(raw)
         return True
 
+    def preparation_complete(self):
+        gate = getattr(self, 'preparation_gate', None)
+        if gate is not None:
+            gate.prepared()
+            if (getattr(gate, 'mode', 'group') == 'group'
+                    and gate.group in ('authority', 'network-app', 'resource-exhaustion')):
+                mark_selected_probe_started(self.diagnostics, gate.group)
+        return {'phase': 'preparation-complete'}
+
 
 def request_administrator_fnp(channel, phase, campaign_deadline):
     """One fixed phase request; the administrator owns namespace access and durable pair."""
@@ -3407,6 +3439,22 @@ def request_administrator_fnp(channel, phase, campaign_deadline):
         raise
     except (OSError, ValueError):
         raise RuntimeFailure('workload-admin-fnp-transport-failed') from None
+
+
+def request_administrator_prepared(channel, campaign_deadline):
+    """One fixed root acknowledgement before any selected observer probe."""
+    remaining = campaign_deadline / 1e9 - time.monotonic()
+    if remaining <= 0:
+        raise ValueError('workload-preparation-barrier-deadline')
+    from cross_version_runtime import absolute_deadline
+    with absolute_deadline(min(30, remaining)):
+        channel.settimeout(min(30, remaining))
+        channel.sendall(b'G')
+        raw = channel.recv(8193)
+    if (not 1 <= len(raw) <= 8192 or not raw.endswith(b'\n')
+            or raw.count(b'\n') != 1
+            or json.loads(raw) != {'phase': 'preparation-complete'}):
+        raise ValueError('workload-preparation-barrier-invalid')
 
 
 def request_administrator_readiness(channel, role, stage):
@@ -3650,7 +3698,11 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
                               'controller-restart', 'deadline', 'revocation-running',
                               'setsid-double-fork', 'observer-death'):
             result = adapter.run_group_preparation(workload_group,
-                leave_running_for_administrator=True, on_start_failure=diagnostic)
+                leave_running_for_administrator=True, on_start_failure=diagnostic,
+                on_prepared=(lambda: request_administrator_prepared(
+                    admin_channel, campaign_deadline))
+                    if admin_channel is not None and workload_group not in
+                    ('lost-start-response', 'partial-launch') else None)
         else:
             result = adapter.run_positive(leave_running_for_administrator=True,
                 on_start_failure=diagnostic)
@@ -4218,6 +4270,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     cancellation = None
     controller_restart = None
     revocation = None
+    preparation_gate = None
     try:
         handoff = prepare(selected['plan'], selected['private'], selected['authorization'])
         role_probe_digest = stage_role_probe(workload, kit)
@@ -4230,6 +4283,13 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 or handoff['deadlineMonotonicNs'] != campaign_deadline):
             raise ValueError('workload-handoff-deadline-mismatch')
         sentinel = evidence.prepare_sentinel(workload)
+        from pr315_preparation import ELIGIBLE, PreparationGate
+        if not startup_measurement and (workload_group in ELIGIBLE
+                                        or retired_authority_preparation):
+            preparation_gate = PreparationGate(
+                'authority' if retired_authority_preparation else workload_group,
+                workload, lambda: _administrator_collector_epoch('preparation'),
+                campaign_deadline, retired=retired_authority_preparation)
         if not startup_measurement and workload_group in (None, 'positive'):
             diagnostics['positiveAdministratorBefore'] = (
                 _administrator_collector_epoch('positive'))
@@ -4261,6 +4321,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if pid == 0:
             parent.close()
             admin_parent.close()
+            if preparation_gate is not None:
+                preparation_gate.close()
             try:
                 os.setgroups([])
                 os.setgid(observer.pw_gid)
@@ -4292,6 +4354,10 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if not startup_measurement and workload_group == 'authority':
             diagnostics['authorityObserverEpoch'] = _positive_observer_epoch(
                 pid, observer.pw_uid, campaign_deadline)
+        if preparation_gate is not None:
+            diagnostics['preparationObserverEpoch'] = (
+                diagnostics.get('authorityObserverEpoch') or
+                _positive_observer_epoch(pid, observer.pw_uid, campaign_deadline))
         # Preparation already started the campaign clock. Observation gets only the
         # original deadline plus bounded teardown grace, never a new execution budget.
         deadline = campaign_deadline / 10**9 + 100
@@ -4306,6 +4372,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             handoff=handoff, observer_root=root,
             lost_start_before=lost_start_before,
             hostile_origin_selected=workload_group == 'authority')
+        sampler.preparation_gate = preparation_gate
         raw, status = collect_child(parent, pid, deadline,
             lambda: sample_memory(diagnostics), admin_channel=admin_parent,
             admin_sampler=sampler)
@@ -4322,7 +4389,16 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     diagnostics['readinessJcmd'] = capture_readiness_jcmd(workload, handoff)
             except (UnicodeError, ValueError, TypeError, AttributeError):
                 diagnostics['readinessJcmd'] = {'status': 'failure-transcript-invalid'}
+            if preparation_gate is not None:
+                try:
+                    preparation_gate.readiness_failed(
+                        diagnostics, diagnostics['preparationObserverEpoch'])
+                except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                    diagnostics['preparationFailureCapture'] = {
+                        'status': 'unavailable-or-unsafe'}
             raise ValueError('workload-positive-sequence-failed')
+        if preparation_gate is not None and preparation_gate.phase != 'prepared':
+            raise ValueError('workload-preparation-barrier-not-observed')
         result = json.loads(raw)
         hostile_secret = _verify_hostile_origin_handoff(
             result, workload_group, sampler, diagnostics)
@@ -4443,9 +4519,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                               'siblingData', 'packageExpectation', 'cgroupMigration'):
                     diagnostics[field] = diagnostic
         if not startup_measurement and workload_group == 'authority':
-            diagnostics['probeStart'] = {'schemaVersion': 1,
-                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
-                'startedMonotonicNs': time.monotonic_ns()}
+            mark_selected_probe_started(diagnostics, workload_group)
             try:
                 diagnostics['runnerControl'] = probe_runner_control(
                     workload, handoff, result)
@@ -4510,9 +4584,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['stalePidUid']['senderFailure'] = capture_sender_restart_failure(
                     campaign_deadline / 1e9)
         if not startup_measurement and workload_group == 'network-app':
-            diagnostics['probeStart'] = {'schemaVersion': 1,
-                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
-                'startedMonotonicNs': time.monotonic_ns()}
+            mark_selected_probe_started(diagnostics, workload_group)
             try:
                 digest = probe_provider_authority(workload, handoff,
                     provider_setup, resolver_digest,
@@ -4554,9 +4626,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 for field in ('siblingFcp', 'siblingHttp', 'hostNetwork'):
                     diagnostics[field] = diagnostic
         if not startup_measurement and workload_group == 'resource-exhaustion':
-            diagnostics['probeStart'] = {'schemaVersion': 1,
-                'kind': 'pr315-workload-probe-start', 'caseId': workload_group,
-                'startedMonotonicNs': time.monotonic_ns()}
+            mark_selected_probe_started(diagnostics, workload_group)
             try:
                 digest = probe_resource_exhaustion(workload, handoff,
                     probe_digest, result['probeAppKernelProcess'],
@@ -4732,6 +4802,14 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 cleanup(workload)
                 diagnostics['cleanup'] = 'completed'
                 diagnostics['cleanupFinishedNs'] = time.monotonic_ns()
+                if preparation_gate is not None:
+                    try:
+                        prepared_failure = preparation_gate.after_cleanup()
+                        if prepared_failure is not None:
+                            diagnostics['preparationFailure'] = prepared_failure
+                    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                        diagnostics['preparationFailureCapture'] = {
+                            'status': 'unavailable-or-unsafe'}
                 if not startup_measurement and workload_group in (None, 'positive'):
                     diagnostics['positiveAdministratorAfter'] = (
                         _administrator_collector_epoch('positive'))
@@ -4767,6 +4845,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     except (OSError, ValueError, KeyError, TypeError):
                         diagnostics['lifecycleActorAfter'] = {'status': 'unavailable-or-unsafe'}
             finally:
+                if preparation_gate is not None:
+                    preparation_gate.close()
                 diagnostics['after'] = memory_snapshot()
                 workload.write(DIAGNOSTICS, diagnostics, create=True)
                 volatile = evidence.capture(workload, sentinel, diagnostics['cleanup'] == 'completed',

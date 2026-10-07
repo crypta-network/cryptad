@@ -61,7 +61,8 @@ def _plan(value):
             'campaignPlanDigest', 'sealedReceiptDigest',
             'macFullArchiveDigest', 'fileDigests'}
             or value['schemaVersion'] != 1
-            or value['kind'] != 'pr315-host-success-copy-release-plan-v1'
+            or value['kind'] not in ('pr315-host-success-copy-release-plan-v1',
+                                     'pr315-host-preparation-copy-release-plan-v1')
             or SUITE.fullmatch(str(value['suite'])) is None
             or HEX40.fullmatch(str(value['sourceCommit'])) is None
             or any(HEX64.fullmatch(str(value[key])) is None for key in (
@@ -169,9 +170,10 @@ def inspect(plan):
     _regular(monitor_path, 0, 8192)
     report = json.loads(report_path.read_bytes())
     monitor = json.loads(monitor_path.read_bytes())
-    if (report.get('status') != 'guest-report-retained'
+    preparation = plan['kind'] == 'pr315-host-preparation-copy-release-plan-v1'
+    if (report.get('status') != ('guest-operation-failed' if preparation else 'guest-report-retained')
             or report.get('guestStopped') is not True
-            or report.get('guestExitCode') != 0
+            or report.get('guestExitCode') != (1 if preparation else 0)
             or report.get('helperSourceCommit') != plan['sourceCommit']
             or monitor.get('kind') != 'pr315-pve-watch-finished'
             or monitor.get('suite') != plan['suite']
@@ -232,7 +234,8 @@ def inspect(plan):
     if qemu or users or dependents:
         raise ValueError('pr315-cleanup-copy-still-in-use')
     return {'schemaVersion': 1,
-        'kind': 'pr315-pve-success-copy-release-check-v1',
+        'kind': ('pr315-pve-preparation-copy-release-check-v1' if preparation
+                 else 'pr315-pve-success-copy-release-check-v1'),
         'suite': plan['suite'], 'sourceCommit': plan['sourceCommit'],
         'campaignPlanDigest': plan['campaignPlanDigest'],
         'sealedReceiptDigest': plan['sealedReceiptDigest'],

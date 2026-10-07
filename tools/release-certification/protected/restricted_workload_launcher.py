@@ -38,7 +38,7 @@ def launcher_policy():
     the unchanged one-core role quota and sandbox without /sys. This is a
     prospective diagnostic policy, not proof of the installed readiness cause.
     """
-    return {'revision': 'workload-launcher-policy-v38',
+    return {'revision': 'workload-launcher-policy-v39',
             'candidateRoleProbe': 'fixed-role-file-claims-network-resolver-output-origin-v16',
             'observerEndpointProbe': 'fixed-recipient-fcp-selector-v1',
             'networkDenialCounters': 'fixed-sibling-fcp-http-app-host-drop-v3',
@@ -55,7 +55,8 @@ def launcher_policy():
             'stalePidUidProbe': 'fixed-sender-restart-retired-probe-request-v2',
             'cleanupRaceProbe': 'fixed-manager-replacement-stop-barrier-v1',
             'outputCollectorProbe': 'fixed-role-symlink-fifo-hardlink-flood-replacement-v5',
-            'groupPreparation': 'four-role-ready-with-group-selected-apps-v2',
+            'groupPreparation': 'four-role-ready-with-root-preprobe-witness-v3',
+            'preparationFailureProof': 'root-epoch-no-probe-release-and-termination-v1',
             'jvmCompilationPolicy': 'untiered-bootstrap-and-app-diagnostic-v2',
             'jvmActiveProcessorCount': 1,
             'privateVolatileMaxBytes': 128 * 1024,
