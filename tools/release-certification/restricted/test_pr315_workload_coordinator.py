@@ -126,7 +126,7 @@ class CoordinatorSelectionTest(unittest.TestCase):
         self.assertEqual(4, sleep.call_count)
         self.assertEqual(5, remote.call.call_count)
 
-    def test_fresh_margin_and_capacity_occur_after_history_before_formal_admission(self):
+    def test_launch_margin_follows_all_input_reads_before_formal_admission(self):
         ordered = []
         def record(name, value=None):
             ordered.append(name)
@@ -153,8 +153,49 @@ class CoordinatorSelectionTest(unittest.TestCase):
                 Path('/private/campaign'), config, 'suite-201',
                 {'macAvailableAtStartBytes': 1000}, plan={'identity': {}})
         self.assertEqual(({'free': 200}, {'admitted': False}), result)
-        self.assertEqual(['inventory', 'margin', 'inventory', 'required',
-                          'capacity', 'boot', 'persist', 'formal'], ordered)
+        self.assertEqual(['inventory', 'required', 'capacity', 'boot',
+                          'margin', 'inventory', 'capacity', 'persist', 'formal'], ordered)
+
+    def test_input_verification_pressure_must_settle_before_formal_admission(self):
+        pressure = {'io': 0.0}
+        def scan(*args):
+            pressure['io'] = 13.0
+        def settle(*args):
+            pressure['io'] = 3.0
+        config = {'sourceCommit': 'a' * 40,
+                  'sourceSnapshot': coordinator.CT_TASK + '/campaign-frozen/source-test'}
+        with patch.object(coordinator, 'task_qemu_inventory'), \
+                patch.object(coordinator, 'required_attempt_bytes', return_value=100), \
+                patch.object(coordinator, 'capacity_preflight', return_value={'free': 200}), \
+                patch.object(coordinator, 'boot_preflight', side_effect=scan), \
+                patch.object(coordinator, '_exclusive_json'), \
+                patch.object(coordinator, 'wait_for_launch_margin', side_effect=settle), \
+                patch.object(coordinator, 'admit_and_watch', side_effect=lambda *args: {
+                    'admitted': pressure['io'] <= 10}):
+            _capacity, observed = coordinator.prelaunch_admission(object(),
+                Path('/private/campaign'), config, 'suite-201',
+                {'macAvailableAtStartBytes': 1000}, plan={'identity': {}})
+        self.assertTrue(observed['admitted'])
+
+    def test_capacity_change_during_quiet_wait_refuses_formal_admission(self):
+        available = {'value': True}
+        def capacity(*args):
+            if not available['value']:
+                raise ValueError('pr315-task-capacity-unavailable')
+            return {'free': 200}
+        def quiet_wait(*args):
+            available['value'] = False
+        with patch.object(coordinator, 'task_qemu_inventory'), \
+                patch.object(coordinator, 'required_attempt_bytes', return_value=100), \
+                patch.object(coordinator, 'capacity_preflight', side_effect=capacity), \
+                patch.object(coordinator, 'boot_preflight'), \
+                patch.object(coordinator, '_exclusive_json'), \
+                patch.object(coordinator, 'wait_for_launch_margin', side_effect=quiet_wait), \
+                patch.object(coordinator, 'admit_and_watch') as admit:
+            with self.assertRaisesRegex(ValueError, 'task-capacity-unavailable'):
+                coordinator.prelaunch_admission(object(), Path('/private'), {},
+                    'suite-201', {'macAvailableAtStartBytes': 1000}, plan={})
+            admit.assert_not_called()
 
     def test_boot_dependency_drift_refuses_admission_before_watcher(self):
         with patch.object(coordinator, 'task_qemu_inventory'), \

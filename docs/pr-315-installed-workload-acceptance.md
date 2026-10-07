@@ -3,7 +3,35 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 
-The latest formal campaign used helper `f8b5ea754b9a`, candidate
+The latest formal campaign froze helper/candidate `754bb0174c69`, predecessor
+`9a8c8b905bc1`, and the unchanged v37 runtime. Suite271's eight positives and
+suite273's five role/file cases passed raw-evidence, full-staging and signed
+cleanup verification: 13/45 under one campaign. Suite272 and suite274 were
+signed I/O PSI admission rejections without VMs. Suite275 created and proved a
+real retired authority, stopped normally, and completed signed cleanup with
+zero case credit. Suite276 was another no-VM I/O PSI rejection at 13.33%; the
+authority group's shared three-slot allowance was exhausted. The coordinator
+stopped before suite277. It did not grant complete installed acceptance.
+
+The scheduling audit found that the existing three quiet samples preceded full
+input/boot verification, leaving later read activity between the samples and
+formal admission. The prospective coordinator moves the same quiet-window
+sampling after all input reads and before the final zero-QEMU check and formal
+decision. A deterministic pressure-transition regression and ordering check
+both fail on the previous source; all 37 coordinator tests pass after the
+change, with one native condition still requiring its Linux complement. This
+does not attribute every PVE pressure increase to the scan. The 2% memory/5%
+I/O scheduling margins, 5%/10% formal thresholds, memory/swap reserves, three
+shared preparation slots and workload deadlines remain unchanged. New helper
+and test-kit identities and a fresh 45-case campaign are required; the 13
+historical cases cannot transfer.
+
+After the quiet wait, a lightweight capacity recheck reads ZFS allocation,
+thin-pool and Mac free-space observations without repeating full input hashes.
+A separate regression rejects capacity deterioration during that wait before
+formal admission. The original capacity limits and reserves remain intact.
+
+The previous formal campaign used helper `f8b5ea754b9a`, candidate
 `72dd14f93a67`, explicitly backported predecessor `29f6db309abd`, and the
 unchanged v37 runtime. Suite268 completed the eight positive cases, independently
 rebuilt from raw observations and full staging, with signed host cleanup.

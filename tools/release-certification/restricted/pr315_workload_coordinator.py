@@ -525,12 +525,16 @@ def wait_for_launch_margin(remote, root, suite):
 def prelaunch_admission(remote, root, config, suite, start, *, plan):
     """Fresh PSI, QEMU and capacity checks precede one formal PVE decision."""
     task_qemu_inventory(remote)
-    wait_for_launch_margin(remote, root, suite)
-    task_qemu_inventory(remote)
     required = required_attempt_bytes(remote, config)
     capacity = capacity_preflight(remote, config, root, required,
         start['macAvailableAtStartBytes'])
     boot_preflight(remote, config, plan)
+    # Full input verification can create I/O pressure. Its completion must precede
+    # the quiet window, so an earlier sample cannot authorize a later busy host.
+    wait_for_launch_margin(remote, root, suite)
+    task_qemu_inventory(remote)
+    capacity = capacity_preflight(remote, config, root, required,
+        start['macAvailableAtStartBytes'])
     _exclusive_json(root / ('capacity-' + suite + '.private.json'), capacity)
     ready = admit_and_watch(remote, suite, config['sourceCommit'],
                             config['sourceSnapshot'])
