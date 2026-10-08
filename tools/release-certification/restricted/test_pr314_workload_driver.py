@@ -1508,6 +1508,7 @@ class ControllerReadinessTest(unittest.TestCase):
             channel.getsockopt.return_value = struct.pack('3i', 42, uid, uid)
             channel.recv.return_value = response
             with self.subTest(uid=uid, response=response), \
+                    patch.object(driver.socket, 'SO_PEERCRED', 17, create=True), \
                     patch.object(driver.socket, 'socket', return_value=channel):
                 if error:
                     with self.assertRaisesRegex(ValueError, error):
@@ -1515,6 +1516,137 @@ class ControllerReadinessTest(unittest.TestCase):
                 else:
                     driver.controller_ready(time.monotonic() + 1)
                     channel.sendall.assert_called_once_with(b'{}\n')
+
+
+    def test_permission_publication_waits_for_root_peer_and_closed_protocol(self):
+        import struct
+        channel = Mock()
+        channel.__enter__ = Mock(return_value=channel)
+        channel.__exit__ = Mock(return_value=False)
+        channel.connect.side_effect = [PermissionError(13, 'Permission denied'), None]
+        channel.getsockopt.return_value = struct.pack('3i', 42, 0, 0)
+        channel.recv.return_value = b'{"error":"restricted-workload-request-failed"}\n'
+        with patch.object(driver.socket, 'SO_PEERCRED', 17, create=True), \
+                patch.object(driver.socket, 'socket', return_value=channel):
+            driver.controller_ready(time.monotonic() + 1)
+        self.assertEqual(2, channel.connect.call_count)
+        channel.sendall.assert_called_once_with(b'{}\n')
+        channel.getsockopt.assert_called_once()
+
+    def test_permanent_permission_denial_preserves_original_deadline(self):
+        channel = Mock()
+        channel.__enter__ = Mock(return_value=channel)
+        channel.__exit__ = Mock(return_value=False)
+        channel.connect.side_effect = PermissionError(13, 'Permission denied')
+        clock = SimpleNamespace(now=0.0)
+        def sleep(seconds):
+            clock.now += seconds
+        with patch.object(driver.socket, 'socket', return_value=channel), \
+                patch.object(driver.time, 'monotonic', side_effect=lambda: clock.now), \
+                patch.object(driver.time, 'sleep', side_effect=sleep):
+            with self.assertRaisesRegex(ValueError, 'controller-readiness-timeout'):
+                driver.controller_ready(.12)
+        self.assertAlmostEqual(.12, clock.now)
+        self.assertEqual(3, channel.connect.call_count)
+        channel.sendall.assert_not_called()
+        channel.getsockopt.assert_not_called()
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root and SO_PEERCRED')
+    def test_actual_observer_waits_for_socket_ownership_publication(self):
+        self._actual_socket_publication(publish=True)
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root and SO_PEERCRED')
+    def test_actual_observer_times_out_when_socket_remains_root_only(self):
+        self._actual_socket_publication(publish=False)
+
+    def _actual_socket_publication(self, *, publish):
+        real_socket = socket.socket
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o755)
+            path = root / 'control.sock'
+            server = real_socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            server.bind(str(path))
+            path.chmod(0o600)
+            denied_r, denied_w = os.pipe()
+            release_r, release_w = os.pipe()
+            result_r, result_w = os.pipe()
+            pid = os.fork()
+            if pid == 0:
+                os.close(denied_r)
+                os.close(release_w)
+                os.close(result_r)
+                server.close()
+                try:
+                    os.setgroups([])
+                    os.setgid(65534)
+                    os.setuid(65534)
+                    class ObservedSocket(real_socket):
+                        first = True
+                        def connect(self, address):
+                            if address != '/run/cryptad-workload/control.sock':
+                                raise AssertionError('unexpected readiness endpoint')
+                            try:
+                                return super().connect(str(path))
+                            except PermissionError:
+                                if ObservedSocket.first:
+                                    ObservedSocket.first = False
+                                    os.write(denied_w, b'D')
+                                    if (not select.select([release_r], [], [], 2)[0]
+                                            or os.read(release_r, 1) != b'G'):
+                                        raise AssertionError('publication barrier expired')
+                                raise
+                    with patch.object(driver.socket, 'socket', ObservedSocket):
+                        driver.controller_ready(time.monotonic() + 1)
+                    outcome = {'result': 'ready'}
+                except Exception as error:
+                    outcome = {'result': type(error).__name__, 'detail': str(error)}
+                os.write(result_w, json.dumps(outcome).encode())
+                os._exit(0)
+            os.close(denied_w)
+            os.close(release_r)
+            os.close(result_w)
+            reaped = False
+            try:
+                self.assertTrue(select.select([denied_r], [], [], 3)[0])
+                self.assertEqual(b'D', os.read(denied_r, 1))
+                self.assertEqual(65534, Path('/proc', str(pid)).stat().st_uid)
+                self.assertEqual(0, path.stat().st_uid)
+                self.assertEqual(0o600, path.stat().st_mode & 0o777)
+                if publish:
+                    os.chown(path, 65534, 65534)
+                    server.listen(1)
+                os.write(release_w, b'G')
+                if publish:
+                    server.settimeout(2)
+                    channel, _ = server.accept()
+                    with channel:
+                        channel.settimeout(2)
+                        self.assertEqual(b'{}\n', channel.recv(100))
+                        channel.sendall(b'{"error":"restricted-workload-request-failed"}\n')
+                self.assertTrue(select.select([result_r], [], [], 3)[0])
+                outcome = json.loads(os.read(result_r, 4096))
+                _, status = os.waitpid(pid, 0)
+                reaped = True
+                self.assertEqual(0, status)
+                if publish:
+                    self.assertEqual({'result': 'ready'}, outcome)
+                else:
+                    self.assertEqual('ValueError', outcome['result'])
+                    self.assertEqual('workload-controller-readiness-timeout', outcome['detail'])
+                    self.assertEqual(0, path.stat().st_uid)
+            finally:
+                if not reaped:
+                    child, _ = os.waitpid(pid, os.WNOHANG)
+                    if child == 0:
+                        os.kill(pid, signal.SIGKILL)
+                        os.waitpid(pid, 0)
+                for descriptor in (denied_r, release_w, result_r):
+                    os.close(descriptor)
+                server.close()
+
 
 
 class TerminalPublicationTest(unittest.TestCase):

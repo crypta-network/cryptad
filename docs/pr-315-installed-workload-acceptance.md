@@ -3,7 +3,41 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 
-The most recent formal campaign froze helper `026951b578f3`, candidate
+The most recent formal campaign froze helper `aefb04f5ab77`, candidate
+`754bb0174c69`, predecessor `9a8c8b905bc1` and launcher v39. Suites281,
+282, 284, 285 and 286 passed eight positive, five role/file, nine authority,
+six network/AppHost and one output-symlink case respectively. Each group passed
+independent raw-evidence, full-staging and signed cleanup verification: 29/45
+under one campaign. Suite283 supplied the separately verified retired authority
+and signed cleanup with zero case credit.
+
+Suite287 failed before controller readiness completed. The actual observer
+received `PermissionError` from the Unix socket connect in `controller_ready`.
+The administrator recorded completed cleanup and a controller that had reached
+listening, but no valid preparation retry proof. The coordinator sealed failure
+and stopped before suite288. All seven complete original staging copies and
+the six preceding cleanup signatures were reverified before the next tracked
+fix. The 29 results remain historical; this campaign did not satisfy complete
+installed acceptance.
+
+The controller binds its socket as root with mode 0600, transfers ownership to
+the observer, and then listens. The readiness client previously retried a
+missing or unlistening socket but immediately failed on the permission denial
+possible before ownership publication. A controlled native Linux counterexample
+with an actual unprivileged client reproduced that failure. The narrow driver
+fix retries `PermissionError` within the original deadline and still requires
+the actual root peer and the fixed rejection response. The native prototype
+also verified that permanent denial expires and an incorrect response fails.
+This reproduces the socket publication defect; it does not establish the cause
+of earlier JVM crashes or FCP timeouts. No diagnostic VM was allocated.
+
+Regressions cover the original deadline, peer/protocol validation, and actual
+observer UID behavior during ownership publication. A source fix requires a
+new helper/test-kit/fixture identity and all 45 installed cases in a fresh
+campaign. Original failed receipts cannot be reclassified by the fix. Product,
+QEMU/JDK, launcher v39, role limits and operation deadlines stay fixed.
+
+The preceding formal campaign froze helper `026951b578f3`, candidate
 `754bb0174c69`, predecessor `9a8c8b905bc1` and launcher v38. Suite279's eight
 positive v10 cases passed independent raw-evidence, complete staging and signed
 cleanup verification. Suite280 then failed recipient's initial FCP GetNode
@@ -26,7 +60,7 @@ not changed. Suite279 used the measured dependency closure and the independently
 bound v38 runtime-policy digest, then reran the actual positives. No diagnostic
 guest allowance remains and no further diagnostic guest is authorized here.
 
-Prospective v39 adds administrator evidence for the initial preparation retry
+Launcher v39 added administrator evidence for the initial preparation retry
 boundary. Existing code could retry a no-VM rejection, but had no complete
 trusted archive path for a launched guest's pre-probe readiness failure. A
 missing marker remains unknown. The prospective root process holds a pidfd,

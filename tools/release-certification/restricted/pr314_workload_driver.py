@@ -3583,7 +3583,9 @@ def controller_ready(deadline):
                 if received != expected:
                     raise ValueError('workload-controller-readiness-response-invalid')
                 return
-        except (FileNotFoundError, ConnectionRefusedError, TimeoutError):
+        except (FileNotFoundError, ConnectionRefusedError, PermissionError, TimeoutError):
+            # bind creates a root-only socket before the controller transfers ownership
+            # to this observer. Publication races remain within the original deadline.
             pass
         time.sleep(min(.05, max(0, deadline - time.monotonic())))
     raise ValueError('workload-controller-readiness-timeout')
