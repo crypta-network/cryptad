@@ -920,5 +920,134 @@ class CoordinatorSelectionTest(unittest.TestCase):
             self.assertEqual([], list((destination / 'attempts').iterdir()))
 
 
+class CoordinatorTransportFailureTest(unittest.TestCase):
+    """Offline transport faults retain stop gates and produce real signed failures."""
+
+    def setUp(self):
+        from test_pr315_campaign_seal import fixture_plan
+        temporary = tempfile.TemporaryDirectory(prefix='pr315-transport-test-')
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.root.chmod(0o700)
+        self.plan, fingerprint = fixture_plan(self.root)
+        self.config = {'sourceCommit': 'a' * 40,
+                       'hostKeyFingerprint': fingerprint}
+        self.source = Path('/source')
+        self.staging = self.root / 'attempts' / 'suite-201'
+        for path in (self.staging.parent, self.staging,
+                     self.staging / 'attempt-01'):
+            path.mkdir(mode=0o700)
+        self.report = {'guestStopped': True, 'helperSourceCommit': 'a' * 40}
+        self.report_path = self.staging / 'attempt-01/attempt.private.json'
+        coordinator._exclusive_json(self.report_path, self.report)
+        manifest = {'files': {
+            'host-stop.private.json': {'sha256': 'e' * 64},
+            'host-receipts/host-monitor-finished.private.json': {'sha256': 'f' * 64}}}
+        coordinator._exclusive_json(
+            self.staging / 'full-stage-manifest.private.json', manifest)
+        self.stage_digest = coordinator.seal._digest(manifest)
+        self.outcome_path = self.root / 'suite-201-ct-outcome.private.json'
+        self.verdict = {'installedWorkloadAcceptanceSatisfied': False}
+        self.remote = SimpleNamespace(call=unittest.mock.Mock())
+        self.enterContext(patch.object(coordinator, 'frozen_campaign_context',
+            return_value=(self.root, self.source, self.plan,
+                          {'firstSuiteNumber': 201}, self.config)))
+        self.enterContext(patch.object(coordinator, 'Remote', return_value=self.remote))
+        self.enterContext(patch.object(coordinator, 'source_preflight'))
+        self.enterContext(patch.object(coordinator, 'publish_frozen_campaign'))
+        self.enterContext(patch.object(coordinator.owner, 'recovered_campaign_verdict',
+                                      return_value=self.verdict))
+        self.admission = self.enterContext(patch.object(coordinator, 'prelaunch_admission',
+            return_value=({}, {'admitted': True})))
+        self.enterContext(patch.object(coordinator, 'runner_arguments', return_value=['fixed']))
+        self.finished = self.enterContext(patch.object(coordinator, 'finished_watcher',
+            return_value={'action': 'completed'}))
+        self.stage = self.enterContext(patch.object(coordinator, 'stage_full_attempt',
+            return_value=(self.staging, self.stage_digest)))
+
+    def history(self):
+        return coordinator.seal.load_verified_history(self.root, self.plan,
+            pinned_source_commit=self.config['sourceCommit'],
+            pinned_fingerprint=self.config['hostKeyFingerprint'])
+
+    def run_transport_failure(self, error):
+        self.remote.call.side_effect = [SimpleNamespace(returncode=0), error]
+        return coordinator.run_campaign(self.root, self.source, case_group='positive')
+
+    def assert_sealed_transport_failure(self, error):
+        self.assertEqual(self.verdict, self.run_transport_failure(error))
+        self.finished.assert_called_once()
+        self.stage.assert_called_once_with(self.remote, self.config, 'suite-201',
+                                          self.root, pressure_action=None)
+        raw = coordinator.owner._read(self.root, self.outcome_path.name, 98304)
+        outcome = json.loads(raw)
+        self.assertEqual('pr315-fixed-ct-runner-unobserved-outcome', outcome['kind'])
+        self.assertEqual('suite-201', outcome['suite'])
+        self.assertEqual('positive', outcome['groupId'])
+        self.assertEqual(self.config['sourceCommit'], outcome['sourceCommit'])
+        self.assertEqual(type(error).__name__, outcome['reason'])
+        self.assertIsNone(outcome['exitCode'])
+        self.assertNotIn(b'private-command', raw)
+        self.assertNotIn(b'partial-private-output', raw)
+        failure = coordinator.owner._json(self.root, 'suite-201-host-failure.private.json')
+        self.assertEqual(type(error).__name__, failure['reason'])
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), failure['ctOutcomeDigest'])
+        receipt, = self.history()
+        self.assertEqual('failed', receipt['status'])
+        self.assertIsNone(receipt['probeStarted'])
+        self.assertEqual({}, receipt['caseDigests'])
+        self.assertEqual('e' * 64, receipt['stopDigest'])
+        self.assertEqual('f' * 64, receipt['monitorDigest'])
+        self.assertEqual(self.stage_digest, receipt['archiveDigest'])
+        self.assertEqual(coordinator.seal._digest({
+            'fullStageDigest': self.stage_digest,
+            'assessmentDigest': coordinator.seal._digest(failure)}), receipt['evidenceDigest'])
+        self.assertEqual('failed', coordinator.next_campaign_selection(self.history())['status'])
+        # A later invocation observes the terminal failure instead of reusing the suite.
+        self.remote.call.reset_mock(side_effect=True)
+        self.assertEqual(self.verdict,
+            coordinator.run_campaign(self.root, self.source, case_group='positive'))
+        self.remote.call.assert_not_called()
+        self.admission.assert_called_once()
+
+    def test_timeout_without_runner_outcome_seals_a_terminal_failure(self):
+        self.assert_sealed_transport_failure(subprocess.TimeoutExpired(
+            ['ssh', 'private-command'], 4500, output=b'partial-private-output'))
+
+    def test_os_error_without_runner_outcome_seals_a_terminal_failure(self):
+        self.assert_sealed_transport_failure(OSError('private-command unavailable'))
+
+    def test_unverified_watcher_leaves_failure_unsealed(self):
+        self.finished.side_effect = ValueError('pr315-pve-watcher-incomplete')
+        with self.assertRaisesRegex(ValueError, 'watcher-incomplete'):
+            self.run_transport_failure(OSError('private-command unavailable'))
+        self.stage.assert_not_called()
+        self.assertFalse(self.outcome_path.exists())
+        self.assertEqual([], self.history())
+
+    def test_stop_archive_failure_leaves_failure_unsealed(self):
+        self.stage.side_effect = ValueError('pr315-full-stage-stop-invalid')
+        with self.assertRaisesRegex(ValueError, 'full-stage-stop-invalid'):
+            self.run_transport_failure(OSError('private-command unavailable'))
+        self.assertFalse(self.outcome_path.exists())
+        self.assertEqual([], self.history())
+
+    def test_unstopped_guest_record_cannot_seal_transport_failure(self):
+        self.report_path.write_bytes(coordinator.seal._canonical(
+            dict(self.report, guestStopped=False)))
+        with self.assertRaisesRegex(ValueError, 'failed-attempt-host-premise-invalid'):
+            self.run_transport_failure(OSError('private-command unavailable'))
+        self.assertEqual([], self.history())
+
+    def test_unsafe_outcome_is_not_replaced_with_missing_outcome_record(self):
+        target = self.root / 'other.private.json'
+        coordinator._exclusive_json(target, {'private': 'retained'})
+        self.outcome_path.symlink_to(target)
+        with self.assertRaises(OSError):
+            self.run_transport_failure(OSError('private-command unavailable'))
+        self.assertTrue(self.outcome_path.is_symlink())
+        self.assertEqual([], self.history())
+
+
 if __name__ == '__main__':
     unittest.main()

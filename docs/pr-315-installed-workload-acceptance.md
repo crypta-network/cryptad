@@ -4783,6 +4783,14 @@ status; temporary Git bundles, PVE scripts, source snapshots and successful
 remote duplicates are cleaned only after all dependencies and retention
 requirements are checked.
 
+If the runner transport fails before returning an outcome, the coordinator
+records a private `pr315-fixed-ct-runner-unobserved-outcome` with a closed
+failure reason and `exitCode=null`. It seals the terminal failed attempt only
+after authenticated watcher completion, fresh stopped-guest verification and
+full private archive retention. The record supplies no case credit or retry
+permission; unavailable stop proof leaves the attempt unsealed. Existing
+outcome records remain unchanged, and unsafe records fail closed.
+
 For the fixed bridge-table correction, the independent table-name regression failed on
 the old reader and passed on the corrected reader. Native Linux protected discovery passed
 528 tests with 74 skips; the owning interop workload adapter passed 42 with eight skips;

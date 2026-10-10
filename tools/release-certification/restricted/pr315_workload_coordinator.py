@@ -2184,9 +2184,22 @@ def run_campaign(root, source, *, case_group=None, development_group=None):
             staging, stage_digest = stage_full_attempt(remote, config, suite,
                 root, pressure_action=(terminal['action']
                     if terminal['action'] in PRESSURE_WATCH_ACTIONS else None))
-            outcome = owner._read(root, suite + '-ct-outcome.private.json', 98304)
             detail = str(error)
             reason = detail if re.fullmatch(r'pr315-[a-z0-9-]{1,126}', detail) else type(error).__name__
+            outcome_name = suite + '-ct-outcome.private.json'
+            try:
+                outcome = owner._read(root, outcome_name, 98304)
+            except FileNotFoundError:
+                # A transport exception can precede the runner outcome write.
+                # Preserve that uncertainty without inventing an exit status or
+                # copying exception commands and partial streams into evidence.
+                _exclusive_json(root / outcome_name, {
+                    'schemaVersion': 1,
+                    'kind': 'pr315-fixed-ct-runner-unobserved-outcome',
+                    'suite': suite, 'groupId': group_id,
+                    'sourceCommit': config['sourceCommit'],
+                    'reason': reason, 'exitCode': None})
+                outcome = owner._read(root, outcome_name, 98304)
             failure = {'schemaVersion': 1,
                 'kind': 'pr315-trusted-host-assessment-failure',
                 'campaignPlanDigest': plan['planDigest'],
