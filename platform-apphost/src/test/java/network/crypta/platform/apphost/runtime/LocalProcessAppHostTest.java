@@ -152,6 +152,8 @@ class LocalProcessAppHostTest {
   private static final String MKFIFO_COMMAND = "mkfifo";
   private static final String NETWORK_ACCESS_PERMISSION = "network.access";
   private static final String FILE_READ_PERMISSION = "file.read";
+  private static final long SYNTHETIC_EXITED_ROOT_PID = Long.MAX_VALUE - 1;
+  private static final long SYNTHETIC_TRANSIENT_CHILD_PID = Long.MAX_VALUE;
   private static final List<String> STANDARD_PERMISSIONS =
       List.of(NETWORK_ACCESS_PERMISSION, FILE_READ_PERMISSION);
   private static final String STANDARD_PERMISSIONS_TEXT =
@@ -2238,6 +2240,24 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void start_whenCallerIsInterrupted_tracksChildBeforeRestoringInterrupt() throws IOException {
+    AppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+
+    Thread.currentThread().interrupt();
+    try {
+      RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+
+      assertTrue(Thread.currentThread().isInterrupted());
+      assertEquals(running.token(), host.status(RUNNER_APP_ID).orElseThrow().token());
+      assertTrue(ProcessHandle.of(running.pid()).map(ProcessHandle::isAlive).orElse(false));
+    } finally {
+      assertTrue(Thread.interrupted());
+      host.stop(RUNNER_APP_ID);
+    }
+  }
+
+  @Test
   void mailEndpointRequiresHostSelectedLoopbackAndCannotChangeDuringLaunch() throws IOException {
     LocalProcessAppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledApp("mail-prototype"));
@@ -2770,7 +2790,9 @@ class LocalProcessAppHostTest {
     Path stagedApp = stageInstalledRunnerApp(IMMEDIATE_CRASH_SCRIPT);
     appendOnFailureRestartPolicy(stagedApp, 10);
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
-    Process process = new CleanExitedProcessWithTransientChild(101L, 102L, 2);
+    Process process =
+        new CleanExitedProcessWithTransientChild(
+            SYNTHETIC_EXITED_ROOT_PID, SYNTHETIC_TRANSIENT_CHILD_PID, 2);
     RunningAppSnapshot snapshot =
         new RunningAppSnapshot(
             installation.manifest(),
@@ -2800,8 +2822,10 @@ class LocalProcessAppHostTest {
     Path stagedApp = stageInstalledRunnerApp(WORKING_DIRECTORY_AND_TOKEN_LOG_SCRIPT);
     appendOnFailureRestartPolicy(stagedApp, 10);
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
-    ControlledProcessHandle childHandle = new ControlledProcessHandle(102L);
-    Process process = new CleanExitedProcessWithTransientChild(101L, childHandle);
+    ControlledProcessHandle childHandle =
+        new ControlledProcessHandle(SYNTHETIC_TRANSIENT_CHILD_PID);
+    Process process =
+        new CleanExitedProcessWithTransientChild(SYNTHETIC_EXITED_ROOT_PID, childHandle);
     RunningAppSnapshot snapshot =
         new RunningAppSnapshot(
             installation.manifest(),
