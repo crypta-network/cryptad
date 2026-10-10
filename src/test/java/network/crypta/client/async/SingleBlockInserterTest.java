@@ -23,6 +23,7 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -38,6 +39,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -162,7 +164,7 @@ class SingleBlockInserterTest {
             /*freeData*/ false);
 
     // Spy to stub innerEncode, returning a block with a known key
-    SingleBlockInserter spy = Mockito.spy(sbi);
+    SingleBlockInserter spy = spy(sbi);
     ClientKeyBlock block = mock(ClientKeyBlock.class);
     ClientKey key = mock(ClientKey.class);
     when(block.getClientKey()).thenReturn(key);
@@ -190,7 +192,7 @@ class SingleBlockInserterTest {
             new Object(),
             /*freeData*/ false);
 
-    SingleBlockInserter spy = Mockito.spy(sbi);
+    SingleBlockInserter spy = spy(sbi);
     ClientKeyBlock block = mock(ClientKeyBlock.class);
     ClientKey key = mock(ClientKey.class);
     when(block.getClientKey()).thenReturn(key);
@@ -256,7 +258,7 @@ class SingleBlockInserterTest {
 
   @Test
   void onSuccess_whenUriNotificationIsQueued_reportsKeyBeforeTerminalSuccess() {
-    ClientContext context = Mockito.spy(newMinimalClientContext(insertCtx));
+    ClientContext context = spy(newMinimalClientContext(insertCtx));
     PriorityAwareExecutor delayedExecutor = mock(PriorityAwareExecutor.class);
     doReturn(delayedExecutor).when(context).getMainExecutor();
     SingleBlockInserter inserter =
@@ -277,7 +279,64 @@ class SingleBlockInserterTest {
     InOrder ordered = Mockito.inOrder(cb);
     ordered.verify(cb).onEncode(key, inserter, context);
     ordered.verify(cb).onSuccess(inserter, context);
-    verify(delayedExecutor).execute(any(Runnable.class), Mockito.eq("Got URI"));
+    ArgumentCaptor<Runnable> queued = ArgumentCaptor.forClass(Runnable.class);
+    verify(delayedExecutor).execute(queued.capture(), Mockito.eq("Got URI"));
+    queued.getValue().run();
+    verify(cb, times(1)).onEncode(key, inserter, context);
+  }
+
+  @Test
+  void onSuccess_whenKeyWasEncodedEarlier_doesNotRepeatNotification() throws Exception {
+    ClientContext context = newMinimalClientContext(insertCtx);
+    SingleBlockInserter inserter =
+        spy(
+            newInserter(
+                context,
+                bucket,
+                FreenetURI.EMPTY_CHK_URI,
+                /*isMetadata*/ false,
+                /*token*/ 1,
+                /*addToParent*/ false,
+                /*dontSendEncoded*/ false,
+                new Object(),
+                /*freeData*/ false));
+    ClientKeyBlock block = mock(ClientKeyBlock.class);
+    ClientKey key = mock(ClientKey.class);
+    when(block.getClientKey()).thenReturn(key);
+    doReturn(block).when(inserter).innerEncode(any(RandomSource.class));
+
+    inserter.getBlock(context);
+    inserter.onSuccess(null, key, context);
+
+    verify(cb, times(1)).onEncode(key, inserter, context);
+    verify(cb).onSuccess(inserter, context);
+  }
+
+  @Test
+  void onSuccess_whenEncodedNotificationIsSuppressed_doesNotReportKey() throws Exception {
+    ClientContext context = newMinimalClientContext(insertCtx);
+    SingleBlockInserter inserter =
+        spy(
+            newInserter(
+                context,
+                bucket,
+                FreenetURI.EMPTY_CHK_URI,
+                /*isMetadata*/ false,
+                /*token*/ 1,
+                /*addToParent*/ false,
+                /*dontSendEncoded*/ true,
+                new Object(),
+                /*freeData*/ false));
+    ClientKeyBlock block = mock(ClientKeyBlock.class);
+    ClientKey key = mock(ClientKey.class);
+    when(block.getClientKey()).thenReturn(key);
+    doReturn(block).when(inserter).innerEncode(any(RandomSource.class));
+
+    inserter.getBlock(context);
+    inserter.onSuccess(null, key, context);
+
+    verify(cb, never()).onEncode(any(), any(), any());
+    verify(cb).onSuccess(inserter, context);
   }
 
   @Test
@@ -393,7 +452,7 @@ class SingleBlockInserterTest {
             /*dontSendEncoded*/ true,
             new Object(),
             /*freeData*/ false);
-    SingleBlockInserter spy = Mockito.spy(sbi);
+    SingleBlockInserter spy = spy(sbi);
     doNothing().when(spy).schedule(ctx);
 
     spy.innerOnResume(ctx);

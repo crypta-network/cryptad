@@ -14,6 +14,60 @@ import pr315_pve_attempt_inventory as inventory
 
 
 class CleanupPlanTest(unittest.TestCase):
+    def test_retained_overlay_outside_task_blocks_release(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-inventory-task-') as task_dir, \
+                tempfile.TemporaryDirectory(prefix='pr315-inventory-store-') as store_dir:
+            task = Path(task_dir) / 'task'
+            selected = task / 'suite-201/attempt-01/prepared.qcow2'
+            selected.parent.mkdir(parents=True)
+            selected.write_bytes(b'prepared')
+            store = Path(store_dir)
+            overlay = store / 'retained.qcow2'
+            overlay.write_bytes(b'overlay')
+            config = task / 'storage.cfg'
+            config.write_text('dir: retained\n\tpath ' + str(store) +
+                              '\n\tcontent images\n')
+
+            def image_info(command, **_kwargs):
+                disk = Path(command[-1])
+                value = {'format': 'qcow2'}
+                if disk == overlay:
+                    value['full-backing-filename'] = str(selected)
+                return SimpleNamespace(stdout=json.dumps(value).encode())
+
+            with patch.object(inventory, 'TASK', task), \
+                    patch.object(inventory, 'PVE_STORAGE_CONFIG', config), \
+                    patch.object(inventory.subprocess, 'run', side_effect=image_info):
+                dependents, scanned = inventory._external_backing_users({selected})
+
+            self.assertEqual([str(overlay)], dependents)
+            self.assertGreaterEqual(scanned, 2)
+
+    def test_missing_storage_inventory_fails_closed(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-inventory-task-') as task_dir:
+            task = Path(task_dir) / 'task'
+            task.mkdir()
+            with patch.object(inventory, 'TASK', task), \
+                    patch.object(inventory, 'PVE_STORAGE_CONFIG',
+                                 task / 'missing-storage.cfg'):
+                with self.assertRaisesRegex(ValueError,
+                                            'storage-inventory-unavailable'):
+                    inventory._external_backing_users(set())
+
+    def test_unavailable_configured_image_store_fails_closed(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-inventory-task-') as task_dir:
+            task = Path(task_dir) / 'task'
+            task.mkdir()
+            config = task / 'storage.cfg'
+            config.write_text('dir: retained\n\tpath ' +
+                              str(task / 'missing-image-store') +
+                              '\n\tcontent images\n')
+            with patch.object(inventory, 'TASK', task), \
+                    patch.object(inventory, 'PVE_STORAGE_CONFIG', config):
+                with self.assertRaisesRegex(ValueError,
+                                            'storage-inventory-unavailable'):
+                    inventory._external_backing_users(set())
+
     def test_plan_rejects_arbitrary_path_and_incomplete_file_set(self):
         plan = {'schemaVersion': 1,
             'kind': 'pr315-host-success-copy-release-plan-v1',

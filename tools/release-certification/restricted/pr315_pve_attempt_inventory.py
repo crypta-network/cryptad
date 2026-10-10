@@ -18,6 +18,7 @@ import stat
 import subprocess
 
 TASK = Path('/mnt/tank1/files/pr315-workload-acceptance')
+PVE_STORAGE_CONFIG = Path('/etc/pve/storage.cfg')
 OWNER_UID = 101000
 FILES = ('guest.qcow2', 'prepared.qcow2', 'source.tar.gz')
 DIRECTORIES = ('cryptad', 'expected-bundle', 'boot-runtime', 'tools')
@@ -128,29 +129,91 @@ def _backing_on_pve(disk, backing):
     return (path if path.is_absolute() else disk.parent / path).resolve()
 
 
+def _retained_image_roots():
+    """Cover the task's siblings and every configured file-backed PVE image store."""
+    if not PVE_STORAGE_CONFIG.is_file():
+        raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+    lines = PVE_STORAGE_CONFIG.read_text().splitlines()
+    roots = {TASK.parent}
+    if Path('/var/lib/vz').is_dir():
+        roots.add(Path('/var/lib/vz'))
+    storage_type = None
+    storage_name = None
+    settings = {}
+
+    def include_storage():
+        if storage_type is None:
+            return
+        content = settings.get('content', '')
+        if content and 'images' not in content.split(','):
+            return
+        if storage_type in ('dir', 'btrfs', 'nfs', 'cifs'):
+            path = settings.get('path')
+            if path is None and storage_type in ('nfs', 'cifs'):
+                path = '/mnt/pve/' + storage_name
+            if path is None or not Path(path).is_absolute():
+                raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+            roots.add(Path(path))
+        elif storage_type not in ('lvm', 'lvmthin', 'zfspool', 'rbd',
+                                  'iscsi', 'iscsidirect', 'zfs'):
+            raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        if not line[0].isspace():
+            include_storage()
+            match = re.fullmatch(r'([a-z][a-z0-9]*):\s+([A-Za-z0-9_-]+)',
+                                 line.strip())
+            if match is None:
+                raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+            storage_type, storage_name = match.groups()
+            settings = {}
+        else:
+            fields = line.strip().split(None, 1)
+            if storage_type is None or len(fields) != 2:
+                raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+            settings[fields[0]] = fields[1]
+    include_storage()
+    return sorted(roots)
+
+
 def _external_backing_users(selected):
     found = []
     scanned = 0
-    for directory, _children, files in os.walk(TASK):
-        for name in files:
-            if not name.endswith('.qcow2'):
-                continue
-            disk = Path(directory) / name
-            _regular(disk, disk.lstat().st_uid)
-            value = json.loads(subprocess.run(['/usr/bin/qemu-img', 'info',
-                '--output=json', str(disk)], capture_output=True,
-                check=True, timeout=15).stdout)
-            scanned += 1
-            backing = value.get('full-backing-filename') or value.get('backing-filename')
-            if backing:
-                resolved = _backing_on_pve(disk, backing)
-                if resolved in selected and disk not in selected:
-                    found.append(str(disk.relative_to(TASK)))
-            data_file = (value.get('data-file') or value.get(
-                'format-specific', {}).get('data', {}).get('data-file'))
-            if data_file and disk not in selected:
-                if _backing_on_pve(disk, data_file) in selected:
-                    found.append(str(disk.relative_to(TASK)))
+    selected = {path.resolve() for path in selected}
+    visited = set()
+
+    def walk_error(error):
+        raise ValueError('pr315-cleanup-storage-inventory-unavailable') from error
+
+    for root in _retained_image_roots():
+        if not root.is_dir() or root.is_symlink():
+            raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+        for directory, children, files in os.walk(root, onerror=walk_error):
+            if any((Path(directory) / child).is_symlink() for child in children):
+                raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+            for name in files:
+                if not name.endswith(('.qcow2', '.img', '.raw', '.vmdk')):
+                    continue
+                disk = Path(directory) / name
+                if disk in visited:
+                    continue
+                visited.add(disk)
+                _regular(disk, disk.lstat().st_uid)
+                value = json.loads(subprocess.run(['/usr/bin/qemu-img', 'info',
+                    '--output=json', str(disk)], capture_output=True,
+                    check=True, timeout=15).stdout)
+                scanned += 1
+                backing = value.get('full-backing-filename') or value.get('backing-filename')
+                if backing and disk not in selected:
+                    if _backing_on_pve(disk, backing) in selected:
+                        found.append(str(disk))
+                data_file = (value.get('data-file') or value.get(
+                    'format-specific', {}).get('data', {}).get('data-file'))
+                if data_file and disk not in selected:
+                    if _backing_on_pve(disk, data_file) in selected:
+                        found.append(str(disk))
     return found, scanned
 
 
