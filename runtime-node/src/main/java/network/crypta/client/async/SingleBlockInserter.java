@@ -567,9 +567,6 @@ public final class SingleBlockInserter extends SendableInsert
     parent.completedBlock(false, context);
     unregister(context, getPriorityClass());
     if (LOG.isDebugEnabled()) LOG.debug("Calling onSuccess for {}", cb);
-    // A transient key notification may still be queued on the main executor.
-    // Deliver the final key before success for connection-scoped requests;
-    // downstream URI consumers can ignore a later duplicate callback.
     if (shouldSendKey || !persistent)
       cb.onEncode(
           key, this,

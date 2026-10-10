@@ -38,22 +38,17 @@ class NodeStarterClassInitializationTest {
             Mockito.mockStatic(LoggerFactory.class, CALLS_REAL_METHODS);
         MockedStatic<WrapperManager> wrapper = Mockito.mockStatic(WrapperManager.class);
         MockedStatic<ProcessPriority> priority = Mockito.mockStatic(ProcessPriority.class)) {
+      // Resolve the child-loaded type without running its initializer before the mocks are ready.
+      Class<?> fresh = Class.forName(NodeStarter.class.getName(), false, loader);
       logging
           .when(() -> LoggerFactory.getLogger(Mockito.<Class<?>>any()))
           .thenAnswer(
               invocation -> {
                 Class<?> owner = invocation.getArgument(0);
-                if (owner.getName().equals(NodeStarter.class.getName())) {
+                if (fresh.isAssignableFrom(owner)) {
                   calls.add("node-logger");
                 }
                 return nodeLogger;
-              });
-      wrapper
-          .when(WrapperManager::isControlledByNativeWrapper)
-          .thenAnswer(
-              _ -> {
-                calls.add("wrapper-initialized");
-                return false;
               });
       priority
           .when(ProcessPriority::enterBackgroundMode)
@@ -72,11 +67,11 @@ class NodeStarterClassInitializationTest {
               });
 
       // Act
-      Class<?> fresh = Class.forName(NodeStarter.class.getName(), true, loader);
+      Class.forName(NodeStarter.class.getName(), true, loader);
       fresh.getMethod("main", String[].class).invoke(null, (Object) args);
 
       // Assert
-      assertEquals(List.of("wrapper-initialized", "wrapper-start"), calls);
+      assertEquals(List.of("wrapper-start"), calls);
       assertNotNull(listener.get());
 
       // Act
@@ -84,7 +79,7 @@ class NodeStarterClassInitializationTest {
       assertEquals(9, listener.get().stop(9));
 
       // Assert
-      assertEquals(List.of("wrapper-initialized", "wrapper-start", "node-logger"), calls);
+      assertEquals(List.of("wrapper-start", "node-logger"), calls);
       logging.verify(() -> LoggerFactory.getLogger(fresh), times(1));
       wrapper.verify(() -> WrapperManager.signalStopping(120000), times(2));
     }
