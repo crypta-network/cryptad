@@ -35,7 +35,7 @@ class AppProcessStarterTest {
       assertTrue(Thread.currentThread().isInterrupted());
       assertTrue(process.pid() > 0);
     } finally {
-      Thread.interrupted();
+      assertTrue(Thread.interrupted());
       if (process != null) {
         if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
         assertTrue(process.waitFor(5, TimeUnit.SECONDS));
@@ -75,25 +75,29 @@ class AppProcessStarterTest {
                                 .redirectErrorStream(true));
                     started.complete(process);
                     releaseCaller.await();
-                  } catch (Throwable failure) {
+                  } catch (InterruptedException failure) {
+                    Thread.currentThread().interrupt();
+                    started.completeExceptionally(failure);
+                  } catch (Exception failure) {
                     started.completeExceptionally(failure);
                   }
                 });
     Process process = null;
     try {
       process = started.get(10, TimeUnit.SECONDS);
-      BufferedReader output =
+      try (BufferedReader output =
           new BufferedReader(
-              new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
-      assertEquals("READY", output.readLine());
-      assertTrue(process.isAlive());
+              new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+        assertEquals("READY", output.readLine());
+        assertTrue(process.isAlive());
 
-      releaseCaller.countDown();
-      caller.join(3000);
+        releaseCaller.countDown();
+        caller.join(3000);
 
-      assertFalse(caller.isAlive());
-      assertFalse(process.waitFor(2, TimeUnit.SECONDS));
-      assertTrue(process.isAlive());
+        assertFalse(caller.isAlive());
+        assertFalse(process.waitFor(2, TimeUnit.SECONDS));
+        assertTrue(process.isAlive());
+      }
     } finally {
       releaseCaller.countDown();
       caller.join(3000);

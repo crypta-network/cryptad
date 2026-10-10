@@ -45,6 +45,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Answers.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -82,13 +84,6 @@ class NodeStarterTest {
     try (MockedStatic<WrapperManager> wrapper = Mockito.mockStatic(WrapperManager.class);
         MockedStatic<ProcessPriority> priority = Mockito.mockStatic(ProcessPriority.class);
         MockedStatic<JceLoader> providers = Mockito.mockStatic(JceLoader.class)) {
-      wrapper
-          .when(WrapperManager::isControlledByNativeWrapper)
-          .thenAnswer(
-              _ -> {
-                calls.add("wrapper-initialized");
-                return false;
-              });
       priority
           .when(ProcessPriority::enterBackgroundMode)
           .thenAnswer(
@@ -117,7 +112,7 @@ class NodeStarterTest {
       NodeStarter.main(args);
 
       // Assert
-      assertEquals(List.of("wrapper-initialized", "start"), calls);
+      assertEquals(List.of("start"), calls);
       assertNotNull(listener.get());
       assertSame(args, forwardedArgs.get());
       wrapper.verify(() -> WrapperManager.start(listener.get(), args), times(1));
@@ -134,7 +129,6 @@ class NodeStarterTest {
         MockedStatic<ProcessPriority> priority = Mockito.mockStatic(ProcessPriority.class);
         MockedStatic<JceLoader> providers = Mockito.mockStatic(JceLoader.class)) {
       NodeStarter listener = newNodeStarterViaReflection();
-      calls.clear();
       wrapper
           .when(() -> WrapperManager.signalStarting(500000))
           .thenAnswer(
@@ -219,8 +213,8 @@ class NodeStarterTest {
               // getPeers() must not return null because createTestNode() calls removeAllPeers()
               PeerManager peerManager = mock(PeerManager.class);
               NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
-              Mockito.doReturn(network).when(mock).network();
-              Mockito.doReturn(peerManager).when(network).peers();
+              doReturn(network).when(mock).network();
+              doReturn(peerManager).when(network).peers();
             })) {
       // Act
       Node node = NodeStarter.createTestNode(params);
@@ -269,7 +263,7 @@ class NodeStarterTest {
                   if (arg5 instanceof NodeRuntimeBridgeFactories runtimeBridgeFactories) {
                     capturedRuntimeBridgeFactories.set(runtimeBridgeFactories);
                   }
-                  Mockito.doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
+                  doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
                       .when(mock)
                       .start(false);
                 })) {
@@ -300,7 +294,7 @@ class NodeStarterTest {
             Mockito.mockConstruction(
                 Node.class,
                 (mock, _) ->
-                    Mockito.doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
+                    doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
                         .when(mock)
                         .start(false))) {
       wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(false);
@@ -333,7 +327,7 @@ class NodeStarterTest {
             Mockito.mockConstruction(
                 Node.class,
                 (mock, _) ->
-                    Mockito.doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
+                    doThrow(new NodeInitException(expectedExitCode, "simulated startup"))
                         .when(mock)
                         .start(false))) {
       wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(false);
@@ -468,7 +462,7 @@ class NodeStarterTest {
         MockedConstruction<NodeStarter> starterCtor =
             Mockito.mockConstruction(
                 NodeStarter.class,
-                (mock, _) -> Mockito.doReturn(expectedExitCode).when(mock).start(Mockito.any()))) {
+                (mock, _) -> doReturn(expectedExitCode).when(mock).start(Mockito.any()))) {
       wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(true);
       NodeStarter.start_osgi(args);
 
@@ -486,7 +480,7 @@ class NodeStarterTest {
         MockedConstruction<NodeStarter> starterCtor =
             Mockito.mockConstruction(
                 NodeStarter.class,
-                (mock, _) -> Mockito.doReturn(expectedExitCode).when(mock).start(Mockito.any()))) {
+                (mock, _) -> doReturn(expectedExitCode).when(mock).start(Mockito.any()))) {
       wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(false);
       assertThrows(IllegalStateException.class, () -> NodeStarter.start_osgi(args));
 
@@ -504,8 +498,7 @@ class NodeStarterTest {
     try (MockedStatic<WrapperManager> wm = Mockito.mockStatic(WrapperManager.class);
         MockedConstruction<NodeStarter> starterCtor =
             Mockito.mockConstruction(
-                NodeStarter.class,
-                (mock, _) -> Mockito.doReturn(0).when(mock).start(Mockito.any()))) {
+                NodeStarter.class, (mock, _) -> doReturn(0).when(mock).start(Mockito.any()))) {
       wm.when(WrapperManager::isControlledByNativeWrapper).thenReturn(false);
       NodeStarter.start_osgi(args);
 

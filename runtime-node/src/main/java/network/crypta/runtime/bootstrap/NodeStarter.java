@@ -104,11 +104,19 @@ public class NodeStarter implements WrapperListener {
    */
   public static void main(String[] args) {
     // Initialize the wrapper backend before priority/provider setup can delay its first handshake.
-    WrapperManager.isControlledByNativeWrapper();
+    initializeWrapperBackend();
 
     // Start the application. If launched by the native Wrapper, it will call start(); otherwise
     // start() is called immediately here.
     WrapperManager.start(new NodeStarter(), args);
+  }
+
+  private static void initializeWrapperBackend() {
+    try {
+      Class.forName(WrapperManager.class.getName(), true, WrapperManager.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new LinkageError(e.getMessage(), e);
+    }
   }
 
   /**
@@ -669,26 +677,29 @@ public class NodeStarter implements WrapperListener {
       File configFilename, Map<String, String> overrides, boolean serviceMode, AppEnv appEnv)
       throws IOException {
     Path cfgPath = configFilename.toPath();
-    Resolved resolved;
-    if (serviceMode) {
-      ServiceDirs svc = new ServiceDirs(overrides);
-      resolved = svc.resolve();
-    } else {
-      Map<String, String> sysMap = new HashMap<>();
-      Properties props = System.getProperties();
-      for (Entry<Object, Object> e : props.entrySet()) {
-        sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
-      }
-      // Pass parameters matching AppDirs(env, systemProperties, cliOverrides, appEnv)
-      AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
-      resolved = dirs.resolve();
-    }
+    Resolved resolved = resolveDirectories(overrides, serviceMode, appEnv);
     printResolvedDirectories(resolved, configFilename, serviceMode);
     SimpleFieldSet sfs =
         CryptadConfig.loadExpandingPlaceholders(cfgPath, resolved, System.getProperties());
     emitLauncherConfiguredRunDirCompatibilityLine(sfs);
     File tmp = new File(configFilename.getPath() + ".tmp");
     return new FreenetFilePersistentConfig(sfs, configFilename, tmp);
+  }
+
+  private static Resolved resolveDirectories(
+      Map<String, String> overrides, boolean serviceMode, AppEnv appEnv) {
+    if (serviceMode) {
+      ServiceDirs svc = new ServiceDirs(overrides);
+      return svc.resolve();
+    }
+    Map<String, String> sysMap = new HashMap<>();
+    Properties props = System.getProperties();
+    for (Entry<Object, Object> e : props.entrySet()) {
+      sysMap.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+    }
+    // Pass parameters matching AppDirs(env, systemProperties, cliOverrides, appEnv)
+    AppDirs dirs = new AppDirs(System.getenv(), sysMap, overrides, appEnv);
+    return dirs.resolve();
   }
 
   private static void emitLauncherConfiguredRunDirCompatibilityLine(SimpleFieldSet sfs) {

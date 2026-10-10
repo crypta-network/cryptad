@@ -222,8 +222,8 @@ class MultiPutCompletionCallbackTest {
         new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ false);
     ClientPutState gen = mock(ClientPutState.class);
     mpc.addURIGenerator(gen);
-    Metadata meta = org.mockito.Mockito.mock(Metadata.class);
-    Bucket bucket = org.mockito.Mockito.mock(Bucket.class);
+    Metadata meta = mock(Metadata.class);
+    Bucket bucket = mock(Bucket.class);
 
     mpc.onMetadata(meta, gen, context);
     mpc.onMetadata(bucket, gen, context);
@@ -236,8 +236,8 @@ class MultiPutCompletionCallbackTest {
   void onBlockSetFinished_whenBeforeArm_thenAfterAll_expectSingleCallback() {
     MultiPutCompletionCallback mpc =
         new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ false);
-    ClientPutState s1 = org.mockito.Mockito.mock(ClientPutState.class);
-    ClientPutState s2 = org.mockito.Mockito.mock(ClientPutState.class);
+    ClientPutState s1 = mock(ClientPutState.class);
+    ClientPutState s2 = mock(ClientPutState.class);
     mpc.add(s1);
     mpc.add(s2);
 
@@ -258,8 +258,8 @@ class MultiPutCompletionCallbackTest {
   void onFetchable_whenAfterArm_expectOnlyOnce() {
     MultiPutCompletionCallback mpc =
         new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ false);
-    ClientPutState s1 = org.mockito.Mockito.mock(ClientPutState.class);
-    ClientPutState s2 = org.mockito.Mockito.mock(ClientPutState.class);
+    ClientPutState s1 = mock(ClientPutState.class);
+    ClientPutState s2 = mock(ClientPutState.class);
     mpc.add(s1);
     mpc.add(s2);
 
@@ -447,7 +447,7 @@ class MultiPutCompletionCallbackTest {
     Combined combined = new Combined();
     MultiPutCompletionCallback mpc =
         new MultiPutCompletionCallback(combined, combined, token, /*persistent*/ false);
-    ClientPutState s = org.mockito.Mockito.mock(ClientPutState.class);
+    ClientPutState s = mock(ClientPutState.class);
     mpc.add(s);
 
     mpc.onResume(context);
@@ -462,8 +462,8 @@ class MultiPutCompletionCallbackTest {
   void onShutdown_whenCalled_expectPropagatesToAllStates() {
     MultiPutCompletionCallback mpc =
         new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ false);
-    ClientPutState s1 = org.mockito.Mockito.mock(ClientPutState.class);
-    ClientPutState s2 = org.mockito.Mockito.mock(ClientPutState.class);
+    ClientPutState s1 = mock(ClientPutState.class);
+    ClientPutState s2 = mock(ClientPutState.class);
     mpc.add(s1);
     mpc.add(s2);
 
@@ -484,8 +484,8 @@ class MultiPutCompletionCallbackTest {
   void complete_whenPersistent_clonesFailureException() {
     MultiPutCompletionCallback mpc =
         new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ true);
-    ClientPutState s1 = org.mockito.Mockito.mock(ClientPutState.class);
-    ClientPutState s2 = org.mockito.Mockito.mock(ClientPutState.class);
+    ClientPutState s1 = mock(ClientPutState.class);
+    ClientPutState s2 = mock(ClientPutState.class);
     mpc.add(s1);
     mpc.add(s2);
     mpc.arm(context);
@@ -507,8 +507,8 @@ class MultiPutCompletionCallbackTest {
   void complete_whenCancelledAfterFailure_usesOriginalFailureMode() {
     MultiPutCompletionCallback mpc =
         new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ true);
-    ClientPutState s1 = org.mockito.Mockito.mock(ClientPutState.class);
-    ClientPutState s2 = org.mockito.Mockito.mock(ClientPutState.class);
+    ClientPutState s1 = mock(ClientPutState.class);
+    ClientPutState s2 = mock(ClientPutState.class);
     mpc.add(s1);
     mpc.add(s2);
     mpc.arm(context);
@@ -533,8 +533,8 @@ class MultiPutCompletionCallbackTest {
   void complete_whenMultipleFailures_nonCancelledReplacesOriginal() {
     MultiPutCompletionCallback mpc =
         new MultiPutCompletionCallback(cb, parent, token, /*persistent*/ false);
-    ClientPutState s1 = org.mockito.Mockito.mock(ClientPutState.class);
-    ClientPutState s2 = org.mockito.Mockito.mock(ClientPutState.class);
+    ClientPutState s1 = mock(ClientPutState.class);
+    ClientPutState s2 = mock(ClientPutState.class);
     mpc.add(s1);
     mpc.add(s2);
     mpc.arm(context);
@@ -689,17 +689,9 @@ class MultiPutCompletionCallbackTest {
    * Serializable stub for ClientPutState that compares by stable id so deserialized instances are
    * equal to their pre-serialization counterparts for list removal operations.
    */
-  private static class SerializablePutState implements ClientPutState, Serializable {
+  private record SerializablePutState(String id, BaseClientPutter parent, Serializable token)
+      implements ClientPutState, Serializable {
     @Serial private static final long serialVersionUID = 1L;
-    private final String id;
-    private final BaseClientPutter parent;
-    private final Serializable token;
-
-    SerializablePutState(String id, BaseClientPutter parent, Serializable token) {
-      this.id = id;
-      this.parent = parent;
-      this.token = token;
-    }
 
     @Override
     public BaseClientPutter getParent() {
