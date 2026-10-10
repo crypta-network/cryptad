@@ -5,22 +5,31 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-/** Creates application processes from a platform thread that lives as long as the JVM. */
+/**
+ * Starts AppHost child processes on a dedicated daemon platform thread.
+ *
+ * <p>The launch thread is independent of the caller's request thread. This matters for Linux
+ * sandbox launchers using {@code --die-with-parent}: a request worker can end while the AppHost JVM
+ * and its child remain active. This helper starts processes but leaves their tracking and
+ * termination to the caller.
+ */
 final class AppProcessStarter {
+  /** Prevents instantiation of this process-launch utility. */
   private AppProcessStarter() {}
 
   /**
-   * Starts the supplied private process plan without tying the child's lifetime to a request
-   * thread.
+   * Starts the supplied process plan and waits for its process handle or launch failure.
    *
-   * <p>On Linux, bubblewrap's parent-death signal follows the thread that creates the process. HTTP
-   * pool workers can expire while the host JVM remains alive. The daemon platform worker therefore
-   * remains available for the JVM lifetime. Caller interruption is restored after the launch result
-   * is retrieved so that a launched child cannot be abandoned without returning its process handle.
+   * <p>Launches are serialized on one daemon platform thread. If the caller is interrupted while
+   * waiting, this method continues until the launch outcome is known, then restores the caller's
+   * interrupt flag. A successful return transfers responsibility for the process to the caller;
+   * this helper does not supervise or stop it.
    *
-   * @param builder the fully prepared command, environment and redirects owned by the caller
-   * @return the started process, still subject to normal AppHost tracking and cleanup
-   * @throws IOException if process creation fails
+   * @param builder the fully prepared command, environment, and redirects; the caller must not
+   *     modify it until this method returns
+   * @return the started process for the caller to track and clean up
+   * @throws IOException if process creation fails or the launch reports an unexpected checked
+   *     failure
    */
   static Process start(ProcessBuilder builder) throws IOException {
     Future<Process> launch = Launcher.EXECUTOR.submit(builder::start);
@@ -44,10 +53,12 @@ final class AppProcessStarter {
     }
   }
 
+  /** Initializes the launch executor only when the first process is started. */
   private static final class Launcher {
+    /** Prevents instantiation of the executor holder. */
     private Launcher() {}
 
-    // A virtual thread or expiring worker would reproduce the parent-death defect.
+    /** Keeps launch work off virtual threads and short-lived request workers. */
     private static final java.util.concurrent.ExecutorService EXECUTOR =
         Executors.newSingleThreadExecutor(
             Thread.ofPlatform().daemon().name("cryptad-app-process-launcher").factory());
