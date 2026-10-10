@@ -14,6 +14,97 @@ import pr315_pve_attempt_inventory as inventory
 
 
 class CleanupPlanTest(unittest.TestCase):
+    def test_package_directory_alias_keeps_real_target_image_in_inventory(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-inventory-links-') as temporary:
+            root = Path(temporary)
+            target = root / 'qemu-system-common'
+            target.mkdir()
+            (root / 'qemu-system-x86').symlink_to(target.name, target_is_directory=True)
+            retained = target / 'retained.qcow2'
+            retained.write_bytes(b'overlay')
+            selected = root / 'prepared.qcow2'
+            selected.write_bytes(b'prepared')
+
+            def image_info(command, **_kwargs):
+                value = {'format': 'qcow2'}
+                if Path(command[-1]) == retained:
+                    value['full-backing-filename'] = str(selected)
+                return SimpleNamespace(stdout=json.dumps(value).encode())
+
+            with patch.object(inventory, '_retained_image_roots', return_value=[root]), \
+                    patch.object(inventory.subprocess, 'run', side_effect=image_info):
+                dependents, scanned = inventory._external_backing_users({selected})
+
+            self.assertEqual([str(retained)], dependents)
+            self.assertEqual(2, scanned)
+
+    def test_directory_alias_outside_inventory_roots_fails_closed(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-inventory-links-') as temporary, \
+                tempfile.TemporaryDirectory(prefix='pr315-inventory-outside-') as outside:
+            root = Path(temporary)
+            (root / 'outside').symlink_to(outside, target_is_directory=True)
+            with patch.object(inventory, '_retained_image_roots', return_value=[root]):
+                with self.assertRaisesRegex(ValueError, 'storage-inventory-unavailable'):
+                    inventory._external_backing_users(set())
+
+    def test_alias_into_another_configured_root_keeps_external_data_dependency(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-inventory-links-') as temporary, \
+                tempfile.TemporaryDirectory(prefix='pr315-inventory-other-') as other:
+            root, other_root = Path(temporary), Path(other)
+            (root / 'alias').symlink_to(other_root, target_is_directory=True)
+            selected = root / 'prepared.qcow2'
+            selected.write_bytes(b'prepared')
+            retained = other_root / 'retained.qcow2'
+            retained.write_bytes(b'overlay')
+
+            def image_info(command, **_kwargs):
+                value = {'format': 'qcow2'}
+                if Path(command[-1]) == retained:
+                    value['format-specific'] = {'data': {'data-file': str(selected)}}
+                return SimpleNamespace(stdout=json.dumps(value).encode())
+
+            with patch.object(inventory, '_retained_image_roots',
+                              return_value=[root, other_root]), \
+                    patch.object(inventory.subprocess, 'run', side_effect=image_info):
+                dependents, scanned = inventory._external_backing_users({selected})
+
+            self.assertEqual([str(retained)], dependents)
+            self.assertEqual(2, scanned)
+
+    def test_directory_alias_target_not_walked_cannot_grant_release(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-inventory-links-') as temporary:
+            root = Path(temporary)
+            target = root / 'real'
+            target.mkdir()
+            (root / 'alias').symlink_to(target.name, target_is_directory=True)
+            with patch.object(inventory, '_retained_image_roots', return_value=[root]), \
+                    patch.object(inventory.os, 'walk', return_value=[
+                        (str(root), ['alias'], [])]):
+                with self.assertRaisesRegex(ValueError, 'storage-inventory-unavailable'):
+                    inventory._external_backing_users(set())
+
+    def test_directory_alias_changed_during_inventory_fails_closed(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-inventory-links-') as temporary:
+            root = Path(temporary)
+            target = root / 'real'
+            target.mkdir()
+            replacement = root / 'other'
+            replacement.mkdir()
+            link = root / 'alias'
+            link.symlink_to(target.name, target_is_directory=True)
+            image = root / 'probe.qcow2'
+            image.write_bytes(b'probe')
+
+            def image_info(_command, **_kwargs):
+                link.unlink()
+                link.symlink_to(replacement.name, target_is_directory=True)
+                return SimpleNamespace(stdout=b'{"format":"qcow2"}')
+
+            with patch.object(inventory, '_retained_image_roots', return_value=[root]), \
+                    patch.object(inventory.subprocess, 'run', side_effect=image_info):
+                with self.assertRaisesRegex(ValueError, 'storage-inventory-unavailable'):
+                    inventory._external_backing_users(set())
+
     def test_retained_overlay_outside_task_blocks_release(self):
         with tempfile.TemporaryDirectory(prefix='pr315-inventory-task-') as task_dir, \
                 tempfile.TemporaryDirectory(prefix='pr315-inventory-store-') as store_dir:

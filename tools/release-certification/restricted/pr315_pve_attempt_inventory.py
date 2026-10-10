@@ -183,16 +183,35 @@ def _external_backing_users(selected):
     scanned = 0
     selected = {path.resolve() for path in selected}
     visited = set()
+    roots = _retained_image_roots()
+    walked_directories = set()
+    directory_links = {}
 
     def walk_error(error):
         raise ValueError('pr315-cleanup-storage-inventory-unavailable') from error
 
-    for root in _retained_image_roots():
+    for root in roots:
         if not root.is_dir() or root.is_symlink():
             raise ValueError('pr315-cleanup-storage-inventory-unavailable')
         for directory, children, files in os.walk(root, onerror=walk_error):
-            if any((Path(directory) / child).is_symlink() for child in children):
-                raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+            walked_directories.add(Path(directory).resolve())
+            for child in children:
+                link = Path(directory) / child
+                if not link.is_symlink():
+                    continue
+                try:
+                    before = link.lstat()
+                    target = link.resolve(strict=True)
+                    target_info = target.stat()
+                    if (not stat.S_ISDIR(target_info.st_mode)
+                            or not any(target.is_relative_to(scope.resolve(strict=True))
+                                       for scope in roots)):
+                        raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+                    directory_links[link] = (before.st_dev, before.st_ino,
+                        before.st_mtime_ns, before.st_ctime_ns, os.readlink(link),
+                        target, target_info.st_dev, target_info.st_ino)
+                except (OSError, RuntimeError):
+                    raise ValueError('pr315-cleanup-storage-inventory-unavailable') from None
             for name in files:
                 if not name.endswith(('.qcow2', '.img', '.raw', '.vmdk')):
                     continue
@@ -214,6 +233,21 @@ def _external_backing_users(selected):
                 if data_file and disk not in selected:
                     if _backing_on_pve(disk, data_file) in selected:
                         found.append(str(disk))
+    # A package directory alias is safe only when its real target was covered
+    # by the same complete inventory. Never follow an alias out of those roots.
+    for link, before in directory_links.items():
+        try:
+            current = link.lstat()
+            target = link.resolve(strict=True)
+            target_info = target.stat()
+            after = (current.st_dev, current.st_ino, current.st_mtime_ns,
+                current.st_ctime_ns, os.readlink(link), target,
+                target_info.st_dev, target_info.st_ino)
+            if (not stat.S_ISLNK(current.st_mode)
+                    or target not in walked_directories or after != before):
+                raise ValueError('pr315-cleanup-storage-inventory-unavailable')
+        except (OSError, RuntimeError):
+            raise ValueError('pr315-cleanup-storage-inventory-unavailable') from None
     return found, scanned
 
 

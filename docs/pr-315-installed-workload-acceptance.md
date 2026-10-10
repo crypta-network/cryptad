@@ -3,7 +3,53 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 
-The most recent formal campaign froze helper `aefb04f5ab77`, candidate
+## Current-source rerun and directory alias inventory
+
+The historical frozen helper `5936f4f3ada22d1e46050c9e11879258ec014468`
+completed all 45 cases in one formal TCG campaign: 21 selected groups and
+22 guests, suites301–322, including the retired-authority preparation. Its
+complete original observations, receipts, inputs and disk bytes remain private.
+That result does not transfer to subsequent tracked source changes.
+
+The current-source rerun froze helper and candidate `73e42195c827`, predecessor
+`9a8c8b905bc1`, normal signed Mail, the pinned QEMU/JDK and launcher v39.
+Suite323 completed and sealed all eight positive case records. The guest
+stopped with exit zero, but the host copy-release inventory failed before
+deletion or the cleanup signature. No later guest was allocated. This campaign
+has no complete installed acceptance verdict; the eight completed records
+cannot substitute for the missing cleanup proof or a new-source campaign.
+
+The original read-only inventory command reproduced the failure at the package
+documentation directory alias `qemu-system-x86 -> qemu-system-common`. The
+external image-store scan rejected every directory symlink, including an alias
+whose real target was already inside the inventory roots. The narrow fix permits
+such an alias only when its target is inside the configured inventory roots,
+the real target was actually walked, and the link and target identities remain
+unchanged through the scan. Links outside the inventory roots, targets that
+were not walked and links that changed remain failures. Retained backing images
+and external data-file dependencies still block release. An alias grants no
+deletion authority and does not bypass the ordinary image, ownership, stopped
+process or exact archive checks.
+
+Regression checks cover the reproduced documentation alias with a retained
+overlay, an external data-file dependency in another configured root, an
+out-of-scope target, an unwalked target and a link replaced during the scan.
+Native root checks and a newly frozen full 45-case campaign remain required
+after this source change. The preceding campaign, signatures and missing-cleanup
+status are preserved as history; none of its case results are imported.
+
+Before the rerun, three complete older contexts were preserved on encrypted G1:
+the successful suites301–322 campaign, suite298's diagnostic campaign and the
+failed suite295 campaign. Independent byte reconstruction verified 309,146
+original files, unchanged source inventories and file modes before authorized
+Mac duplicate release. Private archive indexes use a separately bounded atomic
+writer; an unverified checkpoint cannot grant cleanup or installed acceptance.
+The G1 batch budget is 384 GiB with a 64 GiB filesystem reserve. Mac and PVE
+budgets, role limits and operation deadlines remain unchanged.
+
+## Earlier campaign history
+
+The earlier formal campaign froze helper `aefb04f5ab77`, candidate
 `754bb0174c69`, predecessor `9a8c8b905bc1` and launcher v39. Suites281,
 282, 284, 285 and 286 passed eight positive, five role/file, nine authority,
 six network/AppHost and one output-symlink case respectively. Each group passed
