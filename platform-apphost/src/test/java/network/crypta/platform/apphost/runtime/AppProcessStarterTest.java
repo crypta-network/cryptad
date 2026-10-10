@@ -4,12 +4,12 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import network.crypta.fs.AppEnv;
+import network.crypta.platform.apphost.sandbox.BubblewrapAvailability;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,7 +52,8 @@ class AppProcessStarterTest {
 
   @Test
   void start_whenCallerThreadExits_keepsParentProtectedSandboxAlive() throws Exception {
-    assumeTrue(new AppEnv().isLinux() && Files.isExecutable(Path.of("/usr/bin/bwrap")));
+    var availability = new BubblewrapAvailability(new AppEnv(), "/usr/bin/bwrap").probe();
+    assumeTrue(availability.available(), availability.unavailableReason());
     CompletableFuture<Process> started = new CompletableFuture<>();
     CountDownLatch releaseCaller = new CountDownLatch(1);
     Thread caller =
