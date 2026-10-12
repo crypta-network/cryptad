@@ -373,8 +373,10 @@ def workload_guest_command(args):
             + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
 
 
-def run(args):
+def run(args, *, before_guest_launch=None):
     global ACCELERATOR
+    if before_guest_launch is not None and not callable(before_guest_launch):
+        raise ValueError('reference-prelaunch-callback-invalid')
     selected_profile = getattr(args, 'profile', 'tcg-multi')
     if selected_profile not in PROFILES:
         raise ValueError('reference-profile-invalid')
@@ -492,6 +494,8 @@ def run(args):
         arguments = qemu_arguments(root, attempt, prepared, seed, args.port)
         arguments[0] = str(qemu)
         boot.record_private_inputs(attempt, emulatorArguments=arguments)
+        if before_guest_launch is not None:
+            before_guest_launch()
         process = subprocess.Popen(boot.invocation(arguments, env),
                                    env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
         report.update(executed=True, guestStopped=False, stage='guest-boot')

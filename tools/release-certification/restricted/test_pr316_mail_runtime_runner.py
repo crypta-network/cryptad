@@ -365,6 +365,34 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             runner.validate_final_pve_capacity(
                 selected, {'allocatedTaskBytes': 300, 'availableTaskBytes': True}, 500)
 
+    def test_pressure_watcher_is_requested_only_at_the_prelaunch_marker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            ready = {'kind': 'pr315-pve-watch-ready'}
+            with patch.object(runner.pressure_watch, 'verify_ready',
+                              side_effect=[FileNotFoundError(), ready]) as verify, \
+                    patch.object(runner.time, 'monotonic', return_value=0), \
+                    patch.object(runner.time, 'sleep') as sleep:
+                self.assertEqual(ready, runner.wait_pressure_watcher(
+                    output, 'suite-1', 'a' * 40))
+            self.assertEqual(2, verify.call_count)
+            sleep.assert_called_once_with(.25)
+            marker = json.loads((output /
+                'awaiting-pressure-watcher.private.json').read_text())
+            self.assertEqual('pr316-awaiting-pressure-watcher', marker['kind'])
+
+    def test_failed_watcher_reconciliation_accepts_authenticated_prelaunch_stop(self):
+        ready = {'observedMonotonicNs': 100}
+        stopped = {'action': 'stopped-before-launch', 'seenTaskQemu': False}
+        with patch.object(runner.pressure_watch, 'verify_finished',
+                          side_effect=ValueError('not-completed')) as finished, \
+                patch.object(runner.pressure_watch, 'verify_stopped_before_launch',
+                             return_value=stopped) as prelaunch:
+            self.assertEqual(stopped, runner.reconcile_failed_watcher(
+                'suite-1', 'a' * 40, ready))
+        finished.assert_called_once_with('suite-1', 'a' * 40, ready)
+        prelaunch.assert_called_once_with('suite-1', 'a' * 40, ready)
+
     def test_attempt_projection_uses_private_evidence_validator_and_terminal_proof(self):
         selected_args = SimpleNamespace(
             product_source_commit='9' * 40,
@@ -492,10 +520,11 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             captured, events = {}, []
             validate_capacity = runner.validate_final_pve_capacity
 
-            def execute(call):
-                events.append('execute')
+            def execute(call, *, before_guest_launch):
                 captured['args'] = call
                 call.attempt.mkdir()
+                before_guest_launch()
+                events.append('execute')
 
             def check_capacity(*values):
                 events.append('pve-capacity')
@@ -524,7 +553,9 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                     patch.object(runner, 'validate_final_pve_capacity',
                                  side_effect=check_capacity) as pve_capacity, \
                     patch.object(runner.pressure_watch, 'wait_ready',
-                                 return_value={'observedMonotonicNs': 1}), \
+                                 side_effect=AssertionError('legacy early watcher wait')), \
+                    patch.object(runner.pressure_watch, 'verify_ready',
+                                 return_value={'observedMonotonicNs': 1}) as watch_ready, \
                     patch.object(runner.pressure_watch, 'verify_finished',
                                  return_value={'action': 'completed'}), \
                     patch.object(runner.retained_runner, 'allocated_bytes',
@@ -551,6 +582,7 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             self.assertEqual(selected.output / 'attempt-01', invoked.attempt)
             self.assertEqual(2, inventory.call_count)
             self.assertEqual(['pve-capacity', 'execute'], events)
+            watch_ready.assert_called_once_with(selected.output.name, 'a' * 40)
             pve_capacity.assert_called_once_with(selected, {
                 'activeTaskQemu': [], 'allocatedTaskBytes': 0,
                 'availableTaskBytes': 2 * 1024**3}, 1024)
@@ -561,8 +593,9 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             root.chmod(0o700)
             selected = args(root)
 
-            def execute(call):
+            def execute(call, *, before_guest_launch):
                 call.attempt.mkdir()
+                before_guest_launch()
 
             with patch.object(runner.reference, 'sha256', return_value='a'), \
                     patch.object(runner, 'task_vm_inventory', return_value={
@@ -585,6 +618,8 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                                      'allocatedTaskBytes': 0,
                                      'availableTaskBytes': 2 * 1024**3}}), \
                     patch.object(runner.pressure_watch, 'wait_ready',
+                                 side_effect=AssertionError('legacy early watcher wait')), \
+                    patch.object(runner.pressure_watch, 'verify_ready',
                                  return_value={'observedMonotonicNs': 1}), \
                     patch.object(runner.pressure_watch, 'verify_finished',
                                  return_value={'action': 'completed'}), \

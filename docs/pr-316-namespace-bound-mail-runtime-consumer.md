@@ -75,14 +75,17 @@ guest and root driver accept that class only when no PR-315 group, lifecycle cas
 measurement or retired-authority operation is selected. Root cleanup and volatile capture complete
 before the private driver report can set `installedMailFlowObserved=true`.
 
-The separate administrator entry is:
+The separate administrator entry uses two terminals. First, PVE root publishes the required host
+admission and initial task inventory before the unprivileged CT runner starts:
 
 ```bash
-# Run as root on the approved PVE host immediately before the CT runner.
+# PVE root terminal.
+python3 tools/release-certification/restricted/pr315_pve_host_admission.py \
+  --suite suite-N --source-commit COMMIT
 python3 tools/release-certification/restricted/pr316_pve_vm_inventory.py \
   --suite suite-N --source-commit COMMIT --phase pre
 
-# Run unprivileged inside the approved CT task root.
+# CT terminal, unprivileged inside the approved task root. This waits at two markers.
 python3 tools/release-certification/restricted/pr316_mail_runtime_runner.py \
   --source SOURCE --output OUTPUT --storage-root STORAGE_ROOT \
   --prepared-image PREPARED_IMAGE --prepared-fixtures PREPARED_FIXTURES \
@@ -93,10 +96,28 @@ python3 tools/release-certification/restricted/pr316_mail_runtime_runner.py \
   --min-host-memory-bytes BYTES
 ```
 
-After the runner writes `suite-N/awaiting-final-pve-inventory.private.json`, the PVE root runs the
-same inventory command with `--phase final`. The runner waits for that distinct immutable receipt
-and proceeds directly to its local inventory/capacity recheck and allocation. Reusing the `pre`
-receipt cannot authorize the allocation.
+After the runner writes `suite-N/awaiting-final-pve-inventory.private.json`, PVE root publishes the
+second inventory. After all fixture, inventory, capacity and host-side attempt preparation passes,
+the runner writes `suite-N/awaiting-pressure-watcher.private.json`; only then does PVE root start
+the watcher in the background:
+
+```bash
+# PVE root terminal, after awaiting-final-pve-inventory.private.json appears.
+python3 tools/release-certification/restricted/pr316_pve_vm_inventory.py \
+  --suite suite-N --source-commit COMMIT --phase final
+
+# PVE root terminal, after awaiting-pressure-watcher.private.json appears.
+nohup python3 tools/release-certification/restricted/pr315_pve_pressure_watch.py \
+  --suite suite-N --source-commit COMMIT \
+  > /root/pr316-suite-N-pressure-watch.private.log 2>&1 < /dev/null &
+```
+
+The runner authenticates the watcher ready receipt at the final pre-QEMU boundary and then launches
+the guest immediately. A fixture, final-inventory or capacity failure therefore occurs before the
+watcher is requested. If QEMU does not appear within 30 seconds after readiness, the watcher closes
+as `stopped-before-launch`; the runner authenticates that receipt before returning a post-ready
+failure. Reusing the `pre` receipt cannot authorize allocation, and starting the watcher before the
+second marker is unsupported.
 
 The runner has no campaign, case-group, v10, history, protected-authority or retired-authority
 options. Before each possible VM allocation it requires a fresh immutable PVE-root inventory

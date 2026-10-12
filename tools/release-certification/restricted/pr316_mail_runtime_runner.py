@@ -208,6 +208,36 @@ def validate_final_pve_capacity(args, observation, required):
         raise ValueError('pr316-final-pve-capacity-unavailable')
 
 
+def wait_pressure_watcher(output, suite, source_commit):
+    """Request the root watcher only after all preallocation preparation has completed."""
+    retained_runner._save(output / 'awaiting-pressure-watcher.private.json', {
+        'schemaVersion': 1, 'kind': 'pr316-awaiting-pressure-watcher',
+        'suite': suite, 'sourceCommit': source_commit})
+    deadline = time.monotonic() + 120
+    while True:
+        try:
+            return pressure_watch.verify_ready(suite, source_commit)
+        except (FileNotFoundError, OSError, ValueError):
+            if time.monotonic() >= deadline:
+                raise ValueError('pr316-pve-host-monitor-unavailable') from None
+            time.sleep(.25)
+
+
+def reconcile_failed_watcher(suite, source_commit, ready):
+    """Authenticate watcher closure after a failure beyond the ready boundary."""
+    deadline = time.monotonic() + pressure_watch.PRELAUNCH_SECONDS + 15
+    while True:
+        for verifier in (pressure_watch.verify_finished,
+                         pressure_watch.verify_stopped_before_launch):
+            try:
+                return verifier(suite, source_commit, ready)
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+        if time.monotonic() >= deadline:
+            raise ValueError('pr316-pve-host-monitor-incomplete') from None
+        time.sleep(.25)
+
+
 def _private_json(path, maximum=MAX_PRIVATE_RECORD):
     """Read one owner-private, single-link regular JSON record exactly once."""
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -602,9 +632,6 @@ def run(args):
                 root / 'host-inventory' / (output.name + '-pre.json'),
                 output.name, source_commit, 'pre')
             measured['pveTaskInventory'] = inventory_receipt['observation']
-            if not args.probe:
-                watch_ready = pressure_watch.wait_ready(output.name,
-                                                        source_commit)
         except (OSError, ValueError, TypeError, KeyError,
                 json.JSONDecodeError, subprocess.SubprocessError):
             reasons.append('pve-host-admission-unavailable')
@@ -665,9 +692,17 @@ def run(args):
                 retained_runner._save(
                     output / 'pre-allocation.private.json',
                     capacity['preAllocationInventory'])
+
+                def start_pressure_watcher():
+                    nonlocal watch_ready
+                    watch_ready = wait_pressure_watcher(
+                        output, output.name, source_commit)
+
                 with (output / 'transport.private.log').open('x') as log, \
                         redirect_stdout(log):
-                    reference.run(selected)
+                    reference.workload_guest_command(selected)
+                    reference.run(
+                        selected, before_guest_launch=start_pressure_watcher)
                 until = time.monotonic() + 20
                 while True:
                     try:
@@ -691,6 +726,15 @@ def run(args):
                 code = 0
             except (OSError, ValueError, KeyError, TypeError,
                     subprocess.SubprocessError, json.JSONDecodeError) as error:
+                if (watch_ready is not None
+                        and not (output / 'host-monitor.private.json').exists()):
+                    try:
+                        monitor = reconcile_failed_watcher(
+                            output.name, source_commit, watch_ready)
+                        retained_runner._save(
+                            output / 'host-monitor.private.json', monitor)
+                    except (OSError, ValueError):
+                        error = ValueError('pr316-pve-host-monitor-incomplete')
                 try:
                     failure_scan = _scan_retained_privacy(
                         output, exclude_source_clone=True)

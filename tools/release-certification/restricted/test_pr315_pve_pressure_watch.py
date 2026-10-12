@@ -10,6 +10,11 @@ import pr315_pve_pressure_watch as watch
 
 
 class PressureWatchTest(unittest.TestCase):
+    def test_prelaunch_grace_closes_only_an_unseen_qemu(self):
+        self.assertFalse(watch.prelaunch_expired(10, False, 39.999))
+        self.assertTrue(watch.prelaunch_expired(10, False, 40))
+        self.assertFalse(watch.prelaunch_expired(10, True, 1000))
+
     def test_receipt_is_complete_and_readable_before_publication(self):
         with tempfile.TemporaryDirectory() as directory:
             receipt = Path(directory) / 'suite-111.finished.json'

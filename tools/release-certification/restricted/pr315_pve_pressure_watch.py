@@ -25,6 +25,7 @@ CT_ROOT = Path('/work/pr315-task')
 GIB = 1024 ** 3
 SAMPLE_SECONDS = 2
 MAX_SECONDS = 4500
+PRELAUNCH_SECONDS = 30
 LIMITS = {'physical': 5, 'swap': 2, 'memoryPressure': 15, 'ioPressure': 15}
 
 
@@ -60,6 +61,11 @@ def step(counters: dict, observation: dict) -> tuple[dict, str | None]:
     updated = {name: counters[name] + 1 if conditions[name] else 0 for name in LIMITS}
     action = next((name for name in LIMITS if updated[name] >= LIMITS[name]), None)
     return updated, action
+
+
+def prelaunch_expired(started: float, seen: bool, observed: float) -> bool:
+    """Close an authenticated watcher that never observes its expected QEMU launch."""
+    return seen is False and observed - started >= PRELAUNCH_SECONDS
 
 
 def _start_ticks(pid: int) -> int:
@@ -209,6 +215,9 @@ def watch(suite: str, source_commit: str) -> int:
                     break
             elif seen and absent_since is None:
                 absent_since = time.monotonic()
+            if prelaunch_expired(started, seen, time.monotonic()):
+                action = 'stopped-before-launch'
+                break
             try:
                 observed = sample()
             except (OSError, ValueError):
