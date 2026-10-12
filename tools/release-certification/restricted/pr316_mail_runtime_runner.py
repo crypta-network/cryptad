@@ -447,12 +447,22 @@ def _closed_public(value):
     return value
 
 
-def _scan_retained_privacy(root):
+def _scan_retained_privacy(root, *, exclude_source_clone=False):
     """Scan every bounded retained text/JSON surface collected for public assessment."""
+    root = Path(root).absolute()
+    source_clone = root / 'attempt-01' / 'cryptad'
+    source_clone_present = source_clone.exists() or source_clone.is_symlink()
+    if exclude_source_clone and source_clone_present:
+        info = source_clone.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+                or info.st_uid != os.geteuid() or info.st_mode & 0o077):
+            raise ValueError('pr316-retained-source-clone-invalid')
     binary_suffixes = {'.qcow2', '.img', '.iso', '.jar', '.zip', '.gz', '.class',
                        '.so', '.dll', '.exe', '.bin', '.db'}
     count = total = 0
-    for path in sorted(Path(root).rglob('*')):
+    for path in sorted(root.rglob('*')):
+        if exclude_source_clone and path.is_relative_to(source_clone):
+            continue
         if path.is_symlink():
             raise ValueError('pr316-retained-surface-link-invalid')
         if not path.is_file() or path.suffix.lower() in binary_suffixes:
@@ -477,7 +487,8 @@ def _scan_retained_privacy(root):
                 raise ValueError('pr316-private-canary-exposure')
         finally:
             os.close(descriptor)
-    return {'filesScanned': count, 'bytesScanned': total}
+    return {'filesScanned': count, 'bytesScanned': total,
+            'sourceCloneExcluded': exclude_source_clone and source_clone_present}
 
 
 def _attempt_projection(args, attempt, report, fixture, source_commit,
@@ -672,7 +683,7 @@ def run(args):
                         time.sleep(.25)
                 report = _private_json(
                     selected.attempt / 'attempt.private.json', 1024 * 1024)
-                privacy = _scan_retained_privacy(output)
+                privacy = _scan_retained_privacy(output, exclude_source_clone=True)
                 retained_runner._save(
                     output / 'privacy-scan.private.json', privacy)
                 result = _attempt_projection(args, selected.attempt, report,
@@ -681,7 +692,8 @@ def run(args):
             except (OSError, ValueError, KeyError, TypeError,
                     subprocess.SubprocessError, json.JSONDecodeError) as error:
                 try:
-                    failure_scan = _scan_retained_privacy(output)
+                    failure_scan = _scan_retained_privacy(
+                        output, exclude_source_clone=True)
                     retained_runner._save(
                         output / 'privacy-failure-scan.private.json', {
                             'schemaVersion': 1,

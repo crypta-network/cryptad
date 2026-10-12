@@ -278,6 +278,38 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             (root / 'driver.private.log').write_text('{"safe":true}')
             self.assertEqual(1, runner._scan_retained_privacy(root)['filesScanned'])
 
+    def test_retained_surface_scan_excludes_only_the_owned_source_clone(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            clone = root / 'attempt-01/cryptad'
+            clone.mkdir(parents=True, mode=0o700)
+            clone.chmod(0o700)
+            (clone / 'two_node_demo.py').write_text(evidence.SYNTHETIC_TEXTS[0])
+            retained = root / 'attempt-01/transport.private.log'
+            retained.write_text('safe generated evidence')
+
+            scanned = runner._scan_retained_privacy(
+                root, exclude_source_clone=True)
+
+            self.assertEqual(1, scanned['filesScanned'])
+            self.assertTrue(scanned['sourceCloneExcluded'])
+            retained.write_text(evidence.SYNTHETIC_TEXTS[0])
+            with self.assertRaisesRegex(ValueError, 'canary-exposure'):
+                runner._scan_retained_privacy(
+                    root, exclude_source_clone=True)
+
+    def test_retained_surface_scan_rejects_a_linked_source_clone(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            attempt = root / 'attempt-01'
+            attempt.mkdir()
+            target = root / 'outside'
+            target.mkdir()
+            (attempt / 'cryptad').symlink_to(target, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, 'source-clone-invalid'):
+                runner._scan_retained_privacy(
+                    root, exclude_source_clone=True)
+
     def test_final_inventory_is_a_distinct_phase_bound_receipt(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
