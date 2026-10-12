@@ -208,12 +208,26 @@ def validate_final_pve_capacity(args, observation, required):
         raise ValueError('pr316-final-pve-capacity-unavailable')
 
 
-def wait_pressure_watcher(output, suite, source_commit):
-    """Request the root watcher only after all preallocation preparation has completed."""
+def wait_pressure_watcher(root, output, suite, source_commit):
+    """Require fresh host admission and an active watcher at the launch boundary."""
     retained_runner._save(output / 'awaiting-pressure-watcher.private.json', {
         'schemaVersion': 1, 'kind': 'pr316-awaiting-pressure-watcher',
-        'suite': suite, 'sourceCommit': source_commit})
+        'suite': suite, 'sourceCommit': source_commit,
+        'requiredHostAdmissionPhase': 'launch'})
     deadline = time.monotonic() + 120
+    admission_path = root / 'host-admission' / host_admission.receipt_name(
+        suite, 'launch')
+    while True:
+        try:
+            admission = host_admission.verify_receipt(
+                admission_path, suite, source_commit, 'launch')
+            retained_runner._save(
+                output / 'launch-host-admission.private.json', admission)
+            break
+        except (FileNotFoundError, OSError, ValueError):
+            if time.monotonic() >= deadline:
+                raise ValueError('pr316-launch-host-admission-unavailable') from None
+            time.sleep(.25)
     while True:
         try:
             return pressure_watch.verify_launch_ready(suite, source_commit)
@@ -696,7 +710,7 @@ def run(args):
                 def start_pressure_watcher():
                     nonlocal watch_ready
                     watch_ready = wait_pressure_watcher(
-                        output, output.name, source_commit)
+                        root, output, output.name, source_commit)
 
                 with (output / 'transport.private.log').open('x') as log, \
                         redirect_stdout(log):

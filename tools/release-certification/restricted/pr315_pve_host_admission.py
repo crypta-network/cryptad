@@ -27,6 +27,14 @@ TOTAL_BUDGET = 7 * GIB
 GUEST_AND_OVERHEAD = 6 * GIB
 PHYSICAL_RESERVE = GIB
 SWAP_RESERVE = 2 * GIB
+PHASES = ('launch',)
+
+
+def receipt_name(suite: str, phase: str | None = None) -> str:
+    """Return the immutable legacy or phase-bound receipt filename."""
+    if phase is not None and phase not in PHASES:
+        raise ValueError('pve-admission-phase-invalid')
+    return suite + (('-' + phase) if phase is not None else '') + '.json'
 
 
 def _number(path: Path) -> int:
@@ -100,7 +108,8 @@ def admission_reason(observed: dict) -> str | None:
     return None
 
 
-def publish(suite: str, source_commit: str, observed: dict) -> dict:
+def publish(suite: str, source_commit: str, observed: dict,
+            phase: str | None = None) -> dict:
     """Write one immutable PVE-owned receipt for a named CT102 suite."""
     if (os.geteuid() != 0 or re.fullmatch(r'suite-[1-9][0-9]*', suite) is None
             or re.fullmatch(r'[0-9a-f]{40}', source_commit) is None):
@@ -122,7 +131,9 @@ def publish(suite: str, source_commit: str, observed: dict) -> dict:
               'policy': POLICY, 'suite': suite, 'sourceCommit': source_commit,
               'moduleDigest': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'admitted': reason is None, 'reason': reason, 'observation': observed}
-    path = directory / (suite + '.json')
+    if phase is not None:
+        record['phase'] = phase
+    path = directory / receipt_name(suite, phase)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
     try:
         with os.fdopen(descriptor, 'w', closefd=False) as stream:
@@ -135,9 +146,10 @@ def publish(suite: str, source_commit: str, observed: dict) -> dict:
     return record
 
 
-def verify_receipt(path: Path, suite: str, source_commit: str) -> dict:
+def verify_receipt(path: Path, suite: str, source_commit: str,
+                   phase: str | None = None) -> dict:
     """Check a fresh host-root receipt as seen by the unprivileged CT runner."""
-    if path != Path('/work/pr315-task/host-admission') / (suite + '.json'):
+    if path != Path('/work/pr315-task/host-admission') / receipt_name(suite, phase):
         raise ValueError('pve-admission-receipt-path-invalid')
     parent = path.parent.lstat()
     info = path.lstat()
@@ -160,6 +172,8 @@ def verify_receipt(path: Path, suite: str, source_commit: str) -> dict:
         raise ValueError('pve-admission-receipt-invalid')
     expected = {'schemaVersion', 'kind', 'policy', 'suite', 'sourceCommit',
                 'moduleDigest', 'admitted', 'reason', 'observation'}
+    if phase is not None:
+        expected.add('phase')
     observed_ns = value['observation'].get('observedMonotonicNs')
     if type(observed_ns) is not int:
         raise ValueError('pve-admission-receipt-invalid')
@@ -167,6 +181,7 @@ def verify_receipt(path: Path, suite: str, source_commit: str) -> dict:
     if (set(value) != expected
             or value['schemaVersion'] != 1 or value['kind'] != 'pr315-pve-host-admission'
             or value['policy'] != POLICY or value['suite'] != suite
+            or phase is not None and value.get('phase') != phase
             or value['sourceCommit'] != source_commit
             or value['moduleDigest'] != hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
             or value['admitted'] is not True or value['reason'] is not None
@@ -180,10 +195,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--suite', required=True)
     parser.add_argument('--source-commit', required=True)
+    parser.add_argument('--phase', choices=PHASES)
     args = parser.parse_args()
     try:
         observed = snapshot()
-        reason = publish(args.suite, args.source_commit, observed)['reason']
+        reason = publish(args.suite, args.source_commit, observed,
+                         args.phase)['reason']
     except (OSError, ValueError):
         reason = 'pve-admission-observation-or-publication-failed'
     print(json.dumps({'policy': POLICY, 'admitted': reason is None, 'reason': reason},

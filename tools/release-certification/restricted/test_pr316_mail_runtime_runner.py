@@ -367,19 +367,30 @@ class MailRuntimeRunnerTest(unittest.TestCase):
 
     def test_pressure_watcher_is_requested_only_at_the_prelaunch_marker(self):
         with tempfile.TemporaryDirectory() as temporary:
-            output = Path(temporary)
+            root = Path(temporary)
+            output = root / 'suite-1'
+            output.mkdir()
+            admission = {'observation': {'observedMonotonicNs': 1}}
             ready = {'kind': 'pr315-pve-watch-ready'}
-            with patch.object(runner.pressure_watch, 'verify_launch_ready',
+            with patch.object(runner.host_admission, 'verify_receipt',
+                              return_value=admission) as verify_admission, \
+                    patch.object(runner.pressure_watch, 'verify_launch_ready',
                               side_effect=[FileNotFoundError(), ready]) as verify, \
                     patch.object(runner.time, 'monotonic', return_value=0), \
                     patch.object(runner.time, 'sleep') as sleep:
                 self.assertEqual(ready, runner.wait_pressure_watcher(
-                    output, 'suite-1', 'a' * 40))
+                    root, output, 'suite-1', 'a' * 40))
+            verify_admission.assert_called_once_with(
+                root / 'host-admission/suite-1-launch.json',
+                'suite-1', 'a' * 40, 'launch')
             self.assertEqual(2, verify.call_count)
             sleep.assert_called_once_with(.25)
             marker = json.loads((output /
                 'awaiting-pressure-watcher.private.json').read_text())
             self.assertEqual('pr316-awaiting-pressure-watcher', marker['kind'])
+            self.assertEqual('launch', marker['requiredHostAdmissionPhase'])
+            self.assertEqual(admission, json.loads((output /
+                'launch-host-admission.private.json').read_text()))
 
     def test_failed_watcher_reconciliation_accepts_authenticated_prelaunch_stop(self):
         ready = {'observedMonotonicNs': 100}
