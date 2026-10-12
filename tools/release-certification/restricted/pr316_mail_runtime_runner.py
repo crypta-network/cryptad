@@ -216,7 +216,7 @@ def wait_pressure_watcher(output, suite, source_commit):
     deadline = time.monotonic() + 120
     while True:
         try:
-            return pressure_watch.verify_ready(suite, source_commit)
+            return pressure_watch.verify_launch_ready(suite, source_commit)
         except (FileNotFoundError, OSError, ValueError):
             if time.monotonic() >= deadline:
                 raise ValueError('pr316-pve-host-monitor-unavailable') from None

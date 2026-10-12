@@ -26,6 +26,7 @@ GIB = 1024 ** 3
 SAMPLE_SECONDS = 2
 MAX_SECONDS = 4500
 PRELAUNCH_SECONDS = 30
+LAUNCH_HEADROOM_SECONDS = 5
 LIMITS = {'physical': 5, 'swap': 2, 'memoryPressure': 15, 'ioPressure': 15}
 
 
@@ -311,6 +312,24 @@ def wait_ready(suite: str, source_commit: str) -> dict:
             if remaining <= 0:
                 raise ValueError('pr315-pressure-watch-ready-unavailable') from None
             time.sleep(min(.05, remaining))
+
+
+def verify_launch_ready(suite: str, source_commit: str) -> dict:
+    """Require a fresh active watcher with headroom for the immediate QEMU launch."""
+    ready = verify_ready(suite, source_commit)
+    age = time.monotonic_ns() - ready['observedMonotonicNs']
+    if (age < 0 or age >
+            (PRELAUNCH_SECONDS - LAUNCH_HEADROOM_SECONDS) * 1_000_000_000):
+        raise ValueError('pr315-pressure-watch-launch-ready-expired')
+    try:
+        _ct_record(Path('/work/pr315-task/host-monitor') /
+                   (suite + '.finished.json'), suite,
+                   'pr315-pve-watch-finished')
+    except FileNotFoundError:
+        return ready
+    except (OSError, ValueError):
+        raise ValueError('pr315-pressure-watch-launch-ready-invalid') from None
+    raise ValueError('pr315-pressure-watch-launch-already-finished')
 
 
 def verify_finished(suite: str, source_commit: str, ready: dict) -> dict:

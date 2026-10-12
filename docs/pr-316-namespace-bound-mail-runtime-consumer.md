@@ -115,9 +115,10 @@ nohup python3 tools/release-certification/restricted/pr315_pve_pressure_watch.py
 The runner authenticates the watcher ready receipt at the final pre-QEMU boundary and then launches
 the guest immediately. A fixture, final-inventory or capacity failure therefore occurs before the
 watcher is requested. If QEMU does not appear within 30 seconds after readiness, the watcher closes
-as `stopped-before-launch`; the runner authenticates that receipt before returning a post-ready
-failure. Reusing the `pre` receipt cannot authorize allocation, and starting the watcher before the
-second marker is unsupported.
+as `stopped-before-launch`. Before launch, the runner also requires at least five seconds of that
+window to remain and rejects any already-published finished receipt. It authenticates watcher
+termination before returning a post-ready failure. Reusing the `pre` receipt cannot authorize
+allocation, and starting the watcher before the second marker is unsupported.
 
 The runner has no campaign, case-group, v10, history, protected-authority or retired-authority
 options. Before each possible VM allocation it requires a fresh immutable PVE-root inventory

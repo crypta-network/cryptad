@@ -369,7 +369,7 @@ class MailRuntimeRunnerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
             ready = {'kind': 'pr315-pve-watch-ready'}
-            with patch.object(runner.pressure_watch, 'verify_ready',
+            with patch.object(runner.pressure_watch, 'verify_launch_ready',
                               side_effect=[FileNotFoundError(), ready]) as verify, \
                     patch.object(runner.time, 'monotonic', return_value=0), \
                     patch.object(runner.time, 'sleep') as sleep:
@@ -554,7 +554,7 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                                  side_effect=check_capacity) as pve_capacity, \
                     patch.object(runner.pressure_watch, 'wait_ready',
                                  side_effect=AssertionError('legacy early watcher wait')), \
-                    patch.object(runner.pressure_watch, 'verify_ready',
+                    patch.object(runner.pressure_watch, 'verify_launch_ready',
                                  return_value={'observedMonotonicNs': 1}) as watch_ready, \
                     patch.object(runner.pressure_watch, 'verify_finished',
                                  return_value={'action': 'completed'}), \
@@ -619,7 +619,7 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                                      'availableTaskBytes': 2 * 1024**3}}), \
                     patch.object(runner.pressure_watch, 'wait_ready',
                                  side_effect=AssertionError('legacy early watcher wait')), \
-                    patch.object(runner.pressure_watch, 'verify_ready',
+                    patch.object(runner.pressure_watch, 'verify_launch_ready',
                                  return_value={'observedMonotonicNs': 1}), \
                     patch.object(runner.pressure_watch, 'verify_finished',
                                  return_value={'action': 'completed'}), \

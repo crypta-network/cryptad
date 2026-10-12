@@ -72,6 +72,28 @@ class PressureWatchTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'ready-unavailable'):
                 watch.wait_ready('suite-111', 'a' * 40)
 
+    def test_launch_ready_requires_headroom_and_no_finished_receipt(self):
+        ready = {'observedMonotonicNs': 100}
+        maximum_age = (watch.PRELAUNCH_SECONDS -
+                       watch.LAUNCH_HEADROOM_SECONDS) * 1_000_000_000
+        with patch.object(watch, 'verify_ready', return_value=ready), \
+                patch.object(watch.time, 'monotonic_ns',
+                             return_value=100 + maximum_age), \
+                patch.object(watch, '_ct_record',
+                             side_effect=FileNotFoundError()):
+            self.assertEqual(ready, watch.verify_launch_ready(
+                'suite-111', 'a' * 40))
+        with patch.object(watch, 'verify_ready', return_value=ready), \
+                patch.object(watch.time, 'monotonic_ns',
+                             return_value=101 + maximum_age), \
+                self.assertRaisesRegex(ValueError, 'launch-ready-expired'):
+            watch.verify_launch_ready('suite-111', 'a' * 40)
+        with patch.object(watch, 'verify_ready', return_value=ready), \
+                patch.object(watch.time, 'monotonic_ns', return_value=100), \
+                patch.object(watch, '_ct_record', return_value={}), \
+                self.assertRaisesRegex(ValueError, 'launch-already-finished'):
+            watch.verify_launch_ready('suite-111', 'a' * 40)
+
     def test_prelaunch_stop_requires_matching_ready_and_no_qemu(self):
         source = 'a' * 40
         ready = {'schemaVersion': 1, 'kind': 'pr315-pve-watch-ready',
