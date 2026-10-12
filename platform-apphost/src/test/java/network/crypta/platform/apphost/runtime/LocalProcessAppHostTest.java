@@ -2240,8 +2240,9 @@ class LocalProcessAppHostTest {
   }
 
   @Test
-  void start_whenCallerIsInterrupted_tracksChildBeforeRestoringInterrupt() throws IOException {
-    AppHost host = allowUnsignedHost();
+  void start_whenCallerIsInterrupted_tracksChildBeforeRestoringInterrupt()
+      throws IOException, ReflectiveOperationException {
+    LocalProcessAppHost host = allowUnsignedHost();
     host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
 
     Thread.currentThread().interrupt();
@@ -2250,10 +2251,12 @@ class LocalProcessAppHostTest {
 
       assertTrue(Thread.currentThread().isInterrupted());
       assertEquals(running.token(), host.status(RUNNER_APP_ID).orElseThrow().token());
-      assertTrue(ProcessHandle.of(running.pid()).map(ProcessHandle::isAlive).orElse(false));
+      // The representative PID may be a short-lived sleep child of the script launcher.
+      assertTrue(runnerRootProcess(host).isAlive());
     } finally {
-      assertTrue(Thread.interrupted());
+      boolean interrupted = Thread.interrupted();
       host.stop(RUNNER_APP_ID);
+      assertTrue(interrupted);
     }
   }
 
@@ -4862,6 +4865,16 @@ class LocalProcessAppHostTest {
     runningAppsField.setAccessible(true);
     Map<String, Object> runningApps = (Map<String, Object>) runningAppsField.get(host);
     return runningApps.get(RUNNER_APP_ID);
+  }
+
+  @SuppressWarnings("java:S3011")
+  private static Process runnerRootProcess(LocalProcessAppHost host)
+      throws ReflectiveOperationException {
+    Object runningProcess = runnerProcessEntry(host);
+    assertNotNull(runningProcess);
+    Field processField = runningProcess.getClass().getDeclaredField("process");
+    processField.setAccessible(true);
+    return (Process) processField.get(runningProcess);
   }
 
   @SuppressWarnings("java:S3011")
