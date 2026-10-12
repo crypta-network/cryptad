@@ -208,13 +208,24 @@ def validate_pve_capacity(args, observation, required):
         raise ValueError('pr316-final-pve-capacity-unavailable')
 
 
-def wait_pressure_watcher(args, root, output, suite, source_commit, required):
+def launch_remaining_bytes(required, prepared):
+    """Return only the bounded growth still possible after host preparation."""
+    reserve = retained_runner.GUEST_WRITE_RESERVE + retained_runner.REPORT_RESERVE
+    if (type(required) is not int or required < reserve
+            or type(prepared) is not int or prepared < 0):
+        raise ValueError('pr316-launch-capacity-requirement-invalid')
+    return max(reserve, required - prepared)
+
+
+def wait_pressure_watcher(args, root, output, suite, source_commit, prepared, remaining):
     """Require fresh PVE admission, inventory and watcher at the launch boundary."""
     not_before = time.monotonic_ns()
     retained_runner._save(output / 'awaiting-pressure-watcher.private.json', {
         'schemaVersion': 1, 'kind': 'pr316-awaiting-pressure-watcher',
         'suite': suite, 'sourceCommit': source_commit,
         'notBeforeMonotonicNs': not_before,
+        'preparedAttemptBytes': prepared,
+        'requiredRemainingBytes': remaining,
         'requiredHostAdmissionPhase': 'launch',
         'requiredPveInventoryPhase': 'launch'})
     deadline = time.monotonic() + 120
@@ -247,7 +258,7 @@ def wait_pressure_watcher(args, root, output, suite, source_commit, required):
     observed = inventory.get('observation', {}).get('observedMonotonicNs')
     if type(observed) is not int or observed <= not_before:
         raise ValueError('pr316-launch-pve-inventory-before-barrier')
-    validate_pve_capacity(args, inventory['observation'], required)
+    validate_pve_capacity(args, inventory['observation'], remaining)
     retained_runner._save(
         output / 'launch-pve-inventory.private.json', inventory)
     while True:
@@ -731,8 +742,11 @@ def run(args):
 
                 def start_pressure_watcher():
                     nonlocal watch_ready
+                    prepared = retained_runner.allocated_bytes(selected.attempt)
+                    remaining = launch_remaining_bytes(required, prepared)
                     watch_ready = wait_pressure_watcher(
-                        args, root, output, output.name, source_commit, required)
+                        args, root, output, output.name, source_commit,
+                        prepared, remaining)
 
                 with (output / 'transport.private.log').open('x') as log, \
                         redirect_stdout(log):

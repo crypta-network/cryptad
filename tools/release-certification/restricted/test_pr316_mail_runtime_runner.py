@@ -365,6 +365,20 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             runner.validate_pve_capacity(
                 selected, {'allocatedTaskBytes': 300, 'availableTaskBytes': True}, 500)
 
+    def test_launch_capacity_charges_only_post_preparation_reserves(self):
+        reserve = (runner.retained_runner.GUEST_WRITE_RESERVE
+                   + runner.retained_runner.REPORT_RESERVE)
+        self.assertEqual(reserve + 300,
+                         runner.launch_remaining_bytes(reserve + 500, 200))
+        self.assertEqual(reserve,
+                         runner.launch_remaining_bytes(reserve + 500, 1000))
+        for required, prepared in ((reserve - 1, 0), (True, 0),
+                                   (reserve, -1), (reserve, True)):
+            with self.subTest(required=required, prepared=prepared), \
+                    self.assertRaisesRegex(
+                    ValueError, 'pr316-launch-capacity-requirement-invalid'):
+                runner.launch_remaining_bytes(required, prepared)
+
     def test_pressure_watcher_is_requested_only_at_the_prelaunch_marker(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -387,7 +401,7 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                     patch.object(runner.time, 'monotonic', return_value=0), \
                     patch.object(runner.time, 'sleep') as sleep:
                 self.assertEqual(ready, runner.wait_pressure_watcher(
-                    selected, root, output, 'suite-1', 'a' * 40, 500))
+                    selected, root, output, 'suite-1', 'a' * 40, 200, 500))
             verify_admission.assert_called_once_with(
                 root / 'host-admission/suite-1-launch.json',
                 'suite-1', 'a' * 40, 'launch')
@@ -400,6 +414,8 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                 'awaiting-pressure-watcher.private.json').read_text())
             self.assertEqual('pr316-awaiting-pressure-watcher', marker['kind'])
             self.assertEqual(100, marker['notBeforeMonotonicNs'])
+            self.assertEqual(200, marker['preparedAttemptBytes'])
+            self.assertEqual(500, marker['requiredRemainingBytes'])
             self.assertEqual('launch', marker['requiredHostAdmissionPhase'])
             self.assertEqual('launch', marker['requiredPveInventoryPhase'])
             self.assertEqual(admission, json.loads((output /
@@ -428,7 +444,7 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                     self.assertRaisesRegex(
                         ValueError, 'pr316-launch-pve-inventory-before-barrier'):
                 runner.wait_pressure_watcher(
-                    selected, root, output, 'suite-1', 'a' * 40, 500)
+                    selected, root, output, 'suite-1', 'a' * 40, 200, 500)
             verify_ready.assert_not_called()
 
     def test_failed_watcher_reconciliation_accepts_authenticated_prelaunch_stop(self):
@@ -569,6 +585,9 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             projected = public_result()
             captured, events = {}, []
             validate_capacity = runner.validate_pve_capacity
+            reserve = (runner.retained_runner.GUEST_WRITE_RESERVE
+                       + runner.retained_runner.REPORT_RESERVE)
+            required, prepared, remaining = reserve + 4096, 3072, reserve + 1024
 
             def execute(call, *, before_guest_launch):
                 captured['args'] = call
@@ -596,12 +615,12 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                                      'observedMonotonicNs': 10**30,
                                      'activeTaskQemu': [],
                                      'allocatedTaskBytes': 0,
-                                     'availableTaskBytes': 2 * 1024**3}}), \
+                                     'availableTaskBytes': 64 * 1024**3}}), \
                     patch.object(runner, 'wait_final_pve_inventory',
                                  return_value={'observation': {
                                      'activeTaskQemu': [],
                                      'allocatedTaskBytes': 0,
-                                     'availableTaskBytes': 2 * 1024**3}}), \
+                                     'availableTaskBytes': 64 * 1024**3}}), \
                     patch.object(runner, 'validate_pve_capacity',
                                  side_effect=check_capacity) as pve_capacity, \
                     patch.object(runner.pressure_watch, 'wait_ready',
@@ -611,9 +630,9 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                     patch.object(runner.pressure_watch, 'verify_finished',
                                  return_value={'action': 'completed'}), \
                     patch.object(runner.retained_runner, 'allocated_bytes',
-                                 return_value=0), \
+                                 side_effect=[0, prepared]), \
                     patch.object(runner.retained_runner, 'required_attempt_bytes',
-                                 return_value=1024), \
+                                 return_value=required), \
                     patch.object(runner.retained_runner, 'capacity_reason',
                                  return_value=None), \
                     patch.object(runner.fixtures, 'verify', return_value={}), \
@@ -638,13 +657,20 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             self.assertEqual(2, pve_capacity.call_count)
             pve_capacity.assert_any_call(selected, {
                 'activeTaskQemu': [], 'allocatedTaskBytes': 0,
-                'availableTaskBytes': 2 * 1024**3}, 1024)
+                'availableTaskBytes': 64 * 1024**3}, required)
+            pve_capacity.assert_any_call(selected, {
+                'observedMonotonicNs': 10**30,
+                'activeTaskQemu': [], 'allocatedTaskBytes': 0,
+                'availableTaskBytes': 64 * 1024**3}, remaining)
 
     def test_failed_private_reconciliation_still_emits_closed_assessment(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             root.chmod(0o700)
             selected = args(root)
+            reserve = (runner.retained_runner.GUEST_WRITE_RESERVE
+                       + runner.retained_runner.REPORT_RESERVE)
+            required, prepared = reserve + 4096, 3072
 
             def execute(call, *, before_guest_launch):
                 call.attempt.mkdir()
@@ -666,12 +692,12 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                                      'observedMonotonicNs': 10**30,
                                      'activeTaskQemu': [],
                                      'allocatedTaskBytes': 0,
-                                     'availableTaskBytes': 2 * 1024**3}}), \
+                                     'availableTaskBytes': 64 * 1024**3}}), \
                     patch.object(runner, 'wait_final_pve_inventory',
                                  return_value={'observation': {
                                      'activeTaskQemu': [],
                                      'allocatedTaskBytes': 0,
-                                     'availableTaskBytes': 2 * 1024**3}}), \
+                                     'availableTaskBytes': 64 * 1024**3}}), \
                     patch.object(runner.pressure_watch, 'wait_ready',
                                  side_effect=AssertionError('legacy early watcher wait')), \
                     patch.object(runner.pressure_watch, 'verify_launch_ready',
@@ -679,9 +705,9 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                     patch.object(runner.pressure_watch, 'verify_finished',
                                  return_value={'action': 'completed'}), \
                     patch.object(runner.retained_runner, 'allocated_bytes',
-                                 return_value=0), \
+                                 side_effect=[0, prepared]), \
                     patch.object(runner.retained_runner, 'required_attempt_bytes',
-                                 return_value=1024), \
+                                 return_value=required), \
                     patch.object(runner.retained_runner, 'capacity_reason',
                                  return_value=None), \
                     patch.object(runner.fixtures, 'verify', return_value={}), \

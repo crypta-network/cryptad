@@ -121,7 +121,12 @@ The runner authenticates the watcher ready receipt at the final pre-QEMU boundar
 the guest immediately. The same callback first requires distinct immutable launch-phase host
 admission and PVE inventory receipts created after its marker. Memory, swap, pressure, absence of a
 task QEMU, allocated task storage and the free-space reserve are therefore remeasured after host
-preparation rather than inherited from earlier receipts. A fixture, final-inventory or capacity
+preparation rather than inherited from earlier receipts. Because that inventory already includes
+the copied image, runtime, source, products, fixtures, archive and overlay, its capacity check adds
+only the unmaterialized part of the whole-attempt estimate after subtracting the measured prepared
+attempt. That remainder can never fall below the bounded guest-write and terminal-report reserves,
+and unrelated task-root growth remains fully charged by the PVE snapshot. A fixture, final-inventory
+or capacity
 failure therefore occurs before the watcher is requested. If QEMU does not appear within 30 seconds
 after readiness, the watcher closes as `stopped-before-launch`. Before launch, the runner also
 requires at least five seconds of that window to remain and rejects any already-published finished
