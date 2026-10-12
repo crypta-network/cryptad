@@ -225,8 +225,9 @@ def _restart_context(value, principals):
     old, new = before['roleIdentity'], after['roleIdentity']
     return (new == current
             and all(old[key] == new[key] for key in current
-                    if key not in ('invocationId', 'processEpoch'))
+                    if key not in ('invocationId', 'processEpoch', 'cgroupDigest'))
             and old['invocationId'] != new['invocationId']
+            and old['cgroupDigest'] != new['cgroupDigest']
             and old['processEpoch'] < new['processEpoch']
             and before['observedMonotonicNs'] < after['observedMonotonicNs']
             and before['deadlineNs'] == after['deadlineNs']

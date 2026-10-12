@@ -10,7 +10,8 @@ from collections.abc import Callable
 
 def run(arguments: list[str], *, environment: dict[str, str], payload: bytes | None = None,
         timeout: float = 180, output_limit: int = 32768,
-        diagnostic_sink: Callable[[bytes, bytes], None] | None = None) -> bytes:
+        diagnostic_sink: Callable[[bytes, bytes], None] | None = None,
+        start_observer: Callable[[int], None] | None = None) -> bytes:
     """Drain both pipes under one deadline and terminate only this newly owned process group.
 
     A trusted optional sink receives at most ``output_limit`` bytes from each stream after
@@ -18,6 +19,8 @@ def run(arguments: list[str], *, environment: dict[str, str], payload: bytes | N
     publish the bytes. The sink never grants authority to output or establishes quiescence
     beyond this helper's process group; the installed owner still checks its complete cgroup.
     """
+    if start_observer is not None and not callable(start_observer):
+        raise ValueError('bounded_process_observer_invalid')
     if payload is not None and len(payload) > 16384:
         raise ValueError("bounded_process_input_exceeded")
     deadline = time.monotonic() + timeout
@@ -34,6 +37,8 @@ def run(arguments: list[str], *, environment: dict[str, str], payload: bytes | N
     completed = False
     diagnostics = {"stdout": bytearray(), "stderr": bytearray()} if diagnostic_sink is not None else None
     try:
+        if start_observer is not None:
+            start_observer(process.pid)
         output = bytearray()
         counts = {"stdout": 0, "stderr": 0}
         with selectors.DefaultSelector() as selector:

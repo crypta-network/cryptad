@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import signal
 import subprocess
 import sys
 import tarfile
@@ -17,7 +18,53 @@ import time
 
 import restricted_workload as workload
 from restricted_workload_storage import copy_tree
+from restricted_workload_launcher import launcher_policy, verify_wrapper_options
 from restricted_native_launcher import tree_identity
+
+
+def _wait_storage_child(child, campaign_deadline_ns):
+    """Bound initialization and reap only its still-owned direct fork child.
+
+    No state is removed on failure. An uncertain reap leaves preparation incomplete;
+    the two-second termination allowance cannot authorize further campaign work.
+    """
+    deadline = min(campaign_deadline_ns / 1e9, time.monotonic() + 5)
+    while True:
+        try:
+            observed, status = os.waitpid(child, os.WNOHANG)
+        except InterruptedError:
+            observed = 0
+        except ChildProcessError:
+            workload.reject('role-storage-child-reconciliation-required')
+        if observed == child:
+            if time.monotonic() >= deadline:
+                workload.reject('role-storage-initialization-timeout')
+            if status != 0:
+                workload.reject('role-storage-initialization-failed')
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(.01, remaining))
+    # No wait has reaped this direct child, so its PID cannot yet be reused.
+    try:
+        os.kill(child, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    reap_deadline = time.monotonic() + 2
+    while True:
+        try:
+            observed, _status = os.waitpid(child, os.WNOHANG)
+        except InterruptedError:
+            observed = 0
+        except ChildProcessError:
+            workload.reject('role-storage-child-reconciliation-required')
+        if observed == child:
+            workload.reject('role-storage-initialization-timeout')
+        remaining = reap_deadline - time.monotonic()
+        if remaining <= 0:
+            workload.reject('role-storage-child-reconciliation-required')
+        time.sleep(min(.01, remaining))
 
 
 def configuration(role):
@@ -32,14 +79,18 @@ def configuration(role):
         text = config.read_text().replace(str(node), '/node')
     return (text.replace('node.bindTo=127.0.0.1', 'node.bindTo=' + address(role))
             .replace('node.ipAddressOverride=127.0.0.1', 'node.ipAddressOverride=' + address(role))
-            .replace('node.includeLocalAddressesInNoderefs=false', 'node.includeLocalAddressesInNoderefs=true'))
+            .replace('node.includeLocalAddressesInNoderefs=false', 'node.includeLocalAddressesInNoderefs=true')
+            # The finite synthetic fixture supplies setup choices before launch. Without
+            # this flag the normal HTTP router redirects host bootstrap to the wizard.
+            .replace('End\n', 'fproxy.hasCompletedWizard=true\nEnd\n'))
 
 
 def configuration_identity(role, trust_digest):
     text = configuration(role)
     from cross_version_runtime import canonical_digest
     return canonical_digest({'profile': workload.PROFILE, 'role': role,
-                             'configuration': text, 'appTrustDigest': trust_digest})
+                             'configuration': text, 'appTrustDigest': trust_digest,
+                             'launcherPolicy': launcher_policy()})
 
 
 def prepare(plan, private, authorization):
@@ -69,15 +120,17 @@ def prepare(plan, private, authorization):
     for index, role in enumerate(workload.ROLES):
         selected = plan['nodes'][index]
         row = private['nodes'][role]
+        app_ids = [app.get('appId') for app in row.get('apps', [])] if isinstance(row.get('apps'), list) else []
         if (selected.get('product') != 'cryptad'
                 or set(row) != {'archivePath', 'javaHome', 'fnpPort', 'fcpPort', 'httpPort',
                                 'apps', 'trustedKeysPath', 'trustedKeysDigest'}
                 or (row['fnpPort'], row['fcpPort'], row['httpPort']) != (FNP_PORT, FCP_PORT, HTTP_PORT)
                 or not isinstance(row.get('apps'), list)
-                or len(row['apps']) > 1
-                or any(app.get('appId') != 'mail-prototype' for app in row['apps'])
-                or role == 'relay-no-apps' and row['apps']
-                or role in ('candidate-sender', 'candidate-recipient') and len(row['apps']) != 1
+                or role == 'candidate-sender' and app_ids not in
+                    (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
+                or role == 'candidate-recipient' and app_ids != ['mail-prototype']
+                or role == 'relay-no-apps' and app_ids != []
+                or role == 'previous' and app_ids not in ([], ['mail-prototype'])
                 or sorted(app.get('bundleDigest', '') for app in row['apps']) != sorted(selected.get('appDigests', []))):
             workload.reject('profile-app-selection-unsupported')
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -162,6 +215,7 @@ def prepare(plan, private, authorization):
             staging.mkdir(mode=0o700)
             package = runtime.extract_package(row['archivePath'], staging / 'package',
                                               selected['artifactDigest'], selected['artifactSize'])
+            verify_wrapper_options(package)
             daemon_digests[role] = runtime.packaged_daemon_identity(package, selected['sourceCommit'])
             runtime.require_native_target(package, selected['packageTarget'], row['javaHome'])
             if runtime.tree_digest(row['javaHome']) != selected['runtimeDigest']:
@@ -172,11 +226,16 @@ def prepare(plan, private, authorization):
             if sorted(app['bundleDigest'] for app in row['apps']) != sorted(selected['appDigests']):
                 workload.reject('app-selection-mismatch')
             for app in row['apps']:
-                if app['appId'] != 'mail-prototype' or role == 'relay-no-apps':
+                if (app['appId'] not in ('mail-prototype', 'pr315-probe')
+                        or app['appId'] == 'pr315-probe' and role != 'candidate-sender'
+                        or role == 'relay-no-apps'):
                     workload.reject('app-adapter-unsupported')
                 workload.secured(Path(app['bundlePath']))
                 runtime.extract_app_bundle(app['bundlePath'], apps / app['appId'], app['bundleDigest'])
-            if role in ('candidate-sender', 'candidate-recipient') and len(row['apps']) != 1:
+            if (role == 'candidate-sender' and [app['appId'] for app in row['apps']] not in
+                    (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
+                    or role == 'candidate-recipient' and
+                    [app['appId'] for app in row['apps']] != ['mail-prototype']):
                 workload.reject('mail-selection-required')
             trust = b''
             if row['apps']:
@@ -215,8 +274,7 @@ def prepare(plan, private, authorization):
                     os._exit(0)
                 except BaseException:
                     os._exit(1)
-            if os.waitpid(child, 0)[1] != 0:
-                workload.reject('role-storage-initialization-failed')
+            _wait_storage_child(child, deadline)
             # Expected initial bytes stay in root authority, separate from normalized runtime config.
             expected_config = hashlib.sha256((node / 'config/cryptad.ini').read_bytes()).hexdigest()
             java_digests[role] = runtime.digest_file(inputs / 'jdk/bin/java')
@@ -226,6 +284,11 @@ def prepare(plan, private, authorization):
                 launch['mailIdentity'] = tree_identity(inputs / 'apps/mail-prototype')
                 if launch['mailIdentity']['sizeBytes'] > 64 * 1024 * 1024 or launch['mailIdentity']['fileCount'] > 4095:
                     workload.reject('app-observation-budget-exceeded')
+                if role == 'candidate-sender' and len(row['apps']) == 2:
+                    launch['probeIdentity'] = tree_identity(inputs / 'apps/pr315-probe')
+                    if (launch['probeIdentity']['sizeBytes'] > 64 * 1024 * 1024
+                            or launch['probeIdentity']['fileCount'] > 4095):
+                        workload.reject('probe-observation-budget-exceeded')
             workload.write(inputs / 'launch.json', launch, create=True, mode=0o444)
             record = {'handle': handles[role], 'campaign': generation, 'bootId': campaign['bootId'],
                 'generation': None, 'managerInvocation': None, 'cgroupIdentity': None,
@@ -237,5 +300,6 @@ def prepare(plan, private, authorization):
         campaign['state'] = 'prepared'
         workload.write(workload.ROOT / 'campaign.json', campaign)
         return {'profile': workload.PROFILE, 'handles': handles, 'expectedJdkDigests': java_digests,
+                'deadlineMonotonicNs': campaign['deadlineMonotonicNs'],
                 'implementationIdentity': implementation,
                 'classification': campaign['classification']}

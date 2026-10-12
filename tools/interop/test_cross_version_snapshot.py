@@ -103,6 +103,24 @@ class WorkloadSnapshotTest(unittest.TestCase):
                 self.assertRaisesRegex(snapshot.SnapshotError, 'deadline'):
             snapshot.read_file(self.root, 'output')
 
+    def test_fixed_barrier_after_pin_cannot_accept_replaced_path(self):
+        selected = self.root / 'output'
+        replacement = self.root / 'replacement'
+        selected.write_bytes(b'A' * 32)
+        replacement.write_bytes(b'B' * 32)
+        observed = []
+
+        def swap_after_pin():
+            observed.append(selected.stat().st_ino)
+            os.replace(replacement, selected)
+
+        with self.assertRaisesRegex(snapshot.SnapshotError, 'changed'):
+            snapshot.read_file(self.root, 'output', maximum=32, timeout=2,
+                               pinned_hook=swap_after_pin)
+        self.assertEqual(1, len(observed))
+        self.assertNotEqual(observed[0], selected.stat().st_ino)
+        self.assertEqual(b'B' * 32, selected.read_bytes())
+
     def test_directory_replacement_during_walk_rejects_complete_result(self):
         selected = self.root / 'app'
         selected.mkdir()

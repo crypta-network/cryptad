@@ -3,6 +3,7 @@ package network.crypta.platform.apphost.runtime;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -152,6 +153,8 @@ class LocalProcessAppHostTest {
   private static final String MKFIFO_COMMAND = "mkfifo";
   private static final String NETWORK_ACCESS_PERMISSION = "network.access";
   private static final String FILE_READ_PERMISSION = "file.read";
+  private static final long SYNTHETIC_EXITED_ROOT_PID = Long.MAX_VALUE - 1;
+  private static final long SYNTHETIC_TRANSIENT_CHILD_PID = Long.MAX_VALUE;
   private static final List<String> STANDARD_PERMISSIONS =
       List.of(NETWORK_ACCESS_PERMISSION, FILE_READ_PERMISSION);
   private static final String STANDARD_PERMISSIONS_TEXT =
@@ -2129,6 +2132,92 @@ class LocalProcessAppHostTest {
   }
 
   @Test
+  void listRuntimeStatus_whenAppsInstalledOutOfOrder_expectSortedImmutableStoppedStatuses()
+      throws IOException {
+    LocalProcessAppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+
+    List<AppRuntimeStatusSnapshot> statuses = host.listRuntimeStatus();
+
+    assertEquals(
+        List.of(RUNNER_APP_ID, SAMPLE_APP_ID),
+        statuses.stream().map(AppRuntimeStatusSnapshot::appId).toList());
+    assertTrue(statuses.stream().allMatch(status -> status.state() == AppRuntimeState.STOPPED));
+    assertTrue(statuses.stream().noneMatch(AppRuntimeStatusSnapshot::running));
+    assertThrows(UnsupportedOperationException.class, statuses::clear);
+  }
+
+  @Test
+  void listRuntimeStatus_whenManifestDisappearsDuringStatusRefresh_expectCheckedIoFailure()
+      throws IOException {
+    Runnable removeNextManifest =
+        () -> {
+          try {
+            Files.deleteIfExists(layout().pathsFor(SAMPLE_APP_ID).manifestFile());
+          } catch (IOException exception) {
+            throw new AssertionError(exception);
+          }
+        };
+    LocalProcessAppHost host = hostWithStatusObservation(removeNextManifest);
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+
+    IOException exception = assertThrows(IOException.class, host::listRuntimeStatus);
+
+    IOException directFailure =
+        assertThrows(IOException.class, () -> host.runtimeStatus(SAMPLE_APP_ID));
+    assertEquals(directFailure.getClass(), exception.getClass());
+    assertEquals(directFailure.getMessage(), exception.getMessage());
+  }
+
+  @Test
+  void listRuntimeStatus_whenProviderThrowsUncheckedIoFailure_expectOriginalException()
+      throws IOException {
+    UncheckedIOException failure =
+        new UncheckedIOException(new IOException("provider unavailable"));
+    LocalProcessAppHost host =
+        hostWithStatusObservation(
+            () -> {
+              throw failure;
+            });
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+
+    UncheckedIOException exception =
+        assertThrows(UncheckedIOException.class, host::listRuntimeStatus);
+
+    assertSame(failure, exception);
+  }
+
+  private LocalProcessAppHost hostWithStatusObservation(Runnable observe) {
+    AppSandboxProvider provider =
+        new AppSandboxProvider() {
+          @Override
+          public String providerName() {
+            return BUBBLEWRAP_PROVIDER_NAME;
+          }
+
+          @Override
+          public boolean supports(AppSandboxPolicy policy) {
+            return true;
+          }
+
+          @Override
+          public AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
+            observe.run();
+            return enforcedRestrictedProcessStatus(policy, false);
+          }
+
+          @Override
+          public AppSandboxLaunchPlan prepareLaunch(AppSandboxLaunchContext context) {
+            throw new UnsupportedOperationException("status-only test provider");
+          }
+        };
+    return allowUnsignedHost(
+        Duration.ofSeconds(1), new AppEnv(), new AppSandboxProviders(provider, null, null));
+  }
+
+  @Test
   void installFromDirectory_whenPosixDirectExecutableLacksExecutePermission_expectFailure()
       throws IOException {
     AppEnv appEnv = new AppEnv();
@@ -2235,6 +2324,27 @@ class LocalProcessAppHostTest {
     host.uninstall(RUNNER_APP_ID);
     assertInstallationPathsRemoved(installation);
     assertTrue(host.listInstalled().isEmpty());
+  }
+
+  @Test
+  void start_whenCallerIsInterrupted_tracksChildBeforeRestoringInterrupt()
+      throws IOException, ReflectiveOperationException {
+    LocalProcessAppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+
+    Thread.currentThread().interrupt();
+    try {
+      RunningAppSnapshot running = host.start(RUNNER_APP_ID);
+
+      assertTrue(Thread.currentThread().isInterrupted());
+      assertEquals(running.token(), host.status(RUNNER_APP_ID).orElseThrow().token());
+      // The representative PID may be a short-lived sleep child of the script launcher.
+      assertTrue(runnerRootProcess(host).isAlive());
+    } finally {
+      boolean interrupted = Thread.interrupted();
+      host.stop(RUNNER_APP_ID);
+      assertTrue(interrupted);
+    }
   }
 
   @Test
@@ -2770,7 +2880,9 @@ class LocalProcessAppHostTest {
     Path stagedApp = stageInstalledRunnerApp(IMMEDIATE_CRASH_SCRIPT);
     appendOnFailureRestartPolicy(stagedApp, 10);
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
-    Process process = new CleanExitedProcessWithTransientChild(101L, 102L, 2);
+    Process process =
+        new CleanExitedProcessWithTransientChild(
+            SYNTHETIC_EXITED_ROOT_PID, SYNTHETIC_TRANSIENT_CHILD_PID, 2);
     RunningAppSnapshot snapshot =
         new RunningAppSnapshot(
             installation.manifest(),
@@ -2800,8 +2912,10 @@ class LocalProcessAppHostTest {
     Path stagedApp = stageInstalledRunnerApp(WORKING_DIRECTORY_AND_TOKEN_LOG_SCRIPT);
     appendOnFailureRestartPolicy(stagedApp, 10);
     InstalledAppSnapshot installation = host.installFromDirectory(stagedApp);
-    ControlledProcessHandle childHandle = new ControlledProcessHandle(102L);
-    Process process = new CleanExitedProcessWithTransientChild(101L, childHandle);
+    ControlledProcessHandle childHandle =
+        new ControlledProcessHandle(SYNTHETIC_TRANSIENT_CHILD_PID);
+    Process process =
+        new CleanExitedProcessWithTransientChild(SYNTHETIC_EXITED_ROOT_PID, childHandle);
     RunningAppSnapshot snapshot =
         new RunningAppSnapshot(
             installation.manifest(),
@@ -4838,6 +4952,16 @@ class LocalProcessAppHostTest {
     runningAppsField.setAccessible(true);
     Map<String, Object> runningApps = (Map<String, Object>) runningAppsField.get(host);
     return runningApps.get(RUNNER_APP_ID);
+  }
+
+  @SuppressWarnings("java:S3011")
+  private static Process runnerRootProcess(LocalProcessAppHost host)
+      throws ReflectiveOperationException {
+    Object runningProcess = runnerProcessEntry(host);
+    assertNotNull(runningProcess);
+    Field processField = runningProcess.getClass().getDeclaredField("process");
+    processField.setAccessible(true);
+    return (Process) processField.get(runningProcess);
   }
 
   @SuppressWarnings("java:S3011")

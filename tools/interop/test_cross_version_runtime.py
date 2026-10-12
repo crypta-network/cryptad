@@ -1,5 +1,6 @@
 """Offline tests of production archive/admission/HTTP adapters; never launch a node."""
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -7,11 +8,109 @@ from pathlib import Path
 import signal
 import tarfile
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 import zipfile
 
 import cross_version_runtime as runtime
+
+
+class FixedPr315PayloadTest(unittest.TestCase):
+    def test_public_bytes_bind_exact_helper_commit_and_operation(self):
+        payload = runtime.fixed_pr315_payload('a' * 40, 'op-' + 'b' * 32)
+        self.assertTrue(payload.startswith(b'PUBLIC SYNTHETIC PR315 CHK '))
+        self.assertNotEqual(payload, runtime.fixed_pr315_payload('a' * 40, 'op-' + 'c' * 32))
+        for commit, operation in (('old', 'op-' + 'b' * 32),
+                                  ('a' * 40, 'unbounded'), (None, 'op-' + 'b' * 32)):
+            with self.subTest(commit=commit, operation=operation), \
+                    self.assertRaisesRegex(runtime.RuntimeFailure, 'fixed-content-selection-invalid'):
+                runtime.fixed_pr315_payload(commit, operation)
+
+
+class PeerConnectionCompatibilityTest(unittest.TestCase):
+    def supervisor(self):
+        supervisor = object.__new__(runtime.Supervisor)
+        supervisor.nodes = {role: SimpleNamespace(role=role, reference={'identity': role + '-identity'})
+                            for role in runtime.ROLES}
+        supervisor.apps, supervisor.outcomes = {}, {}
+        supervisor.remaining = Mock(side_effect=lambda seconds: seconds)
+        supervisor.next_operation = Mock(return_value='operation')
+        for name in ('scan_private_process_logs', 'stop', 'start', 'save_state', 'emit'):
+            setattr(supervisor, name, Mock())
+        clients = {}
+        for role in runtime.ROLES:
+            client = Mock(name=role)
+            peers = [other for other in runtime.ROLES if other != role and
+                     (role == 'relay-no-apps' or other == 'relay-no-apps')]
+
+            def send(name, fields, *, endpoint=client, identities=peers):
+                self.assertEqual('ListPeers', name)
+                self.assertEqual({'Identifier', 'WithMetadata', 'WithVolatile'}, set(fields))
+                endpoint.read_message.side_effect = [
+                    *(runtime.interop.FcpFrame('Peer', {'identity': peer + '-identity',
+                                                      'volatile.status': 'CONNECTED'}) for peer in identities),
+                    runtime.interop.FcpFrame('EndListPeers', {})]
+
+            client.send.side_effect = send
+            clients[role] = client
+        supervisor.client = Mock(side_effect=lambda role: contextlib.nullcontext(clients[role]))
+        return supervisor, clients
+
+    def test_connect_uses_real_two_sided_helper_for_each_relay_edge(self):
+        supervisor, clients = self.supervisor()
+        with patch.object(runtime.interop, 'add_peer') as add_peer, \
+                patch.object(runtime.interop.time, 'sleep', side_effect=AssertionError('wrong peer pairing')), \
+                patch.object(runtime.interop, 'wait_for_peer_connection',
+                             wraps=runtime.interop.wait_for_peer_connection) as wait:
+            supervisor.connect()
+        self.assertEqual(6, add_peer.call_count)
+        self.assertEqual(3, wait.call_count)
+        for call, role in zip(wait.call_args_list, runtime.ROLES[:-1]):
+            self.assertEqual((clients[role], clients['relay-no-apps'], role + '-identity',
+                              'relay-no-apps-identity', 150), call.args)
+        self.assertEqual([180] * 3, [call.args[0] for call in supervisor.remaining.call_args_list])
+        self.assertEqual(3, clients['relay-no-apps'].send.call_count)
+
+    def test_restart_checks_both_endpoints_for_leaf_and_relay(self):
+        for restarted in ('candidate-recipient', 'relay-no-apps'):
+            with self.subTest(restarted=restarted):
+                supervisor, clients = self.supervisor()
+                with patch.object(runtime.interop.time, 'sleep', side_effect=AssertionError('wrong peer pairing')), \
+                        patch.object(runtime.interop, 'wait_for_peer_connection',
+                                     wraps=runtime.interop.wait_for_peer_connection) as wait:
+                    supervisor.restart_node(restarted)
+                peers = runtime.ROLES[:-1] if restarted == 'relay-no-apps' else ('relay-no-apps',)
+                self.assertEqual(len(peers), wait.call_count)
+                for call, peer in zip(wait.call_args_list, peers):
+                    self.assertEqual((clients[restarted], clients[peer], restarted + '-identity',
+                                      peer + '-identity', 150), call.args)
+                    self.assertGreater(clients[peer].send.call_count, 0)
+                supervisor.stop.assert_called_once_with(restarted)
+                supervisor.start.assert_called_once_with(restarted)
+
+    def test_partition_rejoin_checks_both_endpoints_before_content_recovery(self):
+        supervisor, clients = self.supervisor()
+        captured = {}
+
+        def put(_sender, _identifier, _uri, payload, _content_type, **_kwargs):
+            captured['payload'] = payload
+            return 'CHK@synthetic'
+
+        with patch.object(runtime.interop, 'modify_peer') as modify, \
+                patch.object(runtime.interop, 'put_and_wait_for_success', side_effect=put), \
+                patch.object(runtime, 'observe_partition_denial', return_value=True), \
+                patch.object(runtime.interop, 'fetch_direct', side_effect=lambda *_args, **_kwargs: captured['payload']), \
+                patch.object(runtime.interop.time, 'sleep', side_effect=AssertionError('wrong peer pairing')), \
+                patch.object(runtime.interop, 'wait_for_peer_connection',
+                             wraps=runtime.interop.wait_for_peer_connection) as wait:
+            supervisor.partition_rejoin()
+        wait.assert_called_once_with(clients['candidate-recipient'], clients['relay-no-apps'],
+                                     'candidate-recipient-identity', 'relay-no-apps-identity', 150)
+        self.assertEqual(4, modify.call_count)
+        self.assertEqual('observed', supervisor.outcomes['partition-rejoin'])
+        self.assertEqual(1, clients['candidate-recipient'].send.call_count)
+        self.assertEqual(1, clients['relay-no-apps'].send.call_count)
 
 
 @unittest.skipUnless(hasattr(os, 'O_PATH') and Path('/proc/self/fd').is_dir(),
@@ -486,6 +585,13 @@ class HttpAdapterTest(unittest.TestCase):
             with self.assertRaisesRegex(runtime.RuntimeFailure, "bootstrap-unavailable"):
                 self.handle.host_bootstrap()
 
+    def test_host_bootstrap_redirect_is_classified_without_following_or_exposing_body(self):
+        with patch.object(self.handle, 'request', return_value=(302, b'private-location')) as request:
+            with self.assertRaisesRegex(runtime.RuntimeFailure,
+                                        '^owned-host-bootstrap-unavailable-http-status$'):
+                self.handle.host_bootstrap()
+        request.assert_called_once_with('GET', '/app/node/', raw=True)
+
 
 
 class SupervisorBehaviorTest(unittest.TestCase):
@@ -537,6 +643,92 @@ class SupervisorBehaviorTest(unittest.TestCase):
                 instance.content("candidate-sender", "previous")
         instance.journal.append.assert_not_called()
         self.assertEqual({}, instance.outcomes)
+
+    def test_installed_content_checks_source_locally_before_actual_remote_fetch(self):
+        instance = self.supervisor()
+        sender, receiver = Mock(), Mock()
+        captured = {}
+        @contextlib.contextmanager
+        def client(role):
+            yield sender if role == 'candidate-sender' else receiver
+        instance.client = client
+        def inserted(_client, _operation, _uri, payload, _type, **kwargs):
+            captured['payload'] = payload
+            return 'CHK@private-reference'
+        def control(_timeout, names):
+            fields = sender.send.call_args.args[1]
+            self.assertEqual({'AllData', 'GetFailed'}, names)
+            self.assertEqual('true', fields['DSOnly'])
+            self.assertEqual('false', fields['WriteToClientCache'])
+            self.assertEqual('0', fields['MaxRetries'])
+            self.assertNotIn('IgnoreDS', fields)
+            return SimpleNamespace(name='AllData', fields={'Identifier': fields['Identifier']},
+                                   payload=captured['payload'])
+        sender.read_until.side_effect = control
+        def fetched(selected, operation, _reference, timeout, **kwargs):
+            self.assertIs(receiver, selected)
+            sender.read_until.assert_called_once_with(30, {'AllData', 'GetFailed'})
+            self.assertTrue(operation.endswith('-fetch'))
+            self.assertEqual(120, timeout)
+            self.assertEqual({'ignore_ds': True}, kwargs)
+            return captured['payload']
+        with patch.object(runtime.interop, 'put_and_wait_for_success', side_effect=inserted), \
+                patch.object(runtime.interop, 'fetch_direct', side_effect=fetched):
+            instance.content('candidate-sender', 'previous', verify_local_source=True)
+        self.assertEqual('observed', instance.outcomes['network-chk'])
+        instance.remaining.assert_called_once_with(180)
+
+    def test_fixed_content_selection_retains_only_digests_after_byte_checked_route(self):
+        instance = self.supervisor()
+        instance.next_operation = Mock(side_effect=AssertionError('double reservation'))
+        sender, receiver = Mock(), Mock()
+        payload = b'PUBLIC SYNTHETIC PR315 CHK fixed'
+        operation = 'op-' + 'a' * 32
+        @contextlib.contextmanager
+        def client(role):
+            yield sender if role == 'candidate-sender' else receiver
+        instance.client = client
+        def control(*_args):
+            identifier = sender.send.call_args.args[1]['Identifier']
+            return SimpleNamespace(name='AllData', fields={'Identifier': identifier}, payload=payload)
+        sender.read_until.side_effect = control
+        with patch.object(runtime.interop, 'put_and_wait_for_success', return_value='CHK@private'), \
+                patch.object(runtime.interop, 'fetch_direct', return_value=payload):
+            instance.content('candidate-sender', 'previous', verify_local_source=True,
+                             operation=operation, payload=payload)
+        evidence = instance.content_evidence
+        self.assertEqual(operation, evidence['operation'])
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), evidence['responseDigest'])
+        self.assertEqual(evidence['payloadDigest'], evidence['sourceControlDigest'])
+        self.assertLess(evidence['startedMonotonicNs'], evidence['finishedMonotonicNs'])
+        self.assertNotIn('CHK@', json.dumps(evidence))
+
+    def test_failed_local_source_control_cannot_be_reported_as_remote_success(self):
+        for outcome in ('failed', 'wrong-bytes', 'wrong-identifier'):
+            with self.subTest(outcome=outcome):
+                instance = self.supervisor()
+                sender, receiver = Mock(), Mock()
+                captured = {}
+                @contextlib.contextmanager
+                def client(role):
+                    yield sender if role == 'candidate-sender' else receiver
+                instance.client = client
+                def inserted(_client, _operation, _uri, payload, _type, **kwargs):
+                    captured['payload'] = payload
+                    return 'CHK@private-reference'
+                def control(*_args):
+                    identifier = sender.send.call_args.args[1]['Identifier']
+                    return SimpleNamespace(name='GetFailed' if outcome == 'failed' else 'AllData',
+                        fields={'Identifier': 'other' if outcome == 'wrong-identifier' else identifier},
+                        payload=b'wrong' if outcome == 'wrong-bytes' else captured['payload'])
+                sender.read_until.side_effect = control
+                with patch.object(runtime.interop, 'put_and_wait_for_success', side_effect=inserted), \
+                        patch.object(runtime.interop, 'fetch_direct') as fetched:
+                    with self.assertRaisesRegex(runtime.RuntimeFailure, 'local-content-control-not-established'):
+                        instance.content('candidate-sender', 'previous', verify_local_source=True)
+                fetched.assert_not_called()
+                instance.journal.append.assert_not_called()
+                self.assertEqual({}, instance.outcomes)
 
     def test_action_budget_denies_before_network(self):
         instance = self.supervisor()

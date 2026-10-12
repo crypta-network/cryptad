@@ -30,6 +30,62 @@ class AcceptanceRunnerTest(unittest.TestCase):
             self.assertEqual(before, runner.allocated_bytes(root))
             self.assertGreaterEqual(before, disk.stat().st_blocks * 512)
 
+    def test_native_inventory_counts_each_hardlink_and_rejects_malformed_totals(self):
+        if not Path('/proc/self/mountinfo').is_file() or not Path('/usr/bin/du').is_file():
+            self.skipTest('native bounded inventory requires Linux GNU du')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'task'
+            root.mkdir()
+            first = root / 'first'
+            second = root / 'second'
+            first.write_bytes(b'x' * 8192)
+            os.link(first, second)
+            expected = sum(path.lstat().st_blocks * 512 for path in (root, first, second))
+            self.assertEqual(expected, runner.allocated_bytes(root))
+            with patch.object(runner.subprocess, 'run', return_value=SimpleNamespace(
+                    stdout=b'0\t/other\0', stderr=b'')):
+                with self.assertRaisesRegex(ValueError, 'storage-inventory-unavailable'):
+                    runner.allocated_bytes(root)
+
+    def test_native_inventory_rejects_nested_foreign_mount_before_du(self):
+        if not Path('/proc/self/mountinfo').is_file() or not Path('/usr/bin/du').is_file():
+            self.skipTest('native bounded inventory requires Linux GNU du')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'task'
+            foreign = root / 'foreign'
+            foreign.mkdir(parents=True)
+            device = root.stat().st_dev
+            real_stat = Path.stat
+            def observed_stat(path, *args, **kwargs):
+                if path == foreign:
+                    return SimpleNamespace(st_dev=device + 1)
+                return real_stat(path, *args, **kwargs)
+            mountinfo = f'1 0 0:1 / {foreign} rw - tmpfs tmpfs rw\n'.encode()
+            with patch.object(Path, 'read_bytes', return_value=mountinfo), \
+                    patch.object(Path, 'stat', autospec=True, side_effect=observed_stat), \
+                    patch.object(runner.subprocess, 'run') as native:
+                with self.assertRaisesRegex(ValueError, 'storage-inventory-unavailable'):
+                    runner.allocated_bytes(root)
+                native.assert_not_called()
+
+    def test_private_mountpoint_charges_whole_filesystem_without_a_second_walk(self):
+        if not Path('/proc/self/mountinfo').is_file():
+            self.skipTest('mounted task inventory requires Linux mountinfo')
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'task'
+            root.mkdir()
+            usage = SimpleNamespace(f_frsize=4096, f_blocks=100, f_bfree=30)
+            with patch.object(runner.os.path, 'ismount', return_value=True), \
+                    patch.object(runner.os, 'statvfs', return_value=usage), \
+                    patch.object(runner.subprocess, 'run') as native:
+                self.assertEqual(70 * 4096, runner.allocated_bytes(root))
+                native.assert_not_called()
+            usage.f_bfree = 101
+            with patch.object(runner.os.path, 'ismount', return_value=True), \
+                    patch.object(runner.os, 'statvfs', return_value=usage):
+                with self.assertRaisesRegex(ValueError, 'storage-inventory-unavailable'):
+                    runner.allocated_bytes(root)
+
     def test_budget_and_free_space_reserve_are_independent_admission_requirements(self):
         args = SimpleNamespace(storage_budget_bytes=1000, min_free_bytes=200)
         with patch.object(runner, 'allocated_bytes', return_value=800), \

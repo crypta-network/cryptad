@@ -138,10 +138,12 @@ public final class SingleBlockInserter extends SendableInsert
   private boolean finished;
 
   /**
-   * When {@code true}, suppresses the early {@link PutCompletionCallback#onEncode} notification
-   * even when a {@link ClientKey} has been derived.
+   * Suppresses {@link PutCompletionCallback#onEncode} when the caller reports the key elsewhere.
    */
   private final boolean dontSendEncoded;
+
+  /** Prevents a queued transient key notification from repeating a success-time fallback. */
+  private boolean encodedKeyReported;
 
   /** Per-block integer token used by higher-level constructs (e.g., splitfiles). */
   final int token; // for e.g., splitfiles
@@ -190,7 +192,7 @@ public final class SingleBlockInserter extends SendableInsert
    * @param payload block data and encoding parameters for this insert
    * @param params shared inserter parameters including parent, callbacks, and insert context
    * @param options persistence and scheduling options for this block insert
-   * @param dontSendEncoded Suppress the early on-encode callback even if a key is available.
+   * @param dontSendEncoded Suppress the on-encode callback even if a key is available.
    */
   public SingleBlockInserter(
       BlockInsertPayload payload,
@@ -322,10 +324,9 @@ public final class SingleBlockInserter extends SendableInsert
       if (resultingKey != null) return;
       resultingKey = key;
     }
+    if (dontSendEncoded) return;
     if (!persistent) {
-      context
-          .getMainExecutor()
-          .execute(() -> cb.onEncode(key, SingleBlockInserter.this, context), "Got URI");
+      context.getMainExecutor().execute(() -> reportTransientEncodedKey(key, context), "Got URI");
     } else {
       // Will be reported on restart in innerOnResume() if necessary.
       context.jobRunner.queueNormalOrDrop(
@@ -368,8 +369,19 @@ public final class SingleBlockInserter extends SendableInsert
           this,
           shouldSend,
           dontSendEncoded);
-    if (shouldSend && !dontSendEncoded) cb.onEncode(block.getClientKey(), this, context);
+    if (shouldSend && !dontSendEncoded) {
+      if (persistent) cb.onEncode(block.getClientKey(), this, context);
+      else reportTransientEncodedKey(block.getClientKey(), context);
+    }
     return block;
+  }
+
+  private void reportTransientEncodedKey(ClientKey key, ClientContext context) {
+    synchronized (this) {
+      if (dontSendEncoded || encodedKeyReported) return;
+      encodedKeyReported = true;
+    }
+    cb.onEncode(key, this, context);
   }
 
   @Override
@@ -567,10 +579,8 @@ public final class SingleBlockInserter extends SendableInsert
     parent.completedBlock(false, context);
     unregister(context, getPriorityClass());
     if (LOG.isDebugEnabled()) LOG.debug("Calling onSuccess for {}", cb);
-    if (shouldSendKey)
-      cb.onEncode(
-          key, this,
-          context); // In the case of race conditions etc., especially for LocalRequestOnly.
+    if (!persistent) reportTransientEncodedKey(key, context);
+    else if (shouldSendKey && !dontSendEncoded) cb.onEncode(key, this, context);
     cb.onSuccess(this, context);
   }
 
@@ -1006,7 +1016,7 @@ public final class SingleBlockInserter extends SendableInsert
     synchronized (this) {
       resultingKeySnapshot = resultingKey;
     }
-    if (resultingKeySnapshot != null)
+    if (resultingKeySnapshot != null && !dontSendEncoded)
       cb.onEncode(resultingKeySnapshot, SingleBlockInserter.this, context);
     this.schedule(context);
   }

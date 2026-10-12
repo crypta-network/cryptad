@@ -7,14 +7,15 @@ additional check, not a replacement. Partial setup is retained and never automat
 This module grants no external RPC and does not authenticate original workload authorization.
 """
 import array
+import hashlib
 import json
 import os
 from pathlib import Path
-import select
 import signal
 import socket
 import stat
 import subprocess
+import time
 
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 # Only this controller authority directory is private. Its workload-layout parent may be
@@ -24,9 +25,23 @@ NETNS_ROOT = Path('/run/netns')
 IP = '/usr/sbin/ip'
 NFT = '/usr/sbin/nft'
 SWITCH = 'cryptad-role-switch'
+SWITCH_TABLE = 'cryptad_switch'
 FNP_PORT, FCP_PORT, HTTP_PORT = 19400, 19401, 19402
+SIBLING_APP_SOURCE_PORT = 19404
+# The copied QEMU user-network guest owns this host-namespace address.  The
+# canary listener is started only by the root test kit for the selected group.
+HOST_CANARY_ADDRESS, HOST_CANARY_PORT = '10.0.2.15', 19405
 ENDPOINTS = {'fcp': FCP_PORT, 'http': HTTP_PORT}
+SIBLING_DROP_COUNTERS = {'sibling-fcp': 'pr315_sibling_fcp_drop',
+                         'sibling-http': 'pr315_sibling_http_drop',
+                         'sibling-app': 'pr315_sibling_app_drop',
+                         'host-network': 'pr315_host_network_drop'}
 MAX_STATE_BYTES = 8192
+FNP_COUNTERS = {
+    **{(role, ROLES[-1]): 'fnp_role' + str(index) + '_to_relay'
+       for index, role in enumerate(ROLES[:-1])},
+    **{(ROLES[-1], role): 'fnp_relay_to_role' + str(index)
+       for index, role in enumerate(ROLES[:-1])}}
 
 
 class NetworkBoundaryError(ValueError):
@@ -73,13 +88,36 @@ def _boot():
 
 
 def _run(arguments, script=None):
-    """Only internal fixed command constructors call this; no candidate environment survives."""
+    """Run only internal fixed commands, retaining bounded failure details privately.
+
+    The existing helper owns its process-group cleanup and pipe budgets. Diagnostics never
+    enter the exception message or controller protocol; only administrator evidence readers
+    may inspect ``private_diagnostics``. The nft script payload is deliberately not retained.
+    """
+    from bounded_process import run
+
+    captured = {}
+    def retain(_stdout, stderr):
+        captured['stderr'] = stderr.decode('utf-8', errors='replace')[:2048]
     try:
-        return subprocess.run(arguments, input=script, text=True, check=True, timeout=15,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                              env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'})
-    except (OSError, subprocess.SubprocessError):
-        raise NetworkBoundaryError('restricted-workload-network-command-failed') from None
+        return run(arguments, payload=script.encode('utf-8') if script is not None else None,
+                   timeout=15, output_limit=8192, diagnostic_sink=retain,
+                   environment={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'})
+    except (OSError, ValueError, subprocess.SubprocessError) as cause:
+        selected, remaining = [], 2048
+        for argument in arguments[:32]:
+            part = argument[:remaining]
+            selected.append(part)
+            remaining -= len(part)
+            if not remaining:
+                break
+        known = {'bounded_process_input_exceeded', 'bounded_process_deadline_exceeded',
+                 'bounded_process_output_exceeded', 'bounded_process_failed',
+                 'bounded_process_diagnostics_failed'}
+        error = NetworkBoundaryError('restricted-workload-network-command-failed')
+        error.private_diagnostics = {'arguments': selected, 'stderr': captured.get('stderr', ''),
+            'failureClass': str(cause) if str(cause) in known else type(cause).__name__[:128]}
+        raise error from None
 
 
 def _save(state, initial=False):
@@ -133,20 +171,39 @@ def role_rules(role):
     """Own loopback plus the exact UDP peer matrix; no established-connection bypass."""
     peers = ', '.join(address(peer) for peer in _peers(role))
     own = address(role)
-    return ('table inet cryptad_role {\n'
-            ' chain input { type filter hook input priority 0; policy drop;\n'
-            '  iifname "lo" accept\n'
-            f'  iifname "data0" ip saddr {{ {peers} }} ip daddr {own} '
-            f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept\n }}\n'
-            ' chain output { type filter hook output priority 0; policy drop;\n'
-            '  oifname "lo" accept\n'
-            f'  oifname "data0" ip saddr {own} ip daddr {{ {peers} }} '
-            f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept\n }}\n'
-            ' chain forward { type filter hook forward priority 0; policy drop; }\n}\n')
+    sibling = ''
+    if role == 'candidate-sender':
+        target = address('candidate-recipient')
+        # The AppHost child binds one fixed source port. This narrower rule
+        # precedes the generic sibling HTTP refusal and owns its witness.
+        sibling = (f'  oifname "data0" ip saddr {own} ip daddr {target} '
+                   f'tcp sport {SIBLING_APP_SOURCE_PORT} tcp dport {HTTP_PORT} '
+                   f'counter name {SIBLING_DROP_COUNTERS["sibling-app"]} drop\n') + ''.join(
+            f'  oifname "data0" ip saddr {own} ip daddr {target} '
+            f'tcp dport {port} counter name {SIBLING_DROP_COUNTERS[case]} drop\n'
+            for case, port in (('sibling-fcp', FCP_PORT), ('sibling-http', HTTP_PORT)))
+        sibling += (f'  oifname "data0" ip saddr {own} '
+                    f'ip daddr {HOST_CANARY_ADDRESS} tcp dport {HOST_CANARY_PORT} '
+                    f'counter name {SIBLING_DROP_COUNTERS["host-network"]} drop\n')
+    definitions = (''.join(f' counter {name} {{ }}\n'
+                           for name in SIBLING_DROP_COUNTERS.values())
+                   if role == 'candidate-sender' else '')
+    return ''.join(('table inet cryptad_role {\n', definitions,
+        ' chain input { type filter hook input priority 0; policy drop;\n',
+        '  iifname "lo" accept\n',
+        f'  iifname "data0" ip saddr {{ {peers} }} ip daddr {own} '
+        f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept\n }}\n',
+        ' chain output { type filter hook output priority 0; policy drop;\n',
+        '  oifname "lo" accept\n',
+        f'  oifname "data0" ip saddr {own} ip daddr {{ {peers} }} '
+        f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept\n',
+        sibling, ' }\n',
+        ' chain forward { type filter hook forward priority 0; policy drop; }\n}\n'))
 
 
 def switch_rules():
-    lines = ['table bridge cryptad_switch {',
+    lines = [f'table bridge {SWITCH_TABLE} {{',
+             *(f' counter {name} {{ }}' for name in FNP_COUNTERS.values()),
              ' chain input { type filter hook input priority 0; policy drop; }',
              ' chain output { type filter hook output priority 0; policy drop; }',
              ' chain forward { type filter hook forward priority 0; policy drop;']
@@ -157,8 +214,85 @@ def switch_rules():
             lines.append(prefix + 'ether type arp accept')
             lines.append(prefix + f'ether type ip ip saddr {address(src_role)} '
                          f'ip daddr {address(dst_role)} ip protocol udp '
-                         f'udp sport {FNP_PORT} udp dport {FNP_PORT} accept')
+                         f'udp sport {FNP_PORT} udp dport {FNP_PORT} '
+                         f'counter name {FNP_COUNTERS[(src_role, dst_role)]} accept')
     return '\n'.join([*lines, ' }', '}', ''])
+
+
+def read_fnp_counters():
+    """Read only the six fixed permitted bridge links and their retained nsfs owner."""
+    state = _load()
+    if state['phase'] != 'ready' or state['pending'] is not None:
+        _reject()
+    identity = _namespace_identity(SWITCH)
+    raw = _run([IP, 'netns', 'exec', SWITCH, NFT, '-j', 'list', 'counters',
+                'table', 'bridge', SWITCH_TABLE])
+    try:
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict) or set(parsed) != {'nftables'} or not isinstance(parsed['nftables'], list):
+            _reject()
+        counters = {}
+        for entry in parsed['nftables']:
+            if not isinstance(entry, dict) or len(entry) != 1:
+                _reject()
+            if 'metainfo' in entry:
+                continue
+            counter = entry.get('counter')
+            if (not isinstance(counter, dict) or counter.get('family') != 'bridge'
+                    or counter.get('table') != SWITCH_TABLE or counter.get('name') not in FNP_COUNTERS.values()
+                    or counter['name'] in counters
+                    or any(type(counter.get(key)) is not int or counter[key] < 0
+                           for key in ('packets', 'bytes'))):
+                _reject()
+            counters[counter['name']] = {'packets': counter['packets'], 'bytes': counter['bytes']}
+        if set(counters) != set(FNP_COUNTERS.values()) or _namespace_identity(SWITCH) != identity:
+            _reject()
+        return {'schemaVersion': 1, 'kind': 'pr315-fixed-fnp-counters',
+                'policyDigest': hashlib.sha256(switch_rules().encode()).hexdigest(),
+                'bootId': _boot(), 'switchNamespaceIdentity': identity,
+                'observedMonotonicNs': time.monotonic_ns(), 'counters': counters}
+    except (KeyError, TypeError, ValueError, UnicodeError):
+        _reject()
+
+
+def read_sibling_drop_counters():
+    """Read the fixed sender TCP DROP witnesses in its retained netns."""
+    state = _load()
+    if state['phase'] != 'ready' or state['pending'] is not None:
+        _reject()
+    name = namespace('candidate-sender')
+    identity = _namespace_identity(name)
+    raw = _run([IP, 'netns', 'exec', name, NFT, '-j', 'list', 'counters',
+                'table', 'inet', 'cryptad_role'])
+    try:
+        parsed = json.loads(raw)
+        if (not isinstance(parsed, dict) or set(parsed) != {'nftables'}
+                or not isinstance(parsed['nftables'], list)):
+            _reject()
+        counters = {}
+        for entry in parsed['nftables']:
+            if not isinstance(entry, dict) or len(entry) != 1:
+                _reject()
+            if 'metainfo' in entry:
+                continue
+            row = entry.get('counter')
+            if (not isinstance(row, dict) or row.get('family') != 'inet'
+                    or row.get('table') != 'cryptad_role'
+                    or row.get('name') not in SIBLING_DROP_COUNTERS.values()
+                    or row['name'] in counters
+                    or any(type(row.get(key)) is not int or row[key] < 0
+                           for key in ('packets', 'bytes'))):
+                _reject()
+            counters[row['name']] = {'packets': row['packets'], 'bytes': row['bytes']}
+        if (set(counters) != set(SIBLING_DROP_COUNTERS.values())
+                or _namespace_identity(name) != identity):
+            _reject()
+        return {'schemaVersion': 1, 'kind': 'pr315-fixed-sibling-drop-counters',
+                'policyDigest': hashlib.sha256(role_rules('candidate-sender').encode()).hexdigest(),
+                'bootId': _boot(), 'roleNamespaceIdentity': identity,
+                'observedMonotonicNs': time.monotonic_ns(), 'counters': counters}
+    except (KeyError, TypeError, ValueError, UnicodeError):
+        _reject()
 
 
 def setup():
@@ -191,11 +325,22 @@ def setup():
         _run([IP, '-n', SWITCH, 'link', 'set', f'sw{index}', 'master', 'br0'])
         _run([IP, 'netns', 'exec', name, NFT, '-f', '-'], role_rules(role))
         _run([IP, '-n', name, 'address', 'add', address(role) + '/32', 'dev', 'data0'])
-        for peer in _peers(role):
-            _run([IP, '-n', name, 'route', 'add', address(peer) + '/32', 'dev', 'data0'])
         _run([IP, '-n', name, 'link', 'set', 'lo', 'up'])
         _run([IP, '-n', name, 'link', 'set', 'data0', 'up'])
         _run([IP, '-n', SWITCH, 'link', 'set', f'sw{index}', 'up'])
+        # Linux requires the route's output device to be administratively up.
+        # Both namespace filters already exist; the switch bridge remains down.
+        for peer in _peers(role):
+            _run([IP, '-n', name, 'route', 'add', address(peer) + '/32', 'dev', 'data0'])
+        if role == 'candidate-sender':
+            # The only direct sibling route exists to exercise explicit DROP counters.
+            # Neither the role filter nor switch bridge accepts sibling IP traffic.
+            _run([IP, '-n', name, 'route', 'add',
+                  address('candidate-recipient') + '/32', 'dev', 'data0'])
+            # An exact test-only host route lets the role's named DROP rule
+            # receive the SYN; it creates no accepted host-network path.
+            _run([IP, '-n', name, 'route', 'add',
+                  HOST_CANARY_ADDRESS + '/32', 'dev', 'data0'])
     _run([IP, '-n', SWITCH, 'link', 'set', 'br0', 'up'])
     state['phase'] = 'ready'
     _save(state)
@@ -213,24 +358,11 @@ def teardown():
     for name, identity in state['namespaces'].items():
         if _namespace_identity(name) != identity:
             _reject()
-        # Avoid unbounded stdout capture: any byte means a live member, regardless of PID count.
-        with subprocess.Popen([IP, 'netns', 'pids', name], stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL,
-                              env={'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C'}) as process:
-            try:
-                if not select.select([process.stdout], [], [], 15)[0]:
-                    process.kill()
-                    _reject()
-                occupied = bool(process.stdout.read(1))
-                if occupied:
-                    process.kill()
-                code = process.wait(timeout=15)
-                if occupied or code != 0:
-                    _reject()
-            except BaseException:
-                process.kill()
-                process.wait()
-                raise
+        # Any output means a live member. Reuse the existing bounded helper so EOF,
+        # failed exit and timeout all retain ownership without an unbounded wait().
+        # Flooded output fails under the same finite pipe budget before any deletion.
+        if _run([IP, 'netns', 'pids', name]):
+            _reject()
     state['phase'] = 'stopping'
     _save(state)
     for name in list(reversed(state['namespaces'])):
@@ -258,6 +390,18 @@ def connect(role, endpoint):
     return _connect_port(role, ENDPOINTS[endpoint])
 
 
+def _wait_connector_child(pid, deadline):
+    """Reap only the exact fork child; an elapsed deadline is not proof of termination."""
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise NetworkBoundaryError('restricted-workload-connect-child-reconciliation-required')
+        child, status = os.waitpid(pid, os.WNOHANG)
+        if child == pid:
+            return status
+        time.sleep(min(.01, remaining))
+
+
 def _connect_port(role, port):
     """Internal transport for controller-resolved app bootstrap, never an RPC selector.
 
@@ -283,7 +427,7 @@ def _connect_port(role, port):
     pid = None
     transferred = []
     try:
-        parent.settimeout(12)
+        deadline = time.monotonic() + 12
         pid = os.fork()
         if pid == 0:
             try:
@@ -297,6 +441,10 @@ def _connect_port(role, port):
             except BaseException:
                 os._exit(1)
         child.close()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise NetworkBoundaryError('restricted-workload-connect-deadline')
+        parent.settimeout(remaining)
         body, controls, flags, _ = parent.recvmsg(1, socket.CMSG_SPACE(array.array('i').itemsize),
                                                  socket.MSG_CMSG_CLOEXEC)
         for level, kind, raw in controls:
@@ -305,7 +453,12 @@ def _connect_port(role, port):
             values = array.array('i')
             values.frombytes(raw)
             transferred.extend(values)
-        _, status = os.waitpid(pid, 0)
+        try:
+            status = _wait_connector_child(pid, deadline)
+        except ChildProcessError:
+            # Ownership has already been lost; never signal a potentially reused PID.
+            pid = None
+            raise NetworkBoundaryError('restricted-workload-connect-child-ownership-unavailable') from None
         pid = None
         if body != b'1' or flags & socket.MSG_CTRUNC or len(transferred) != 1 or status != 0:
             _reject()
@@ -317,14 +470,16 @@ def _connect_port(role, port):
     except (OSError, ValueError):
         raise NetworkBoundaryError('restricted-workload-connect-failed') from None
     finally:
-        if pid is not None and pid > 0:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            os.waitpid(pid, 0)
-        for received in transferred:
-            os.close(received)
-        parent.close()
-        child.close()
-        os.close(descriptor)
+        try:
+            if pid is not None and pid > 0:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                _wait_connector_child(pid, time.monotonic() + 2)
+        finally:
+            for received in transferred:
+                os.close(received)
+            parent.close()
+            child.close()
+            os.close(descriptor)

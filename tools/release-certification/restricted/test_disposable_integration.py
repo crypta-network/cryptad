@@ -309,6 +309,9 @@ class DisposableHarnessTest(unittest.TestCase):
             selected = source / seam
             selected.parent.mkdir(parents=True)
             selected.write_bytes(b'COMMITTED_TEST_SEAM = True\n')
+            lifecycle = ('tools/release-certification/restricted/'
+                         'pr315_lifecycle_role_probe.py')
+            (source / lifecycle).write_bytes(b'COMMITTED_LIFECYCLE_ACTOR = True\n')
             (source / 'production.py').write_bytes(b'PRODUCTION = True\n')
             for arguments in (['init', '--quiet'], ['add', '.'],
                     ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
@@ -316,6 +319,7 @@ class DisposableHarnessTest(unittest.TestCase):
                 subprocess.run(['git', *arguments], cwd=source, check=True, capture_output=True)
             planned = installation.plan(source, installed)
             self.assertFalse((installed / seam).exists())
+            self.assertFalse((installed / lifecycle).exists())
             subprocess.run(['git', 'update-index', '--assume-unchanged', seam], cwd=source, check=True)
             selected.write_bytes(b'UNREVIEWED_TEST_SEAM = True\n')
             with patch.dict(sys.modules, {'installation': installation}), \
@@ -324,10 +328,13 @@ class DisposableHarnessTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'test-kit-must-be-new'):
                     harness.install_test_kit(source)
             self.assertEqual(b'COMMITTED_TEST_SEAM = True\n', (kit / seam).read_bytes())
+            self.assertEqual(b'COMMITTED_LIFECYCLE_ACTOR = True\n',
+                             (kit / lifecycle).read_bytes())
             self.assertFalse((kit / 'production.py').exists())
             identity = json.loads((kit / '.test-kit.json').read_bytes())
             self.assertEqual(planned['sourceCommit'], identity['sourceCommit'])
             self.assertFalse(identity['productionEligible'])
+            self.assertIn(lifecycle, identity['files'])
             self.assertEqual(installed / 'build', (kit / 'build').readlink())
             installation.verify_bundle(installed, planned['bundleIdentity'], protected=False)
 

@@ -1,8 +1,11 @@
 """Workload control fault tests with simulated manager state, not installed acceptance."""
 from contextlib import ExitStack, nullcontext
 import copy
+import hashlib
 import json
 import os
+import shlex
+import shutil
 import socket
 import stat
 import threading
@@ -10,18 +13,189 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import restricted_workload as workload
 import restricted_workload_controller as controller
 import restricted_workload_launcher as launcher
+import restricted_workload_lifecycle_barrier as lifecycle_barrier
+import restricted_workload_network as network
 import restricted_workload_prepare as preparation
 
 
+class ControllerStartupDiagnosticsTest(unittest.TestCase):
+    def setUp(self):
+        self.boot_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        boot = patch.object(workload, 'boot', return_value=self.boot_id)
+        boot.start()
+        self.addCleanup(boot.stop)
+
+    def test_bootstrap_failure_phase_is_private_closed_and_keeps_original_error(self):
+        boot_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        with patch.object(workload, 'write') as written, \
+                patch.object(workload, 'boot', return_value=boot_id):
+            with self.assertRaisesRegex(ValueError, 'app-runtime-unavailable'):
+                with controller.bootstrap_phase('app-runtime', 'candidate-recipient'):
+                    raise ValueError('app-runtime-unavailable')
+        destination, record = written.call_args.args
+        self.assertEqual(controller.BOOTSTRAP_FAILURE, destination)
+        self.assertTrue(written.call_args.kwargs['create'])
+        self.assertEqual('candidate-recipient', record['role'])
+        self.assertEqual('app-runtime', record['stage'])
+        self.assertEqual('app-runtime-unavailable', record['errorCode'])
+        self.assertEqual(boot_id, record['bootId'])
+        self.assertNotIn('browserSessionToken', json.dumps(record))
+
+    def test_bootstrap_failure_never_copies_arbitrary_exception_text(self):
+        with patch.object(workload, 'write') as written, \
+                patch.object(workload, 'boot', return_value='a' * 36):
+            with self.assertRaises(ValueError):
+                with controller.bootstrap_phase('launch-redirect', 'candidate-sender'):
+                    raise ValueError('private URL and credential must stay private')
+        self.assertEqual('unclassified', written.call_args.args[1]['errorCode'])
+
+    def test_fixed_runtime_record_is_private_and_excludes_exception_message(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(controller, 'STARTUP', Path(directory) / 'startup.json'), \
+                patch.object(workload, 'secured', side_effect=lambda path, **_kwargs: path):
+            controller.startup_checkpoint('entry', 123, {}, ValueError('sensitive detail'))
+            record = json.loads(controller.STARTUP.read_text())
+            self.assertEqual(0o600, stat.S_IMODE(controller.STARTUP.stat().st_mode))
+        self.assertEqual('private-runtime-diagnostic-not-acceptance', record['classification'])
+        self.assertEqual(os.getpid(), record['pid'])
+        self.assertEqual(self.boot_id, record['bootId'])
+        self.assertEqual(123, record['startedMonotonicNs'])
+        self.assertGreater(record['observedMonotonicNs'], 123)
+        self.assertEqual(2, record['schemaVersion'])
+        self.assertEqual({'entry': 123}, record['stageMonotonicNs'])
+        self.assertEqual('entry', record['stage'])
+        self.assertEqual('ValueError', record['exceptionType'])
+        self.assertNotIn('sensitive detail', json.dumps(record))
+
+    def test_invalid_stage_and_diagnostic_write_failure_cannot_change_control_behavior(self):
+        with patch.object(workload, 'write', side_effect=OSError('disk unavailable')) as write:
+            controller.startup_checkpoint('arbitrary-stage', 1, {})
+            write.assert_not_called()
+            controller.startup_checkpoint('entry', 1, {})
+            write.assert_called_once()
+
+    def test_failed_write_and_later_exception_preserve_first_stage_time_in_one_epoch(self):
+        reached = {}
+        with patch.object(controller.time, 'monotonic_ns', side_effect=[100, 120, 150]), \
+                patch.object(workload, 'write', side_effect=[OSError('unavailable'), None, None]) as write:
+            controller.startup_checkpoint('entry', 90, reached)
+            controller.startup_checkpoint('installation-verified', 90, reached)
+            controller.startup_checkpoint('installation-verified', 90, reached, ValueError('private'))
+        record = write.call_args.args[1]
+        self.assertEqual({'entry': 90, 'installation-verified': 120}, record['stageMonotonicNs'])
+        self.assertEqual(150, record['observedMonotonicNs'])
+        self.assertEqual('ValueError', record['exceptionType'])
+        self.assertEqual({'entry': 90}, write.call_args_list[0].args[1]['stageMonotonicNs'])
+
+    def run_startup(self, verification_error=None):
+        records, events = [], []
+        def write(path, record, **kwargs):
+            self.assertEqual(controller.STARTUP, path)
+            self.assertEqual({'mode': 0o600}, kwargs)
+            records.append(record)
+            events.append(record['stage'])
+        def verify():
+            events.append('verify-called')
+            if verification_error is not None:
+                raise verification_error
+        endpoint = Mock()
+        endpoint.exists.return_value = endpoint.is_symlink.return_value = False
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+            stack.enter_context(patch.object(controller.sys, 'argv', ['fixed-controller']))
+            stack.enter_context(patch.object(controller.sys, 'flags', SimpleNamespace(isolated=True, no_site=True)))
+            stack.enter_context(patch.object(controller.sys, 'path', list(sys.path)))
+            stack.enter_context(patch.object(controller.os, 'geteuid', return_value=0))
+            stack.enter_context(patch.object(controller.os, 'umask'))
+            stack.enter_context(patch.object(controller.os, 'environ', {}))
+            stack.enter_context(patch.object(workload, 'secured'))
+            stack.enter_context(patch.object(workload, 'ROOT', Path(directory)))
+            stack.enter_context(patch.object(workload, 'write', side_effect=write))
+            stack.enter_context(patch.object(workload, 'reconcile'))
+            stack.enter_context(patch.object(workload, 'fence_campaign'))
+            stack.enter_context(patch.object(controller.pwd, 'getpwnam', return_value=SimpleNamespace(pw_uid=1, pw_gid=1)))
+            stack.enter_context(patch.object(controller, 'SOCKET', endpoint))
+            stack.enter_context(patch.object(controller.socket, 'socket'))
+            stack.enter_context(patch.object(controller.os, 'chown'))
+            stack.enter_context(patch.object(controller.select, 'select', side_effect=RuntimeError('stop test loop')))
+            stack.enter_context(patch.dict(sys.modules, {'installation': SimpleNamespace(verify_execution=verify)}))
+            with self.assertRaises((ValueError, RuntimeError)) as raised:
+                controller.main()
+        return records, events, raised.exception
+
+    def test_entry_precedes_verification_and_failure_retains_original_exception(self):
+        failure = ValueError('private verification detail')
+        records, events, raised = self.run_startup(failure)
+        self.assertIs(failure, raised)
+        self.assertEqual(['entry', 'verify-called', 'entry'], events)
+        self.assertEqual('ValueError', records[-1]['exceptionType'])
+        self.assertEqual(records[0]['startedMonotonicNs'], records[1]['startedMonotonicNs'])
+        self.assertNotIn('private verification detail', json.dumps(records))
+
+    def test_unavailable_boot_observation_cannot_replace_verification_failure(self):
+        failure = ValueError('private verification detail')
+        with patch.object(workload, 'boot', side_effect=FileNotFoundError('boot ID unavailable')):
+            records, events, raised = self.run_startup(failure)
+        self.assertIs(failure, raised)
+        self.assertEqual([], records)
+        self.assertEqual(['verify-called'], events)
+
+    def test_successful_startup_records_all_fixed_stages_before_request_loop(self):
+        records, events, _raised = self.run_startup()
+        self.assertEqual(['entry', 'verify-called', 'installation-verified', 'reconciled', 'listening'], events)
+        self.assertEqual(1, len({row['startedMonotonicNs'] for row in records}))
+        self.assertEqual(1, len({row['pid'] for row in records}))
+        self.assertTrue(all('exceptionType' not in row for row in records))
+        for index, record in enumerate(records):
+            self.assertEqual(set(events[:index + 2]) - {'verify-called'}, set(record['stageMonotonicNs']))
+            self.assertEqual(record['startedMonotonicNs'], record['stageMonotonicNs']['entry'])
+            self.assertTrue(all(record['startedMonotonicNs'] <= timestamp <= record['observedMonotonicNs']
+                                for timestamp in record['stageMonotonicNs'].values()))
+        self.assertEqual(set(controller.STARTUP_STAGES), set(records[-1]['stageMonotonicNs']))
+
+
+class MarkerImportTest(unittest.TestCase):
+    def test_rejected_manager_entry_does_not_mutate_installed_module_tree(self):
+        source = Path(__file__).parent
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('restricted_workload_mark.py', 'restricted_workload.py',
+                         'restricted_native_launcher.py'):
+                shutil.copyfile(source / name, root / name)
+            result = subprocess.run([sys.executable, '-I', '-S', str(root / 'restricted_workload_mark.py')],
+                                    capture_output=True, timeout=10)
+            self.assertEqual(1, result.returncode)
+            self.assertFalse((root / '__pycache__').exists())
+
+
 class ProspectiveConfigurationTest(unittest.TestCase):
+    def test_fixed_accounts_fit_systemd_strict_names_and_match_role_lookup(self):
+        assets = Path(__file__).resolve().parents[1] / 'restricted/systemd'
+        rows = [shlex.split(line) for line in (assets / 'cryptad-workload.conf').read_text().splitlines()
+                if line and not line.startswith('#')]
+        settings = dict(line.split('=', 1) for line in (assets / 'cryptad-workload@.service').read_text().splitlines()
+                        if '=' in line and not line.startswith('#'))
+        self.assertEqual(len(workload.ROLES), len(rows))
+        for role, row in zip(workload.ROLES, rows):
+            name = row[1]
+            # systemd v257 strict validation reserves one byte in utmpx.ut_user.
+            self.assertLessEqual(len(name.encode('ascii')), 31)
+            self.assertRegex(name, r'^[A-Za-z_][A-Za-z0-9_-]*$')
+            self.assertEqual(name, settings['User'].replace('%i', role))
+            self.assertEqual(name, settings['Group'].replace('%i', role))
+            user = SimpleNamespace(pw_uid=1001, pw_gid=1001, pw_shell='/usr/sbin/nologin')
+            with patch.object(workload.pwd, 'getpwnam', return_value=user) as lookup:
+                self.assertIs(user, workload.account(role))
+                lookup.assert_called_once_with(name)
+
     @unittest.skipUnless(sys.platform == 'linux', 'Linux resource limits required')
     def test_service_file_limit_allows_configured_store_and_remains_finite(self):
         unit = Path(__file__).resolve().parents[1] / 'restricted/systemd/cryptad-workload@.service'
@@ -71,6 +245,31 @@ with open(sys.argv[3], 'wb') as stream:
         original = preparation.configuration_identity(role, 'sha256:' + 'a' * 64)
         self.assertEqual(original, preparation.configuration_identity(role, 'sha256:' + 'a' * 64))
         self.assertNotEqual(original, preparation.configuration_identity(role, 'sha256:' + 'b' * 64))
+
+    def test_preconfigured_workload_completes_wizard_and_changes_configuration_pin(self):
+        for role in workload.ROLES:
+            with self.subTest(role=role):
+                text = preparation.configuration(role)
+                self.assertEqual(1, text.count('fproxy.hasCompletedWizard=true\n'))
+                current = preparation.configuration_identity(role, None)
+                with patch.object(preparation, 'configuration', return_value=text.replace(
+                        'fproxy.hasCompletedWizard=true\n', '')):
+                    self.assertNotEqual(current, preparation.configuration_identity(role, None))
+
+    def test_configuration_identity_changes_with_fixed_launcher_policy(self):
+        original = preparation.configuration_identity('previous', None)
+        changed = launcher.launcher_policy()
+        changed['wrapperStartupTimeoutSeconds']['previous'] = 30
+        with patch.object(preparation, 'launcher_policy', return_value=changed):
+            self.assertNotEqual(original, preparation.configuration_identity('previous', None))
+
+    def test_configuration_identity_binds_jvm_processor_policy(self):
+        original = preparation.configuration_identity('candidate-sender', None)
+        changed = launcher.launcher_policy()
+        changed['jvmActiveProcessorCount'] = 4
+        with patch.object(preparation, 'launcher_policy', return_value=changed):
+            self.assertNotEqual(original,
+                                preparation.configuration_identity('candidate-sender', None))
 
 
 class BootstrapHttpTest(unittest.TestCase):
@@ -152,6 +351,8 @@ class ObservationTest(unittest.TestCase):
         self.stack.enter_context(patch.object(workload, 'group', return_value=root))
         self.stack.enter_context(patch.object(workload, 'boot', return_value=BOOT))
         self.stack.enter_context(patch.object(workload, 'account', return_value=SimpleNamespace(pw_uid=os.getuid())))
+        self.network = self.stack.enter_context(patch(
+            'restricted_workload_network._namespace_identity', return_value=[1, 42]))
         self.manager = self.stack.enter_context(patch.object(workload, 'manager', return_value=manager_state()))
 
     def reaped_child(self):
@@ -168,7 +369,17 @@ class ObservationTest(unittest.TestCase):
         self.assertEqual([], result['processes'])
         self.assertEqual(1, result['exitedDuringSample'])
         self.assertEqual(4096, result['cgroupMemoryBytes'])
+        self.assertIsNone(result['stateDigest'])
+        self.assertGreater(result['observedMonotonicNs'], 0)
+        self.assertEqual([1, 42], result['networkNamespaceIdentity'])
+        self.assertEqual(self.root.stat().st_ino, result['cgroupIdentity'][1])
         self.assertEqual(2, self.manager.call_count)
+
+    def test_role_namespace_replacement_during_process_sample_is_rejected(self):
+        (self.root / 'cgroup.procs').write_text('')
+        self.network.side_effect = ([1, 42], [1, 43])
+        with self.assertRaisesRegex(workload.WorkloadError, 'role-network-namespace-changed'):
+            workload.observe(HANDLE)
 
     @unittest.skipUnless(hasattr(os, 'pidfd_open'), 'requires Linux pidfd support')
     def test_reaped_process_does_not_skip_final_invocation_check(self):
@@ -212,14 +423,38 @@ class ObservationTest(unittest.TestCase):
                     child.wait(timeout=5)
 
 
+class SyntheticStateDigestTest(unittest.TestCase):
+    def test_fixed_owned_subject_is_hashed_and_symlink_is_never_followed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directory = root / 'state/candidate-sender'
+            directory.mkdir(parents=True, mode=0o700)
+            directory.chmod(0o700)
+            subject = directory / 'pr315-retention-sentinel'
+            raw = b'x' * 32
+            subject.write_bytes(raw)
+            with patch.object(workload, 'ROOT', root), \
+                    patch.object(workload, 'account', return_value=SimpleNamespace(pw_uid=os.getuid())):
+                self.assertEqual(hashlib.sha256(raw).hexdigest(),
+                                 workload._synthetic_state_digest('candidate-sender'))
+                subject.write_bytes(b'y' * 32)
+                self.assertNotEqual(hashlib.sha256(raw).hexdigest(),
+                                    workload._synthetic_state_digest('candidate-sender'))
+                subject.unlink()
+                subject.symlink_to('/etc/passwd')
+                self.assertIsNone(workload._synthetic_state_digest('candidate-sender'))
+                self.assertIsNone(workload._synthetic_state_digest('candidate-recipient'))
+
+
 class LifecycleTest(unittest.TestCase):
     def setUp(self):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.record = dict(handle=HANDLE, state='prepared', generation=None, bootId=BOOT,
-                           managerInvocation=None, cgroupIdentity=None, stopReason=None)
+                           managerInvocation=None, cgroupIdentity=None, stopReason=None, campaign='d' * 64)
         self.campaign = dict(deadlineMonotonicNs=10**20, maxOperations=100)
         self.marker = None
+        self.stop_marker = None
         self.writes = []
         self.calls = []
         self.state = manager_state('inactive')
@@ -238,6 +473,10 @@ class LifecycleTest(unittest.TestCase):
         self.manager = self.stack.enter_context(patch.object(workload, 'manager', side_effect=self.operation))
 
     def read(self, path):
+        if path.name.endswith('-stop.json'):
+            if self.stop_marker is None:
+                raise FileNotFoundError('no-stop-receipt')
+            return copy.deepcopy(self.stop_marker)
         if path.name.endswith('-start.json'):
             if self.marker is None:
                 raise FileNotFoundError('no-manager-receipt')
@@ -261,7 +500,13 @@ class LifecycleTest(unittest.TestCase):
                                managerInvocation=INVOCATION, cgroupIdentity=[1, 99])
         elif operation == 'stop':
             self.assertEqual('stopping', self.record['state'])
-            self.state = manager_state('inactive')
+            self.stop_marker = dict(schemaVersion=1, role=ROLE, campaign=self.record['campaign'],
+                generation=self.record['generation'], bootId=BOOT, managerInvocation=INVOCATION,
+                cgroupIdentity=[1, 99], helperPid=42, helperStartTimeTicks=3,
+                startedMonotonicNs=1, observedMonotonicNs=2,
+                membership='only-stop-helper', descendantCgroups=0)
+            self.state = manager_state('inactive', invocation='')
+            self.state.update(ControlGroup='', MainPID='0', SubState='dead')
         elif operation == 'show':
             return copy.deepcopy(self.state)
 
@@ -332,6 +577,23 @@ class LifecycleTest(unittest.TestCase):
         self.assertNotIn('stop', self.calls)
         self.assertEqual('running', self.record['state'])
 
+    def test_changed_invocation_at_root_stop_barrier_never_stops_successor(self):
+        self.running()
+        def change_after_intent(_role, _record, _deadline):
+            self.state['InvocationID'] = 'c' * 32
+        def selected(path):
+            return ({**self.campaign, 'generation': self.record['campaign']}
+                    if path.name == 'campaign.json' else self.read(path))
+        with patch.object(workload.os.path, 'lexists', return_value=True), \
+                patch.object(workload, 'read', side_effect=selected), \
+                patch.object(lifecycle_barrier, 'await_release',
+                             side_effect=change_after_intent):
+            with self.assertRaisesRegex(workload.WorkloadError,
+                                        'invocation-changed'):
+                workload.stop(HANDLE)
+        self.assertNotIn('stop', self.calls)
+        self.assertEqual('reconciliation-required', self.record['state'])
+
     def test_replaced_cgroup_does_not_signal_new_occupant(self):
         self.running()
         self.group.stat.return_value = SimpleNamespace(st_dev=1, st_ino=100)
@@ -380,6 +642,103 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual([], self.writes)
         self.assertNotIn('start', self.calls)
 
+    def test_removed_inactive_group_without_receipt_retains_uncertainty(self):
+        self.running()
+        self.state = manager_state('inactive', invocation='')
+        self.state.update(ControlGroup='', MainPID='0', SubState='dead')
+        self.group.stat.side_effect = FileNotFoundError('removed')
+        with self.assertRaisesRegex(FileNotFoundError, 'no-stop-receipt'):
+            workload.stop(HANDLE)
+        self.assertEqual('reconciliation-required', self.record['state'])
+        self.assertNotIn('stop', self.calls)
+
+    def test_removed_group_requires_exact_preceding_stop_observation(self):
+        self.running()
+        workload.stop(HANDLE)
+        self.calls.clear()
+        self.group.stat.side_effect = FileNotFoundError('removed')
+        self.assertEqual('quiescent', workload.stop(HANDLE)['state'])
+        self.assertNotIn('stop', self.calls)
+        for key, value in (('generation', 'e' * 64), ('managerInvocation', 'f' * 32),
+                           ('cgroupIdentity', [1, 100]), ('campaign', 'e' * 64),
+                           ('bootId', 'other-boot'), ('helperPid', True),
+                           ('observedMonotonicNs', 10**30), ('descendantCgroups', True)):
+            original = copy.deepcopy(self.stop_marker)
+            with self.subTest(field=key):
+                self.stop_marker[key] = value
+                with self.assertRaisesRegex(workload.WorkloadError, 'stop-receipt-mismatch'):
+                    workload.stop(HANDLE)
+                self.assertNotIn('stop', self.calls)
+            self.stop_marker = original
+
+    def test_terminal_receipt_cannot_adopt_replacement_cgroup(self):
+        self.running()
+        workload.stop(HANDLE)
+        self.calls.clear()
+        self.group.stat.return_value = SimpleNamespace(st_dev=1, st_ino=100)
+        with self.assertRaisesRegex(workload.WorkloadError, 'cgroup-changed'):
+            workload.stop(HANDLE)
+        self.assertNotIn('stop', self.calls)
+
+    def test_manager_changes_during_terminal_observation_fail_closed(self):
+        self.running()
+        workload.stop(HANDLE)
+        self.manager.side_effect = [copy.deepcopy(self.state), manager_state(invocation='c' * 32)]
+        with self.assertRaisesRegex(workload.WorkloadError, 'terminal-observation-changed'):
+            workload.stop(HANDLE)
+        self.assertEqual('reconciliation-required', self.record['state'])
+
+    def test_restart_archives_old_epoch_before_new_intent_without_new_deadline(self):
+        self.running()
+        workload.stop(HANDLE)
+        old_generation = self.record['generation']
+        deadline = self.campaign['deadlineMonotonicNs']
+        def archived(role, record):
+            self.assertEqual(ROLE, role)
+            self.assertEqual(old_generation, record['generation'])
+            self.assertEqual('quiescent', self.record['state'])
+        with patch.object(workload, 'archive_stop', side_effect=archived) as archive:
+            workload.start(HANDLE)
+        archive.assert_called_once()
+        self.assertNotEqual(old_generation, self.record['generation'])
+        self.assertEqual(old_generation, self.record['previousStopGeneration'])
+        self.assertEqual(deadline, self.campaign['deadlineMonotonicNs'])
+
+
+class TerminalCampaignTest(unittest.TestCase):
+    def test_terminal_fence_keeps_generation_deadline_and_rejects_admission(self):
+        campaign = dict(state='prepared', generation='a' * 64, bootId=BOOT,
+                        deadlineMonotonicNs=123456789)
+        with patch.object(workload, 'locked', side_effect=nullcontext), \
+                patch.object(workload, 'boot', return_value=BOOT), \
+                patch.object(workload, 'read', return_value=campaign), \
+                patch.object(workload, 'write') as write:
+            workload.fence_campaign()
+            self.assertEqual('terminalizing', campaign['state'])
+            self.assertEqual(123456789, campaign['deadlineMonotonicNs'])
+            self.assertEqual('a' * 64, campaign['generation'])
+            with self.assertRaisesRegex(workload.WorkloadError, 'preparation-incomplete'):
+                workload.current(campaign)
+            workload.fence_campaign()
+            self.assertEqual(1, write.call_count)
+
+    def test_controller_recovery_fences_prior_launch_but_not_initial_preparation(self):
+        for launched in (False, True):
+            campaign = dict(state='prepared', generation='a' * 64, bootId=BOOT,
+                            handles={role: HANDLE for role in workload.ROLES})
+            record = {'state': 'prepared', 'generation': None}
+            if launched:
+                record.update(state='launching', generation='b' * 64)
+            with self.subTest(launched=launched), \
+                    patch.object(workload, 'locked', side_effect=nullcontext), \
+                    patch.object(workload, 'boot', return_value=BOOT), \
+                    patch.object(workload, 'read', return_value=campaign), \
+                    patch.object(workload, 'retained', return_value=(campaign, ROLE, record)), \
+                    patch.object(workload, 'write'), patch.object(workload, 'reconcile') as reconcile:
+                workload.recover_controller()
+                self.assertEqual('terminalizing' if launched else 'prepared', campaign['state'])
+                reconcile.assert_called_once_with()
+
 
 class FakeConnection:
     def __init__(self, raw, uid=1000):
@@ -401,6 +760,86 @@ class FakeConnection:
         self.sent.append(value)
 
 
+class ControllerExchangeAuditTest(unittest.TestCase):
+    def audit(self, method, response, *, failure=None):
+        request = json.dumps({'method': method, 'handle': HANDLE}, separators=(',', ':')).encode() + b'\n'
+        record = {'managerInvocation': INVOCATION, 'bootId': BOOT,
+                  'cgroupIdentity': [1, 99]}
+        with patch.object(workload, 'locked', side_effect=nullcontext), \
+                patch.object(workload, 'retained', return_value=({}, ROLE, record)), \
+                patch.object(workload, 'manager', return_value=manager_state()), \
+                patch.object(workload, 'exact'), \
+                patch.object(workload, 'admit') as admission, \
+                patch.object(workload, 'write', side_effect=failure) as written:
+            controller._audit_exchange(method, HANDLE, request, response, 10, 20)
+        admission.assert_not_called()
+        return request, written
+
+    def test_fixed_successful_exchange_retains_only_root_digests(self):
+        response = b'{"browserSessionToken":"private-session"}\n'
+        request, written = self.audit('bootstrap-mail', response)
+        path, value = written.call_args.args
+        self.assertEqual(workload.ROOT / 'authority/dynamic-app-bootstrap-exchange.json', path)
+        self.assertEqual('dynamic-app-bootstrap', value['caseId'])
+        self.assertEqual(INVOCATION, value['managerInvocation'])
+        self.assertEqual(hashlib.sha256(request).hexdigest(), value['requestDigest'])
+        self.assertEqual(hashlib.sha256(response).hexdigest(), value['responseDigest'])
+        self.assertNotIn('private-session', json.dumps(value))
+        self.assertEqual((10, 20), (value['startedMonotonicNs'], value['finishedMonotonicNs']))
+        _request, written = self.audit('connect-fcp', b'{"status":"connected"}\n')
+        self.assertEqual(workload.ROOT / 'authority/own-management-exchange.json',
+                         written.call_args.args[0])
+
+    def test_audit_failure_is_inconclusive_without_an_extra_admission(self):
+        _request, written = self.audit('bootstrap-mail', b'{}\n', failure=OSError('audit unavailable'))
+        written.assert_called_once()
+
+
+class ControllerRequestProgressTest(unittest.TestCase):
+    def test_root_checkpoint_retains_fixed_phase_without_handle_or_response(self):
+        boot_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        with patch.object(controller.os, 'geteuid', return_value=0), \
+                patch.object(controller, '_own_start_ticks', return_value=42), \
+                patch.object(workload, 'boot', return_value=boot_id), \
+                patch.object(workload, 'write') as written:
+            controller._request_progress('observe', 'executing', 123)
+            path, record = written.call_args.args
+            self.assertEqual(controller.REQUEST_PROGRESS, path)
+            self.assertEqual(0o600, written.call_args.kwargs['mode'])
+            self.assertEqual('observe', record['method'])
+            self.assertEqual('executing', record['phase'])
+            self.assertEqual(123, record['startedMonotonicNs'])
+            self.assertEqual(42, record['processStartTicks'])
+            self.assertEqual(boot_id, record['bootId'])
+            self.assertNotIn(HANDLE, json.dumps(record))
+            controller._request_progress('observe', 'failed', 123,
+                                         TimeoutError('private request detail'))
+            failed = written.call_args.args[1]
+            self.assertEqual('TimeoutError', failed['exceptionType'])
+            self.assertNotIn('private request detail', json.dumps(failed))
+            written.reset_mock()
+            controller._request_progress('execute', 'executing', 123)
+            written.assert_not_called()
+
+    def test_checkpoint_write_failure_cannot_change_request_result(self):
+        for failure in (OSError('unavailable'), RuntimeError('diagnostic broken')):
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(controller.os, 'geteuid', return_value=0), \
+                    patch.object(controller, '_own_start_ticks', return_value=42), \
+                    patch.object(workload, 'boot', return_value='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'), \
+                    patch.object(workload, 'write', side_effect=failure):
+                self.assertIsNone(controller._request_progress('observe', 'executing', 123))
+
+
+class FnpBoundaryTest(unittest.TestCase):
+    def test_counter_sampling_is_not_a_controller_method(self):
+        self.assertNotIn('observe-fnp', controller.METHODS)
+        self.assertFalse(hasattr(workload, 'observe_fnp'))
+        raw = json.dumps({'method': 'observe-fnp', 'handle': HANDLE}).encode()
+        with self.assertRaises(workload.WorkloadError):
+            controller.request(raw)
+
+
 class ControllerRequestTest(unittest.TestCase):
     def setUp(self):
         # These tests use FakeConnection, not the host's peer-credential ABI.
@@ -420,6 +859,8 @@ class ControllerRequestTest(unittest.TestCase):
             for final in (False, True):
                 with self.subTest(body=body, final=final), ExitStack() as stack:
                     stack.enter_context(patch.object(workload, 'locked', side_effect=nullcontext))
+                    stack.enter_context(patch.object(workload, 'boot',
+                        return_value='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'))
                     stack.enter_context(patch.object(workload, 'retained', return_value=(
                         {'deadlineMonotonicNs': 10**20}, ROLE, {})))
                     for name in ('admit', 'exact', 'manager', 'current'):
@@ -436,8 +877,13 @@ class ControllerRequestTest(unittest.TestCase):
                     responses.append((200, {}, json.dumps(body).encode()))
                     stack.enter_context(patch.object(controller, '_http', side_effect=responses))
                     reconcile = stack.enter_context(patch.object(workload, 'reconcile'))
+                    written = stack.enter_context(patch.object(workload, 'write'))
                     failed = FakeConnection(json.dumps({'method': 'bootstrap-mail', 'handle': HANDLE}).encode() + b'\n')
                     self.assertFalse(controller.handle_request(failed, 1000))
+                    self.assertTrue(any(call.args[0] == controller.BOOTSTRAP_FAILURE
+                        and call.args[1]['stage'] ==
+                            ('recheck' if final else 'app-runtime')
+                        for call in written.call_args_list))
                     healthy = FakeConnection(self.raw() + b'\n')
                     with patch.object(workload, 'start', return_value={'state': 'running'}):
                         self.assertTrue(controller.handle_request(healthy, 1000))
@@ -489,6 +935,237 @@ class ControllerRequestTest(unittest.TestCase):
             start.assert_called_once_with(HANDLE)
         self.assertEqual([b'{"state":"running"}\n'], connection.sent)
 
+    def test_observe_progress_brackets_real_dispatch_and_preserves_failure(self):
+        request = json.dumps({'method': 'observe', 'handle': HANDLE}).encode() + b'\n'
+        with patch.object(controller, '_request_progress') as progress, \
+                patch.object(workload, 'observe', return_value={'state': 'running'}):
+            self.assertEqual('observe', controller.serve(FakeConnection(request), 1000))
+        self.assertEqual(['executing', 'replied'],
+                         [call.args[1] for call in progress.call_args_list])
+        self.assertEqual(progress.call_args_list[0].args[2],
+                         progress.call_args_list[1].args[2])
+        with patch.object(controller, '_request_progress') as progress, \
+                patch.object(workload, 'observe', side_effect=ValueError('stalled')):
+            with self.assertRaisesRegex(ValueError, 'stalled'):
+                controller.serve(FakeConnection(request), 1000)
+        self.assertEqual(['executing', 'failed'],
+                         [call.args[1] for call in progress.call_args_list])
+
+    def test_only_exact_observer_control_probe_routes_to_denied_fixed_method(self):
+        raw = b'{"method":"pr315-observer-control","handle":"' + HANDLE.encode() + b'"}\n'
+        target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                  'bootId': BOOT, 'observedMonotonicNs': time.monotonic_ns()}
+        with patch.object(controller, '_controller_process', return_value=target), \
+                patch.object(controller, '_observer_control_denial',
+                             return_value='pr315-observer-control') as denial:
+            connection = FakeConnection(b'P' + raw)
+            self.assertEqual('pr315-observer-control', controller.serve(connection, 1000))
+            self.assertEqual([b'R'], connection.sent)
+            self.assertEqual((HANDLE, 123, 1000, raw), denial.call_args.args[1:5])
+            self.assertEqual(target, denial.call_args.args[5])
+            self.assertGreater(denial.call_args.args[6], target['observedMonotonicNs'])
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(b'P' + raw, uid=2000), 1000)
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(raw), 1000)
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(b'P' + raw.replace(b'pr315-observer-control',
+                                                            b'pr315-observer-control-extra')), 1000)
+            denial.assert_called_once()
+
+    def test_only_exact_arbitrary_endpoint_probe_reaches_fixed_connector_boundary(self):
+        raw = b'{"method":"pr315-arbitrary-endpoint","handle":"' + HANDLE.encode() + b'"}\n'
+        target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                  'bootId': BOOT, 'observedMonotonicNs': time.monotonic_ns()}
+        with patch.object(controller, '_controller_process', return_value=target), \
+                patch.object(controller, '_observer_arbitrary_endpoint_denial',
+                             return_value='pr315-arbitrary-endpoint') as denial:
+            connection = FakeConnection(b'P' + raw)
+            self.assertEqual('pr315-arbitrary-endpoint', controller.serve(connection, 1000))
+            self.assertEqual([b'R'], connection.sent)
+            self.assertEqual((HANDLE, 123, 1000, raw), denial.call_args.args[1:5])
+            self.assertEqual(target, denial.call_args.args[5])
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(raw), 1000)
+            with self.assertRaises(workload.WorkloadError):
+                controller.serve(FakeConnection(b'P' + raw.replace(
+                    b'pr315-arbitrary-endpoint', b'pr315-arbitrary-endpoint-extra')), 1000)
+            denial.assert_called_once()
+
+    def test_arbitrary_endpoint_control_requires_recipient_fcp_hello(self):
+        recipient = {'state': 'running', 'provenance': 'controller-kernel-sample',
+                     'stateDigest': None, 'observedMonotonicNs': 10}
+        response = b'NodeHello\nFCPVersion=2.0\nEndMessage\n'
+        stream = MagicMock()
+        stream.__enter__.return_value = stream
+        stream.getpeername.return_value = ('127.0.0.1', 19401)
+        stream.recv.return_value = response
+        with patch.object(workload, 'observe', return_value=recipient), \
+                patch.object(workload, 'connect', return_value=stream) as connect:
+            observed, finished, digest = controller._recipient_fcp_control(HANDLE)
+        self.assertEqual(recipient, observed)
+        self.assertGreater(finished, 10)
+        self.assertEqual(hashlib.sha256(response).hexdigest(), digest)
+        connect.assert_called_once_with(HANDLE, 'fcp')
+        stream.recv.return_value = b'ProtocolError\nEndMessage\n'
+        with patch.object(workload, 'observe', return_value=recipient), \
+                patch.object(workload, 'connect', return_value=stream):
+            with self.assertRaises(workload.WorkloadError):
+                controller._recipient_fcp_control(HANDLE)
+
+    def test_sibling_http_control_requires_fixed_live_http_status(self):
+        recipient = {'state': 'running', 'provenance': 'controller-kernel-sample',
+                     'stateDigest': None, 'observedMonotonicNs': 10}
+        stream = MagicMock()
+        stream.__enter__.return_value = stream
+        stream.getpeername.return_value = ('127.0.0.1', 19402)
+        stream.recv.return_value = b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n'
+        with patch.object(workload, 'observe', return_value=recipient), \
+                patch.object(workload, 'connect', return_value=stream) as connect:
+            observed, finished, digest = controller._recipient_http_control(HANDLE)
+        self.assertEqual(recipient, observed)
+        self.assertGreater(finished, 10)
+        self.assertEqual(hashlib.sha256(b'HTTP/1.1 200 OK').hexdigest(), digest)
+        connect.assert_called_once_with(HANDLE, 'http')
+        stream.recv.return_value = b'NOT HTTP\r\n'
+        with patch.object(workload, 'observe', return_value=recipient), \
+                patch.object(workload, 'connect', return_value=stream):
+            with self.assertRaises(workload.WorkloadError):
+                controller._recipient_http_control(HANDLE)
+
+    def test_arbitrary_endpoint_denial_reaches_network_reject_and_retains_active_target(self):
+        raw = b'{"method":"pr315-arbitrary-endpoint","handle":"' + HANDLE.encode() + b'"}\n'
+        sender = {'state': 'running', 'stateDigest': 'c' * 64,
+                  'provenance': 'controller-kernel-sample',
+                  'managerInvocation': '1' * 32, 'cgroupIdentity': [1, 11],
+                  'bootId': BOOT, 'observedMonotonicNs': 25}
+        recipient = dict(sender, stateDigest=None,
+                         managerInvocation='2' * 32, cgroupIdentity=[1, 12],
+                         observedMonotonicNs=30)
+        target = {'invocationId': '3' * 32, 'cgroupIdentity': [1, 13],
+                  'bootId': BOOT, 'observedMonotonicNs': 10}
+        campaign = {'handles': {'candidate-recipient': 'b' * 64}}
+        connection = FakeConnection(b'')
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(controller, '_observer_peer',
+                return_value={'pid': 123, 'uid': 1000, 'startTicks': 45}))
+            stack.enter_context(patch.object(controller, '_controller_process',
+                side_effect=[target, dict(target, observedMonotonicNs=110)]))
+            stack.enter_context(patch.object(workload, 'locked', side_effect=nullcontext))
+            stack.enter_context(patch.object(workload, 'retained', side_effect=[
+                (campaign, 'candidate-sender', {}),
+                (campaign, 'candidate-recipient', {})]))
+            stack.enter_context(patch.object(workload, 'read',
+                return_value={'probeIdentity': {'digest': 'fixed'}}))
+            for name in ('admit', 'exact', 'manager'):
+                stack.enter_context(patch.object(workload, name))
+            stack.enter_context(patch.object(workload, 'observe',
+                side_effect=[sender, dict(sender, observedMonotonicNs=105)]))
+            stack.enter_context(patch.object(controller, '_recipient_fcp_control',
+                side_effect=[(recipient, 40, 'a' * 64),
+                             (dict(recipient, observedMonotonicNs=90), 100, 'b' * 64)]))
+            attempted = stack.enter_context(patch.object(workload, 'connect',
+                side_effect=network.NetworkBoundaryError(
+                    'restricted-workload-network-rejected')))
+            stack.enter_context(patch.object(controller.time, 'monotonic_ns',
+                side_effect=[60, 70, 80]))
+            written = stack.enter_context(patch.object(workload, 'write'))
+            self.assertEqual('pr315-arbitrary-endpoint',
+                controller._observer_arbitrary_endpoint_denial(
+                    connection, HANDLE, 123, 1000, raw, target, 20))
+        attempted.assert_called_once_with(HANDLE, 'sibling-fcp')
+        self.assertEqual([controller.DENIED_RESPONSE], connection.sent)
+        path, audit = written.call_args.args
+        self.assertEqual(workload.ROOT / 'authority/arbitrary-endpoint-denial.json', path)
+        self.assertEqual('restricted-workload-network-rejected', audit['denial'])
+        self.assertEqual('a' * 64, audit['recipientControlBeforeDigest'])
+        self.assertEqual('b' * 64, audit['recipientControlAfterDigest'])
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), audit['requestDigest'])
+        self.assertTrue(written.call_args.kwargs['create'])
+
+    @unittest.skipUnless(hasattr(socket, 'SO_PEERCRED'), 'Linux peer credentials required')
+    def test_observer_control_request_follows_real_socket_readiness_barrier(self):
+        raw = b'{"method":"pr315-observer-control","handle":"' + HANDLE.encode() + b'"}\n'
+        target = {'invocationId': 'd' * 32, 'cgroupIdentity': [1, 2],
+                  'bootId': BOOT, 'observedMonotonicNs': time.monotonic_ns()}
+        with ExitStack() as stack:
+            server, client = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+            stack.enter_context(server)
+            stack.enter_context(client)
+            stack.enter_context(patch.object(controller, '_controller_process', return_value=target))
+            denial = stack.enter_context(patch.object(controller, '_observer_control_denial',
+                return_value='pr315-observer-control'))
+            outcomes = []
+            worker = threading.Thread(target=lambda: outcomes.append(
+                controller.serve(server, os.getuid())), daemon=True)
+            worker.start()
+            client.sendall(b'P')
+            client.settimeout(2)
+            self.assertEqual(b'R', client.recv(1))
+            client.sendall(raw)
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual(['pr315-observer-control'], outcomes)
+        self.assertEqual((HANDLE, os.getpid(), os.getuid(), raw), denial.call_args.args[1:5])
+        self.assertEqual(target, denial.call_args.args[5])
+        self.assertGreater(denial.call_args.args[6], target['observedMonotonicNs'])
+
+    def test_observer_control_denial_retains_root_target_and_exact_sent_response(self):
+        raw = b'{"method":"pr315-observer-control","handle":"' + HANDLE.encode() + b'"}\n'
+        moment = time.monotonic_ns()
+        controller_before = {'invocationId': 'a' * 32, 'cgroupIdentity': [1, 12],
+                             'bootId': BOOT, 'observedMonotonicNs': moment - 1000}
+        controller_after = dict(controller_before, observedMonotonicNs=moment + 10**9)
+        sender = {'state': 'running', 'stateDigest': 'b' * 64,
+                  'provenance': 'controller-kernel-sample',
+                  'managerInvocation': INVOCATION, 'cgroupIdentity': [1, 99], 'bootId': BOOT}
+        actor = {'pid': 123, 'uid': 1000, 'startTicks': 45}
+        connection = FakeConnection(b'')
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(controller, '_observer_peer', return_value=actor))
+            stack.enter_context(patch.object(controller, '_controller_process',
+                                            side_effect=[controller_before, controller_after]))
+            stack.enter_context(patch.object(workload, 'observe', side_effect=[sender, sender]))
+            stack.enter_context(patch.object(workload, 'locked', side_effect=nullcontext))
+            stack.enter_context(patch.object(workload, 'retained',
+                                            return_value=({}, 'candidate-sender', {})))
+            stack.enter_context(patch.object(workload, 'read',
+                                            return_value={'probeIdentity': {'digest': 'fixed'}}))
+            for name in ('admit', 'exact', 'manager'):
+                stack.enter_context(patch.object(workload, name))
+            written = stack.enter_context(patch.object(workload, 'write'))
+            self.assertEqual('pr315-observer-control', controller._observer_control_denial(
+                connection, HANDLE, 123, 1000, raw,
+                dict(controller_before, observedMonotonicNs=moment - 1000), moment))
+        self.assertEqual([controller.DENIED_RESPONSE], connection.sent)
+        self.assertEqual(1, written.call_count)
+        target, audit = written.call_args.args
+        self.assertEqual(workload.ROOT / 'authority/observer-control-denial.json', target)
+        self.assertEqual(actor, audit['actor'])
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), audit['requestDigest'])
+        self.assertEqual(hashlib.sha256(controller.DENIED_RESPONSE).hexdigest(), audit['responseDigest'])
+        self.assertTrue(written.call_args.kwargs['create'])
+
+    def test_removed_fnp_observation_method_is_rejected(self):
+        raw = json.dumps({'method': 'observe-fnp', 'handle': HANDLE}).encode() + b'\n'
+        connection = FakeConnection(raw)
+        with self.assertRaises(workload.WorkloadError):
+            controller.serve(connection, 1000)
+        self.assertEqual([], connection.sent)
+
+    def test_successful_bootstrap_audits_exact_sent_bytes_without_the_token(self):
+        raw = json.dumps({'method': 'bootstrap-mail', 'handle': HANDLE},
+                         separators=(',', ':')).encode() + b'\n'
+        connection = FakeConnection(raw)
+        with patch.object(controller, 'bootstrap', return_value={'browserSessionToken': 'private'}), \
+                patch.object(controller, '_audit_exchange') as audit:
+            self.assertEqual('bootstrap-mail', controller.serve(connection, 1000))
+        self.assertEqual(1, len(connection.sent))
+        method, handle, request, response, started, finished = audit.call_args.args
+        self.assertEqual(('bootstrap-mail', HANDLE, raw, connection.sent[0]),
+                         (method, handle, request, response))
+        self.assertLess(started, finished)
+
     def test_duplicate_fields_are_rejected(self):
         raw = ('{"method":"start","method":"stop","handle":"' + HANDLE + '"}').encode()
         with self.assertRaisesRegex(workload.WorkloadError, 'duplicate-request-field'):
@@ -521,7 +1198,267 @@ class ControllerRequestTest(unittest.TestCase):
                 start.assert_not_called()
 
 
+class LifecycleStopBarrierTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root authority directory')
+    def test_exact_stop_intent_waits_for_root_release_with_original_deadline(self):
+        with tempfile.TemporaryDirectory(prefix='pr315-barrier-', dir='/var/lib') as directory:
+            authority = Path(directory) / 'authority'
+            authority.mkdir(mode=0o700)
+            request = authority / 'pr315-stop-barrier.json'
+            phase = authority / 'pr315-stop-phase.json'
+            release = authority / 'pr315-stop-release.json'
+            nonce = 'a' * 64
+            record = {'state': 'stopping', 'campaign': 'b' * 64,
+                'generation': 'c' * 64, 'managerInvocation': 'd' * 32,
+                'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                'cgroupIdentity': [1, 99]}
+            selected = {'schemaVersion': 1, 'kind': 'pr315-fixed-stop-barrier',
+                'caseId': 'late-child', 'role': 'candidate-sender',
+                'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+                'sourceDigest': hashlib.sha256(
+                    Path(lifecycle_barrier.__file__).read_bytes()).hexdigest(),
+                **{key: record[key] for key in ('campaign', 'generation',
+                    'managerInvocation', 'bootId', 'cgroupIdentity')}}
+            workload.write(request, selected, create=True)
+            def release_after_phase():
+                until = time.monotonic() + 3
+                while not phase.exists() and time.monotonic() < until:
+                    time.sleep(.01)
+                self.assertTrue(phase.exists())
+                workload.write(release, {'schemaVersion': 1,
+                    'kind': 'pr315-fixed-stop-release',
+                    'caseId': 'late-child', 'nonce': nonce}, create=True)
+            with patch.object(lifecycle_barrier, 'REQUEST', request), \
+                    patch.object(lifecycle_barrier, 'PHASE', phase), \
+                    patch.object(lifecycle_barrier, 'RELEASE', release):
+                worker = threading.Thread(target=release_after_phase)
+                worker.start()
+                try:
+                    result = lifecycle_barrier.await_release('candidate-sender',
+                        record, time.monotonic_ns() + 4 * 10**9)
+                finally:
+                    worker.join(timeout=4)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual('late-child', result['caseId'])
+            self.assertLess(result['stopIntentObservedNs'], result['releaseObservedNs'])
+
+
 class LauncherTest(unittest.TestCase):
+    def test_fixed_abort_never_executes_inputs_and_normal_launch_still_rejects_changed_tree(self):
+        from types import SimpleNamespace
+        original_umask = os.umask(0o022)
+        self.addCleanup(os.umask, original_umask)
+        original_read = Path.read_text
+        def read(path, *args, **kwargs):
+            if str(path) == '/proc/self/status':
+                return 'NoNewPrivs: 1\nCapEff: 0\nCapPrm: 0\nCapInh: 0\nCapAmb: 0\nCapBnd: 0\n'
+            if str(path) == '/proc/self/cgroup':
+                return '0::/system.slice/cryptad-workload@previous.service'
+            if str(path) == '/proc/sys/kernel/random/boot_id':
+                return 'a'*36
+            return original_read(path,*args,**kwargs)
+        flags = SimpleNamespace(isolated=True,no_site=True)
+        account = SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid())
+        spec = {'role':'previous','bootId':'a'*36,
+            'deadlineMonotonicNs':time.monotonic_ns()+20*10**9,
+            'inputs':{'package':'expected'}}
+        with patch.object(launcher.sys,'argv',['launcher','previous']), \
+                patch.object(launcher.sys,'flags',flags), \
+                patch.object(launcher.pwd,'getpwnam',return_value=account), \
+                patch.object(launcher.os,'getgroups',return_value=[]), \
+                patch.dict(launcher.os.environ,dict(launcher.os.environ)), \
+                patch.object(Path,'read_text',read), \
+                patch('restricted_native_launcher._trusted_read',return_value=spec), \
+                patch('restricted_native_launcher.tree_identity',return_value='changed') as trees, \
+                patch.object(launcher,'_partial_launch_request',return_value='c'*64) as request, \
+                patch.object(launcher,'_publish_partial_launch_fault') as published, \
+                patch.object(launcher,'_wait_partial_launch_release') as released, \
+                patch.object(launcher,'command') as command, \
+                patch.object(launcher.subprocess,'Popen') as executed:
+            self.assertEqual(73,launcher.main())
+            published.assert_called_once_with('c'*64,account.pw_uid)
+            released.assert_called_once_with('c'*64,spec['deadlineMonotonicNs'])
+            trees.assert_not_called()
+            command.assert_not_called()
+            executed.assert_not_called()
+            request.return_value=None
+            with self.assertRaisesRegex(ValueError,'input-changed'):
+                launcher.main()
+            trees.assert_called_once()
+            command.assert_not_called()
+            executed.assert_not_called()
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root for fixed launch request')
+    def test_previous_launch_fault_is_one_use_and_source_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            requests = root / 'probe-requests'
+            requests.mkdir(mode=0o711)
+            output = root / 'state/previous/tmp'
+            output.mkdir(parents=True, mode=0o700)
+            marker = requests / 'previous.json'
+            record = output / 'pr315-partial-launch-fault.json'
+            release = output / 'pr315-partial-launch-release.json'
+            source = hashlib.sha256(Path(launcher.__file__).read_bytes()).hexdigest()
+            spec = {'bootId': 'a' * 36, 'javaDigest': 'sha256:' + 'b' * 64}
+            marker.write_text(json.dumps({'schemaVersion': 1,
+                'caseId': 'partial-launch', 'nonce': 'c' * 64,
+                'bootId': spec['bootId'], 'javaDigest': spec['javaDigest'],
+                'sourceDigest': source}))
+            marker.chmod(0o444)
+            with patch.object(launcher, 'PARTIAL_LAUNCH_REQUEST', marker), \
+                    patch.object(launcher, 'PARTIAL_LAUNCH_RECORD', record), \
+                    patch.object(launcher, 'PARTIAL_LAUNCH_RELEASE', release):
+                self.assertIsNone(launcher._partial_launch_request('candidate-sender', spec))
+                self.assertEqual('c' * 64,
+                    launcher._partial_launch_request('previous', spec))
+                launcher._publish_partial_launch_fault('c' * 64, 0)
+                value = json.loads(record.read_text())
+                self.assertEqual('pr315-previous-launch-fault', value['kind'])
+                self.assertEqual(os.getpid(), value['pid'])
+                self.assertEqual(source, value['sourceDigest'])
+                release.write_text(json.dumps({'schemaVersion': 1,
+                    'kind': 'pr315-partial-launch-release', 'nonce': 'c' * 64}))
+                release.chmod(0o600)
+                launcher._wait_partial_launch_release('c' * 64,
+                    time.monotonic_ns() + 2 * 10**9)
+                with self.assertRaisesRegex(ValueError, 'release-mismatch'):
+                    launcher._wait_partial_launch_release('d' * 64,
+                        time.monotonic_ns() + 2 * 10**9)
+                with self.assertRaises(FileExistsError):
+                    launcher._publish_partial_launch_fault('c' * 64, 0)
+                marker.chmod(0o644)
+                with self.assertRaisesRegex(ValueError, 'request-invalid'):
+                    launcher._partial_launch_request('previous', spec)
+
+    def test_fixed_output_probe_stays_in_real_role_sandbox_and_closed_mode(self):
+        request = {'nonce': 'a' * 64, 'caseId': 'output-symlink'}
+        with patch.object(launcher, '_trusted_probe_request', return_value=request), \
+                patch.object(launcher.subprocess, 'Popen') as started:
+            launcher._start_probe('candidate-sender', {})
+        command = started.call_args.args[0]
+        self.assertEqual(['/usr/bin/python3', '-I', '-S', '-B', '/probe.py',
+                          'a' * 64, 'output-symlink'], command[-7:])
+        self.assertIn(['--ro-bind', str(launcher.PROBE_SOURCE), '/probe.py'],
+                      [command[index:index + 3] for index in range(len(command) - 2)])
+        self.assertIn('--unshare-user', command)
+        self.assertIn('--unshare-pid', command)
+
+    def test_late_child_uses_only_the_second_measured_role_source(self):
+        request = {'nonce': 'a' * 64, 'caseId': 'late-child'}
+        with patch.object(launcher, '_trusted_probe_request', return_value=request), \
+                patch.object(launcher.subprocess, 'Popen') as started:
+            launcher._start_probe('candidate-sender', {})
+        command = started.call_args.args[0]
+        self.assertIn(['--ro-bind', str(launcher.LIFECYCLE_PROBE_SOURCE), '/probe.py'],
+                      [command[index:index + 3] for index in range(len(command) - 2)])
+        self.assertEqual(['/usr/bin/python3', '-I', '-S', '-B', '/probe.py',
+                          'a' * 64, 'late-child'], command[-7:])
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and os.geteuid() == 0,
+                         'requires disposable Linux root source owner')
+    def test_late_child_request_binds_second_source_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = root / 'request.json'
+            source = root / 'lifecycle.py'
+            source.write_bytes(b'fixed-lifecycle-source')
+            source.chmod(0o444)
+            spec = {'bootId': 'a' * 36, 'javaDigest': 'sha256:' + 'b' * 64}
+            value = {'schemaVersion': 1, 'caseId': 'late-child',
+                'nonce': 'c' * 64, 'bootId': spec['bootId'],
+                'javaDigest': spec['javaDigest'],
+                'sourceDigest': hashlib.sha256(source.read_bytes()).hexdigest()}
+            request.write_text(json.dumps(value))
+            request.chmod(0o444)
+            with patch.object(launcher, 'PROBE_REQUEST', request), \
+                    patch.object(launcher, 'LIFECYCLE_PROBE_SOURCE', source):
+                self.assertEqual(value, launcher._trusted_probe_request(spec))
+                request.chmod(0o600)
+                request.write_text(json.dumps(dict(value, sourceDigest='0' * 64)))
+                request.chmod(0o444)
+                with self.assertRaisesRegex(ValueError, 'source-invalid'):
+                    launcher._trusted_probe_request(spec)
+
+    def test_reserved_logging_option_never_overwrites_or_skips_product_options(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'conf').mkdir()
+            config = root / 'conf/wrapper.conf'
+            original = ''.join('wrapper.java.additional.' + str(i) + '=-Dtest.option=' + str(i) + '\n'
+                               for i in range(1, 10))
+            config.write_text(original)
+            launcher.verify_wrapper_options(root)
+            self.assertEqual(original, config.read_text())
+            for changed in (original + 'wrapper.java.additional.10=-Dproduct.required=true\n',
+                            original.replace('wrapper.java.additional.9=', 'wrapper.java.additional.11='),
+                            original + 'wrapper.java.additional.1=-Dduplicate=true\n',
+                            original + '#include other.conf\n',
+                            original + 'wrapper.java.additional.9.scope=app_only\n'):
+                with self.subTest(configuration=changed):
+                    config.write_text(changed)
+                    with self.assertRaisesRegex(ValueError, 'workload-wrapper-options-unsupported'):
+                        launcher.verify_wrapper_options(root)
+
+
+    def test_wrapper_logging_is_fixed_bounded_and_inside_role_state(self):
+        for role in workload.ROLES:
+            command, _environment = launcher.command(role)
+            properties = dict(item.split('=', 1) for item in command[command.index('--') + 2:])
+            self.assertEqual('/node/logs/wrapper.log', properties['wrapper.logfile'])
+            self.assertEqual('2M', properties['wrapper.logfile.maxsize'])
+            self.assertEqual('3', properties['wrapper.logfile.maxfiles'])
+            self.assertEqual('256', properties['wrapper.java.maxmemory'])
+            self.assertEqual('-Dcrypta.log.dir=/node/logs', properties['wrapper.java.additional.10'])
+            self.assertEqual('--config-file', properties['wrapper.app.parameter.1'])
+            self.assertEqual('/node/config/cryptad.ini', properties['wrapper.app.parameter.2'])
+
+    def test_sender_and_historical_roles_get_measured_startup_allowance(self):
+        for role in workload.ROLES:
+            command, _environment = launcher.command(role)
+            properties = dict(item.split('=', 1) for item in command[command.index('--') + 2:])
+            self.assertEqual('60' if role in ('candidate-sender', 'previous')
+                             else '30', properties['wrapper.startup.timeout'])
+        changed = launcher.launcher_policy()
+        changed['wrapperStartupTimeoutSeconds']['previous'] = 600
+        changed['wrapperStartupTimeoutSeconds']['candidate-sender'] = 600
+        self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['previous'])
+        self.assertEqual(60, launcher.launcher_policy()['wrapperStartupTimeoutSeconds']['candidate-sender'])
+
+    def test_all_roles_pin_untiered_bootstrap_and_app_compilation(self):
+        policy = launcher.launcher_policy()
+        self.assertEqual('workload-launcher-policy-v39', policy['revision'])
+        self.assertEqual('untiered-bootstrap-and-app-diagnostic-v2',
+                         policy['jvmCompilationPolicy'])
+        for role in workload.ROLES:
+            with self.subTest(role=role):
+                command, _environment = launcher.command(role)
+                properties = dict(item.split('=', 1)
+                                  for item in command[command.index('--') + 2:])
+                self.assertEqual('-XX:-TieredCompilation',
+                                 properties['wrapper.java.additional.11'])
+                self.assertEqual('BOOTSTRAP_DRYRUN_APP',
+                                 properties['wrapper.java.additional.11.scope'])
+                self.assertEqual('-Dcrypta.log.dir=/node/logs',
+                                 properties['wrapper.java.additional.10'])
+
+    def test_one_processor_diagnostic_covers_each_wrapper_jvm_without_changing_limits(self):
+        self.assertEqual(1, launcher.launcher_policy()['jvmActiveProcessorCount'])
+        for role in workload.ROLES:
+            with self.subTest(role=role):
+                command, _environment = launcher.command(role)
+                properties = dict(item.split('=', 1)
+                                  for item in command[command.index('--') + 2:])
+                self.assertEqual('-XX:ActiveProcessorCount=1',
+                                 properties['wrapper.java.additional.12'])
+                self.assertEqual('BOOTSTRAP_DRYRUN_APP',
+                                 properties['wrapper.java.additional.12.scope'])
+                self.assertEqual('256', properties['wrapper.java.maxmemory'])
+                self.assertEqual('60' if role in ('candidate-sender', 'previous') else '30',
+                                 properties['wrapper.startup.timeout'])
+
     def test_only_role_state_and_exact_inputs_are_mounted(self):
         for role in workload.ROLES:
             with self.subTest(role=role):
@@ -602,6 +1539,12 @@ class PreparationTest(unittest.TestCase):
             trust.write_bytes(b'')
             def extract(_source, destination, *_args):
                 destination.mkdir()
+                if destination.name == 'package':
+                    conf = destination / 'conf'
+                    conf.mkdir()
+                    (conf / 'wrapper.conf').write_text(''.join(
+                        f'wrapper.java.additional.{index}=fixture\n'
+                        for index in range(1, 10)))
                 return destination
             stack.enter_context(patch.object(runtime, 'extract_package', side_effect=extract))
             stack.enter_context(patch.object(runtime, 'extract_app_bundle', side_effect=extract))

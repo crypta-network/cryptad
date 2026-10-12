@@ -2,6 +2,7 @@ package network.crypta.platform.apphost.runtime;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
@@ -1192,65 +1193,71 @@ public final class LocalProcessAppHost implements AppHost {
     builder.environment().putAll(launchPlan.environment());
 
     Instant startedAt = Instant.now();
-    Process process = builder.start();
-    discardChildInput(process, normalizedAppId);
-    List<ProcessHandle> startupProcessTree = observeStartupProcessTree(process, normalizedAppId);
-    if (startupProcessTree.isEmpty()) {
-      startupProcessTree = recoverStartupProcessTree(installation, token, startedAt, process);
-    }
-    if (startupProcessTree.isEmpty()) {
-      recordProcessExit(
-          normalizedAppId,
-          new ProcessExitRecord(
+    Process process = AppProcessStarter.start(builder);
+    // An interrupted launch still needs a tracked owner before its caller regains the interrupt.
+    boolean restoreInterrupt = Thread.interrupted();
+    try {
+      discardChildInput(process, normalizedAppId);
+      List<ProcessHandle> startupProcessTree = observeStartupProcessTree(process, normalizedAppId);
+      if (startupProcessTree.isEmpty()) {
+        startupProcessTree = recoverStartupProcessTree(installation, token, startedAt, process);
+      }
+      if (startupProcessTree.isEmpty()) {
+        recordProcessExit(
+            normalizedAppId,
+            new ProcessExitRecord(
+                paths,
+                processExitCode(process),
+                Instant.now(),
+                restartCount,
+                currentRestartAttempt,
+                token,
+                launchPlan.sandboxStatus(),
+                false,
+                List.of()));
+        throw startupFailure(normalizedAppId, process);
+      }
+      RunningAppSnapshot snapshot =
+          new RunningAppSnapshot(
+              installation.manifest(),
               paths,
-              processExitCode(process),
-              Instant.now(),
+              token,
+              representativePid(
+                  startupProcessTree,
+                  process.pid(),
+                  preferDescendantPid(executable, startupProcessTree)),
+              startedAt,
+              launchPlan.sandboxStatus());
+      CompletableFuture<Void> exitCleanup = new CompletableFuture<>();
+      RunningProcess runningProcess =
+          new RunningProcess(
+              process,
+              snapshot,
+              exitCleanup,
+              startupProcessTree,
               restartCount,
               currentRestartAttempt,
-              token,
-              launchPlan.sandboxStatus(),
-              false,
-              List.of()));
-      throw startupFailure(normalizedAppId, process);
-    }
-    RunningAppSnapshot snapshot =
-        new RunningAppSnapshot(
-            installation.manifest(),
-            paths,
-            token,
-            representativePid(
-                startupProcessTree,
-                process.pid(),
-                preferDescendantPid(executable, startupProcessTree)),
-            startedAt,
-            launchPlan.sandboxStatus());
-    CompletableFuture<Void> exitCleanup = new CompletableFuture<>();
-    RunningProcess runningProcess =
-        new RunningProcess(
-            process,
-            snapshot,
-            exitCleanup,
-            startupProcessTree,
-            restartCount,
-            currentRestartAttempt,
-            startupRepresentativeProcessHandoff(process, startupProcessTree));
-    launchIds.put(normalizedAppId, java.util.UUID.randomUUID().toString());
-    runningApps.put(normalizedAppId, runningProcess);
-    runtimeRecords.compute(
-        normalizedAppId,
-        (_, previousRecord) ->
-            RuntimeRecord.running(snapshot, restartCount, currentRestartAttempt, previousRecord));
-    StartupAcceptance startupAcceptance =
-        acceptStartupRunningProcess(normalizedAppId, runningProcess, exitCleanup);
-    if (startupAcceptance.runningProcess() == null) {
-      throw startupFailure(normalizedAppId, process);
-    }
-    RunningProcess liveRunningProcess = startupAcceptance.runningProcess();
-    if (startupAcceptance.restartScheduled()) {
+              startupRepresentativeProcessHandoff(process, startupProcessTree));
+      launchIds.put(normalizedAppId, java.util.UUID.randomUUID().toString());
+      runningApps.put(normalizedAppId, runningProcess);
+      runtimeRecords.compute(
+          normalizedAppId,
+          (_, previousRecord) ->
+              RuntimeRecord.running(snapshot, restartCount, currentRestartAttempt, previousRecord));
+      StartupAcceptance startupAcceptance =
+          acceptStartupRunningProcess(normalizedAppId, runningProcess, exitCleanup);
+      if (startupAcceptance.runningProcess() == null) {
+        throw startupFailure(normalizedAppId, process);
+      }
+      RunningProcess liveRunningProcess = startupAcceptance.runningProcess();
+      if (startupAcceptance.restartScheduled()) {
+        return liveRunningProcess.snapshot();
+      }
+      startTrackedProcessTreeObserver(normalizedAppId, process, exitCleanup);
       return liveRunningProcess.snapshot();
+    } finally {
+      if (restoreInterrupt) Thread.currentThread().interrupt();
     }
-    startTrackedProcessTreeObserver(normalizedAppId, process, exitCleanup);
-    return liveRunningProcess.snapshot();
   }
 
   /**
@@ -1421,11 +1428,27 @@ public final class LocalProcessAppHost implements AppHost {
    */
   @Override
   public synchronized List<AppRuntimeStatusSnapshot> listRuntimeStatus() throws IOException {
-    List<AppRuntimeStatusSnapshot> statuses = new ArrayList<>();
-    for (InstalledAppSnapshot installed : listInstalled()) {
-      statuses.add(runtimeStatus(installed.appId()));
+    try {
+      return listInstalled().stream().map(this::runtimeStatusForListing).toList();
+    } catch (RuntimeStatusReadException exception) {
+      throw exception.getCause();
     }
-    return List.copyOf(statuses);
+  }
+
+  private AppRuntimeStatusSnapshot runtimeStatusForListing(InstalledAppSnapshot installed) {
+    try {
+      return runtimeStatus(installed.appId());
+    } catch (IOException exception) {
+      throw new RuntimeStatusReadException(exception);
+    }
+  }
+
+  private static final class RuntimeStatusReadException extends UncheckedIOException {
+    private static final long serialVersionUID = 1L;
+
+    private RuntimeStatusReadException(IOException cause) {
+      super(cause);
+    }
   }
 
   /**

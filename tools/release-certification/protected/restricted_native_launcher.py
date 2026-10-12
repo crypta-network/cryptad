@@ -29,6 +29,26 @@ def reject():
     raise ValueError('restricted-native-launch-rejected')
 
 
+def _postrun_reject(stage, reason, observed, expected):
+    """Keep a bounded private reason before the same terminal rejection."""
+    if (reason not in ('cgroup-membership', 'native-output-roster')
+            or type(observed) is not int or type(expected) is not int
+            or not 0 <= observed <= 4096 or not 0 <= expected <= 4096):
+        reject()
+    value = {'schemaVersion': 1, 'kind': 'restricted-native-postrun-rejection',
+             'reason': reason, 'observedCount': observed, 'expectedCount': expected}
+    try:
+        path = stage / 'diagnostics/postrun.json'
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'w') as stream:
+            json.dump(value, stream, sort_keys=True, separators=(',', ':'))
+            stream.flush()
+            os.fsync(stream.fileno())
+    except OSError:
+        pass
+    reject()
+
+
 def validate_spec(spec):
     if not isinstance(spec, dict):
         reject()
@@ -272,11 +292,13 @@ def main():
     # Candidate PID namespace termination is checked against the complete owned cgroup.
     # A wrapper that exits with a setsid descendant cannot reach output collection.
     group = Path('/sys/fs/cgroup/system.slice/cryptad-restricted-native.service/cgroup.procs')
-    if set(group.read_text().split()) != {str(os.getpid())}:
-        reject()
+    members = set(group.read_text().split())
+    if members != {str(os.getpid())}:
+        _postrun_reject(stage, 'cgroup-membership', len(members), 1)
     expected = {'projection.json'} if record['spec']['operation'] == 'app-projection' else set()
-    if set(path.name for path in native_output.iterdir()) != expected:
-        reject()
+    actual = set(path.name for path in native_output.iterdir())
+    if actual != expected:
+        _postrun_reject(stage, 'native-output-roster', len(actual), len(expected))
     if expected:
         # This collector imports only the keyless adapter and never an owning verifier.
         from restricted_native import _read_output

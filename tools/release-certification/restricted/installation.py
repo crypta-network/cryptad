@@ -27,13 +27,28 @@ APPROVAL = Path('/etc/cryptad-certification/restricted-installation.json')
 EXECUTION = PREFIX / 'restricted-execution.json'
 MANIFEST = '.restricted-manifest.json'
 EXPORT_POLICY = 'production-without-test-seams-v1'
+# The dedicated image's approved job caller differs from workload vmadmin.
+REFERENCE_RUNNER_UID = 62001
 TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name in (
     'disposable_integration.py', 'baseline_workspace_probe.py', 'native_cleanup_probe.py',
     'pr312_reference_vm.py', 'pr312_native_faults.py', 'pr312_prepare_reference.py',
     'pr312_output_faults.py', 'pr312_app_projection.py', 'pr313_boot_inputs.py',
     'pr313_fixtures.py', 'pr313_faults.py', 'pr313_worker_faults.py',
     'pr313_acceptance.py', 'pr313_acceptance_runner.py', 'pr313_observations.py',
-    'pr313_public_faults.py', 'pr314_acceptance.py', 'pr314_workload_driver.py'))
+    'pr313_public_faults.py', 'pr314_acceptance.py', 'pr314_workload_driver.py',
+    'pr315_workload_fixtures.py', 'pr315_workload_guest.py', 'pr315_workload_runner.py',
+    'pr315_workload_evidence.py', 'pr315_pve_host_admission.py',
+    'pr315_workload_campaign.py', 'pr315_pve_pressure_watch.py',
+    'pr315_role_probe.py', 'pr315_lifecycle_role_probe.py',
+    'pr315_campaign_seal.py', 'pr315_case_v10.py',
+    'pr315_case_registry.py', 'pr315_campaign_owner.py',
+    'pr315_workload_coordinator.py', 'pr315_pve_attempt_inventory.py',
+    'pr315_pve_attempt_cleanup.py', 'pr315_installed_case_validators.py',
+    'pr315_workload_fault_probes.py', 'pr315_observer_transport.py',
+    'pr315_revocation_probe.py', 'pr315_revocation_evidence.py',
+    'pr315_partial_launch_diagnostics.py', 'pr315_partial_start_transport.py',
+    'pr315_stuck_output_diagnostics.py', 'pr315_preparation.py'))
+TEST_SEAM_PREFIXES = ('tools/release-certification/restricted/pr315-probe-app/',)
 MAX_FILE = 512 * 1024 * 1024
 DEPENDENCY_ROOTS = ('/usr/lib/python3.13', '/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/libexec/sudo',
                     '/usr/lib/polkit-1', '/usr/share/polkit-1', '/usr/share/dbus-1', '/etc/dbus-1')
@@ -95,10 +110,15 @@ def read_json(path):
 def secured(path, *, private=False):
     """Reject writable or linked installation components, including ancestors."""
     path = Path(path)
-    for entry in (path, *path.parents):
-        info = entry.lstat()
+    entry = os.fspath(path)
+    while True:
+        info = os.lstat(entry)
         if stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
             raise InstallationError('restricted-installation-not-root-owned')
+        parent = os.path.dirname(entry) or '.'
+        if parent == entry:
+            break
+        entry = parent
     if private and path.stat().st_mode & 0o077:
         raise InstallationError('restricted-approval-not-private')
     return path
@@ -128,6 +148,8 @@ def inventory(root, *, protected=False):
         raise InstallationError('restricted-bundle-root-invalid')
     for directory, names, files in os.walk(root, followlinks=False):
         current = Path(directory)
+        relative_directory = os.path.relpath(directory, root)
+        relative_prefix = '' if relative_directory == '.' else relative_directory.replace(os.sep, '/') + '/'
         if protected:
             secured(current)
         for name in names:
@@ -135,7 +157,7 @@ def inventory(root, *, protected=False):
                 raise InstallationError('restricted-bundle-link')
         for name in sorted(files):
             path = current / name
-            relative = path.relative_to(root).as_posix()
+            relative = relative_prefix + name
             if relative == MANIFEST:
                 continue
             if protected:
@@ -154,6 +176,7 @@ def production_member(name):
     """
     path = Path(name)
     return (path.as_posix() not in TEST_SEAMS
+            and not any(path.as_posix().startswith(prefix) for prefix in TEST_SEAM_PREFIXES)
             and not (path.name.startswith('test_') and path.suffix == '.py')
             and 'tests' not in path.parts
             and not (path.parts[:1] == ('tools',) and 'test' in path.parts))
@@ -358,7 +381,7 @@ def host_plan(bundle_identity):
     """Draft the exact image inventory; only out-of-band root installation confers approval."""
     return {'schemaVersion': 1, 'bundleIdentity': bundle_identity,
             'dependencies': dependency_inventory(), 'profile': 'debian13-systemd257-dedicated-v1',
-            'runnerUid': 62001, 'runnerGroups': [62001, 62005], 'revokedVersions': []}
+            'runnerUid': REFERENCE_RUNNER_UID, 'runnerGroups': [REFERENCE_RUNNER_UID, 62005], 'revokedVersions': []}
 
 
 def valid_revocations(value):
@@ -542,18 +565,20 @@ def verify_polkit(runner):
             stop_polkit_subject(process)
 
 
-def verify_sudo_denial(result):
+def verify_sudo_denial(result, *, user='cryptad-runner'):
     """Accept only an explicit denied-user listing from the image-pinned sudo policy engine.
 
     On the reference Debian sudo, a successful administrator listing can return zero while
     reporting that the selected user has no permissions. Exit status alone is not admission.
     """
+    if not isinstance(user, str) or re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', user) is None:
+        raise InstallationError('restricted-runner-sudo-or-policy-unknown')
     try:
         diagnostic = result.stdout.decode('utf-8', errors='strict').strip()
     except UnicodeError:
         raise InstallationError('restricted-runner-sudo-or-policy-unknown') from None
     if (result.returncode not in (0, 1) or result.stderr or re.fullmatch(
-            r'User cryptad-runner is not allowed to run sudo on [A-Za-z0-9_.-]+\.', diagnostic) is None):
+            r'User ' + re.escape(user) + r' is not allowed to run sudo on [A-Za-z0-9_.-]+\.', diagnostic) is None):
         raise InstallationError('restricted-runner-sudo-or-policy-unknown')
 
 

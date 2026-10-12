@@ -1,13 +1,17 @@
 """Offline command-policy and retained-state tests; never installed kernel acceptance."""
 import copy
+import array
 import importlib.util
+import json
 import os
 from pathlib import Path
 import socket
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+import bounded_process
 
 SPEC = importlib.util.spec_from_file_location(
     'restricted_workload_network', Path(__file__).with_name('restricted_workload_network.py'))
@@ -23,15 +27,28 @@ class NetworkPolicyTests(unittest.TestCase):
             with self.subTest(role=bad), self.assertRaises(network.NetworkBoundaryError):
                 network.namespace(bad)
 
-    def test_leaf_udp_policy_has_only_relay_peer_and_drops_other_traffic(self):
+    def test_leaf_udp_policy_retains_relay_only_accept_and_fixed_sibling_drops(self):
         rules = network.role_rules('candidate-sender')
         self.assertIn('ip daddr { 10.231.0.4 }', rules)
-        self.assertNotIn('10.231.0.2', rules)
+        self.assertEqual(2, rules.count('ip daddr 10.231.0.2 tcp dport'))
+        for name in network.SIBLING_DROP_COUNTERS.values():
+            self.assertIn(f'counter {name} {{ }}', rules)
+            self.assertIn(f'counter name {name} drop', rules)
+        app_rule = ('tcp sport 19404 tcp dport 19402 counter name '
+                    + network.SIBLING_DROP_COUNTERS['sibling-app'] + ' drop')
+        self.assertIn(app_rule, rules)
+        self.assertLess(rules.index(app_rule),
+                        rules.index('tcp dport 19402 counter name '
+                                    + network.SIBLING_DROP_COUNTERS['sibling-http']))
+        self.assertIn('ip daddr 10.0.2.15 tcp dport 19405 counter name '
+                      + network.SIBLING_DROP_COUNTERS['host-network'] + ' drop', rules)
+        self.assertNotIn('ip daddr 10.0.2.15 tcp dport 19405 accept', rules)
         self.assertNotIn('10.231.0.3', rules)
         self.assertEqual(rules.count('policy drop'), 3)
         self.assertEqual(rules.count('udp sport 19400 udp dport 19400'), 2)
         self.assertNotIn('ct state', rules)
-        self.assertNotIn('tcp', rules)
+        self.assertNotIn('tcp dport 19401 accept', rules)
+        self.assertNotIn('tcp dport 19402 accept', rules)
 
     def test_relay_rules_preserve_all_three_peer_links(self):
         rules = network.role_rules('relay-no-apps')
@@ -48,6 +65,57 @@ class NetworkPolicyTests(unittest.TestCase):
         self.assertNotIn('iifname "sw0" oifname "sw1"', rules)
         self.assertEqual(rules.count('ether type arp accept'), 6)
         self.assertEqual(rules.count('udp sport 19400 udp dport 19400'), 6)
+        self.assertEqual(rules.count('counter name fnp_'), 6)
+        for name in network.FNP_COUNTERS.values():
+            self.assertIn(f'counter {name} {{ }}', rules)
+
+    def test_fixed_fnp_counter_read_rejects_missing_or_substituted_links(self):
+        # The installed nft JSON names the bridge table, not its enclosing netns.
+        counters = [{'counter': {'family': 'bridge', 'table': 'cryptad_switch',
+                    'name': name, 'packets': 5, 'bytes': 500}}
+                    for name in network.FNP_COUNTERS.values()]
+        command = [network.IP, 'netns', 'exec', network.SWITCH, network.NFT, '-j',
+                   'list', 'counters', 'table', 'bridge', 'cryptad_switch']
+        def read(rows):
+            with patch.object(network, '_load', return_value={'phase': 'ready', 'pending': None}), \
+                    patch.object(network, '_namespace_identity', return_value=[1, 42]), \
+                    patch.object(network, '_boot', return_value='boot'), \
+                    patch.object(network, '_run', return_value=json.dumps({'nftables': [
+                        {'metainfo': {'version': '1.1.3'}}, *rows]}).encode()) as run:
+                result = network.read_fnp_counters()
+                run.assert_called_once_with(command)
+                return result
+        observed = read(counters)
+        self.assertEqual(set(network.FNP_COUNTERS.values()), set(observed['counters']))
+        self.assertEqual([1, 42], observed['switchNamespaceIdentity'])
+        for changed in (counters[:-1], counters + counters[:1],
+                        [*counters[:-1], {'counter': dict(counters[-1]['counter'], packets=-1)}]):
+            with self.subTest(rows=changed), self.assertRaises(network.NetworkBoundaryError):
+                read(changed)
+
+    def test_fixed_sibling_drop_reader_rejects_missing_or_replaced_counters(self):
+        rows = [{'counter': {'family': 'inet', 'table': 'cryptad_role',
+                 'name': name, 'packets': 3, 'bytes': 180}}
+                for name in network.SIBLING_DROP_COUNTERS.values()]
+        command = [network.IP, 'netns', 'exec', network.namespace('candidate-sender'),
+                   network.NFT, '-j', 'list', 'counters', 'table', 'inet', 'cryptad_role']
+        def read(selected):
+            with patch.object(network, '_load', return_value={'phase': 'ready', 'pending': None}), \
+                    patch.object(network, '_namespace_identity', return_value=[1, 42]), \
+                    patch.object(network, '_boot', return_value='boot'), \
+                    patch.object(network, '_run', return_value=json.dumps({'nftables': [
+                        {'metainfo': {'version': '1.1.3'}}, *selected]}).encode()) as run:
+                result = network.read_sibling_drop_counters()
+                run.assert_called_once_with(command)
+                return result
+        observed = read(rows)
+        self.assertEqual(set(network.SIBLING_DROP_COUNTERS.values()), set(observed['counters']))
+        self.assertEqual([1, 42], observed['roleNamespaceIdentity'])
+        for invalid in (rows[:-1], rows + rows[:1],
+                        [*rows[:-1], {'counter': dict(rows[-1]['counter'], packets=-1)}],
+                        [*rows[:-1], {'counter': dict(rows[-1]['counter'], family='bridge')}]):
+            with self.subTest(rows=invalid), self.assertRaises(network.NetworkBoundaryError):
+                read(invalid)
 
     def test_non_root_setup_is_rejected_before_mutation(self):
         with patch.object(network.os, 'geteuid', return_value=1234), patch.object(network, '_run') as run:
@@ -75,6 +143,106 @@ class NetworkPolicyTests(unittest.TestCase):
                 with self.subTest(endpoint=endpoint), self.assertRaises(network.NetworkBoundaryError):
                     network.connect('candidate-sender', endpoint)
             load.assert_not_called()
+
+
+class CommandDiagnosticsTests(unittest.TestCase):
+    def test_real_failed_helper_retains_private_stderr_without_public_disclosure(self):
+        arguments = ['/usr/bin/python3', '-I', '-S', '-c',
+                     'import sys; sys.stderr.write("private network diagnostic"); sys.exit(7)']
+        with self.assertRaises(network.NetworkBoundaryError) as raised:
+            network._run(arguments)
+        self.assertEqual('restricted-workload-network-command-failed', str(raised.exception))
+
+        self.assertEqual({'arguments': arguments, 'stderr': 'private network diagnostic',
+                          'failureClass': 'bounded_process_failed'}, raised.exception.private_diagnostics)
+        self.assertNotIn('private network diagnostic', repr(raised.exception))
+
+    def test_real_flooding_helper_is_stopped_and_private_capture_is_bounded(self):
+        arguments = ['/usr/bin/python3', '-I', '-S', '-c',
+                     'import os; chunk=b"private flood"*8192\nwhile True: os.write(2,chunk)']
+        started = time.monotonic()
+        with self.assertRaises(network.NetworkBoundaryError) as raised:
+            network._run(arguments)
+        self.assertLess(time.monotonic() - started, 5)
+        details = raised.exception.private_diagnostics
+        self.assertEqual('bounded_process_output_exceeded', details['failureClass'])
+        self.assertEqual(2048, len(details['stderr']))
+        self.assertNotIn('private flood', str(raised.exception))
+
+    def test_real_helper_receives_script_via_stdin_and_fixed_environment(self):
+        arguments = ['/usr/bin/python3', '-I', '-S', '-c',
+            'import os,sys; assert os.environ["LANG"]=="C"; sys.stdout.buffer.write(sys.stdin.buffer.read())']
+        self.assertEqual(b'fixed script\n', network._run(arguments, 'fixed script\n'))
+
+    def test_failed_exec_keeps_bounded_arguments_without_exception_path_in_message(self):
+        arguments = ['/nonexistent-pr315-command', *(['x' * 100] * 40)]
+        with self.assertRaises(network.NetworkBoundaryError) as raised:
+            network._run(arguments)
+        details = raised.exception.private_diagnostics
+        self.assertEqual('FileNotFoundError', details['failureClass'])
+        self.assertEqual('', details['stderr'])
+        self.assertLessEqual(len(details['arguments']), 32)
+        self.assertLessEqual(sum(map(len, details['arguments'])), 2048)
+        self.assertEqual('restricted-workload-network-command-failed', str(raised.exception))
+
+
+class TeardownBoundsTests(unittest.TestCase):
+    def state(self):
+        return {'version': 1, 'bootId': 'test', 'phase': 'ready', 'pending': None,
+                'namespaces': {'fixed-test-namespace': [11, 22]}}
+
+    def test_real_eof_child_keeps_deadline_and_retains_namespace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            helper = root / 'owned-helper'
+            pid_path = root / 'owned.pid'
+            helper.write_text('#!/usr/bin/python3\nimport os,time\n'
+                + 'open(' + repr(str(pid_path)) + ',"w").write(str(os.getpid()))\n'
+                + 'os.close(1)\nos.close(2)\ntime.sleep(60)\n')
+            helper.chmod(0o700)
+            original_run = bounded_process.run
+            delegated = []
+            def short_test_deadline(arguments, **kwargs):
+                # Exercise actual process cleanup without consuming the installed 15s cap.
+                # This override exists only in this offline test, never in a guest profile.
+                delegated.append(kwargs['timeout'])
+                return original_run(arguments, **{**kwargs, 'timeout': .3})
+            started = time.monotonic()
+            with patch.object(network, 'IP', str(helper)), \
+                    patch.object(network, '_load', return_value=self.state()), \
+                    patch.object(network, '_namespace_identity', return_value=[11, 22]), \
+                    patch.object(network, '_save') as save, \
+                    patch.object(bounded_process, 'run', side_effect=short_test_deadline), \
+                    self.assertRaises(network.NetworkBoundaryError):
+                network.teardown()
+            self.assertEqual([15], delegated)
+            self.assertLess(time.monotonic() - started, 5)
+            save.assert_not_called()
+            pid = int(pid_path.read_text())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid, 0)
+
+    def test_nonempty_pid_output_rejects_without_namespace_deletion(self):
+        with patch.object(network, '_load', return_value=self.state()), \
+                patch.object(network, '_namespace_identity', return_value=[11, 22]), \
+                patch.object(network, '_run', return_value=b'123\n') as run, \
+                patch.object(network, '_save') as save, \
+                self.assertRaises(network.NetworkBoundaryError):
+            network.teardown()
+        run.assert_called_once_with([network.IP, 'netns', 'pids', 'fixed-test-namespace'])
+        save.assert_not_called()
+
+    def test_helper_failure_retains_original_network_state(self):
+        state = self.state()
+        with patch.object(network, '_load', return_value=state), \
+                patch.object(network, '_namespace_identity', return_value=[11, 22]), \
+                patch.object(network, '_run', side_effect=network.NetworkBoundaryError('fixed-failure')), \
+                patch.object(network, '_save') as save, \
+                self.assertRaises(network.NetworkBoundaryError):
+            network.teardown()
+        self.assertEqual('ready', state['phase'])
+        self.assertEqual({'fixed-test-namespace': [11, 22]}, state['namespaces'])
+        save.assert_not_called()
 
 
 class SetupStateTests(unittest.TestCase):
@@ -114,6 +282,10 @@ class SetupStateTests(unittest.TestCase):
                 role_namespace = arguments[2]
                 prior = [command for command, _ in self.commands]
                 self.assertIn([network.IP, 'netns', 'exec', role_namespace, network.NFT, '-f', '-'], prior)
+            if arguments[3:5] == ['route', 'add']:
+                prior = [command for command, _ in self.commands]
+                self.assertIn([network.IP, '-n', arguments[2], 'link', 'set', 'data0', 'up'], prior)
+                self.assertNotIn([network.IP, '-n', network.SWITCH, 'link', 'set', 'br0', 'up'], prior)
             self.record_command(arguments, script)
         with patch.object(network, '_run', checked_run):
             network.setup()
@@ -193,6 +365,120 @@ class SetupStateTests(unittest.TestCase):
 
 
 class SocketTransferTests(unittest.TestCase):
+    def test_real_transferred_descriptor_does_not_allow_child_to_outlive_reap_deadline(self):
+        # Real fork, TCP connection and SCM_RIGHTS transfer. Namespace entry is mocked;
+        # this is an offline owned-child regression, never installed isolation evidence.
+        if not hasattr(os, 'setns') or not hasattr(socket, 'MSG_CMSG_CLOEXEC'):
+            self.skipTest('Linux descriptor interfaces required')
+        role = 'candidate-sender'
+        with tempfile.TemporaryDirectory() as directory, socket.socket() as listener:
+            root = Path(directory)
+            target = root / network.namespace(role)
+            target.touch()
+            info = target.stat()
+            identity = [info.st_dev, info.st_ino]
+            state = {'phase': 'ready', 'pending': None,
+                     'namespaces': {network.namespace(role): identity}}
+            listener.bind(('127.0.0.1', 0))
+            listener.listen(1)
+            original_send = socket.socket.sendmsg
+            original_wait = network._wait_connector_child
+            waits = []
+            def transfer_then_stall(channel, *args, **kwargs):
+                original_send(channel, *args, **kwargs)
+                time.sleep(60)
+            def short_first_wait(pid, deadline):
+                waits.append((pid, deadline - time.monotonic()))
+                return original_wait(pid, time.monotonic() + .15 if len(waits) == 1 else deadline)
+            before = len(list(Path('/proc/self/fd').iterdir()))
+            started = time.monotonic()
+            with patch.object(network, 'NETNS_ROOT', root), \
+                    patch.object(network, '_load', return_value=state), \
+                    patch.object(network, '_namespace_identity', return_value=identity), \
+                    patch.object(network.os, 'setns', return_value=None), \
+                    patch.object(network.socket.socket, 'sendmsg', transfer_then_stall), \
+                    patch.object(network, '_wait_connector_child', side_effect=short_first_wait), \
+                    self.assertRaises(network.NetworkBoundaryError):
+                network._connect_port(role, listener.getsockname()[1])
+            self.assertLess(time.monotonic() - started, 5)
+            self.assertEqual(2, len(waits))
+            self.assertEqual(waits[0][0], waits[1][0])
+            self.assertTrue(0 < waits[0][1] <= 12)
+            self.assertTrue(0 < waits[1][1] <= 2)
+            with self.assertRaises(ProcessLookupError):
+                os.kill(waits[0][0], 0)
+            self.assertEqual(before, len(list(Path('/proc/self/fd').iterdir())))
+
+    def test_failed_cleanup_reap_closes_descriptors_and_preserves_uncertainty(self):
+        role = 'candidate-sender'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / network.namespace(role)
+            target.touch()
+            info = target.stat()
+            identity = [info.st_dev, info.st_ino]
+            state = {'phase': 'ready', 'pending': None,
+                     'namespaces': {network.namespace(role): identity}}
+            received, writer = os.pipe()
+            self.addCleanup(os.close, writer)
+            parent, child = Mock(), Mock()
+            parent.recvmsg.return_value = (b'1', [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                array.array('i', [received]).tobytes())], 0, None)
+            error = network.NetworkBoundaryError('restricted-workload-connect-child-reconciliation-required')
+            with patch.object(network, 'NETNS_ROOT', root), \
+                    patch.object(network.socket, 'MSG_CMSG_CLOEXEC', 0x40000000, create=True), \
+                    patch.object(network, '_load', return_value=state), \
+                    patch.object(network, '_namespace_identity', return_value=identity), \
+                    patch.object(network.socket, 'socketpair', return_value=(parent, child)), \
+                    patch.object(network.os, 'fork', return_value=123456), \
+                    patch.object(network.os, 'kill') as kill, \
+                    patch.object(network, '_wait_connector_child', side_effect=error) as wait, \
+                    self.assertRaisesRegex(network.NetworkBoundaryError, 'child-reconciliation-required'):
+                network._connect_port(role, 19401)
+            kill.assert_called_once_with(123456, network.signal.SIGKILL)
+            self.assertEqual(0x40000000, parent.recvmsg.call_args.args[2])
+            self.assertEqual(2, wait.call_count)
+            with self.assertRaises(OSError):
+                os.fstat(received)
+            parent.close.assert_called_once()
+            self.assertTrue(child.close.called)
+            self.assertEqual('ready', state['phase'])
+
+    def test_lost_child_ownership_never_signals_potentially_reused_pid(self):
+        role = 'candidate-sender'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / network.namespace(role)
+            target.touch()
+            info = target.stat()
+            identity = [info.st_dev, info.st_ino]
+            state = {'phase': 'ready', 'pending': None,
+                     'namespaces': {network.namespace(role): identity}}
+            received, writer = os.pipe()
+            self.addCleanup(os.close, writer)
+            parent, child = Mock(), Mock()
+            parent.recvmsg.return_value = (b'1', [(socket.SOL_SOCKET, socket.SCM_RIGHTS,
+                array.array('i', [received]).tobytes())], 0, None)
+            error = ChildProcessError('already reaped')
+            with patch.object(network, 'NETNS_ROOT', root), \
+                    patch.object(network.socket, 'MSG_CMSG_CLOEXEC', 0x40000000, create=True), \
+                    patch.object(network, '_load', return_value=state), \
+                    patch.object(network, '_namespace_identity', return_value=identity), \
+                    patch.object(network.socket, 'socketpair', return_value=(parent, child)), \
+                    patch.object(network.os, 'fork', return_value=123456), \
+                    patch.object(network.os, 'kill') as kill, \
+                    patch.object(network, '_wait_connector_child', side_effect=error) as wait, \
+                    self.assertRaises(network.NetworkBoundaryError):
+                network._connect_port(role, 19401)
+            kill.assert_not_called()
+            self.assertEqual(0x40000000, parent.recvmsg.call_args.args[2])
+            self.assertEqual(1, wait.call_count)
+            with self.assertRaises(OSError):
+                os.fstat(received)
+            parent.close.assert_called_once()
+            self.assertTrue(child.close.called)
+            self.assertEqual('ready', state['phase'])
+
     @unittest.skipUnless(Path('/proc/self/ns/net').exists() and hasattr(os, 'setns')
                          and hasattr(socket, 'MSG_CMSG_CLOEXEC'),
                          'requires Linux proc namespace and socket descriptor interfaces')

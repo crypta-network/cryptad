@@ -10,6 +10,17 @@ import pr312_prepare_reference as prepare
 
 
 class PreparationTest(unittest.TestCase):
+    def test_workload_network_executables_are_installed_and_version_checked(self):
+        import installation
+        self.assertIn('/usr/sbin/ip', installation.DEPENDENCY_FILES)
+        self.assertIn('/usr/sbin/nft', installation.DEPENDENCY_FILES)
+        script = prepare.guest_script()
+        install = next(line for line in script.splitlines() if line.startswith('apt-get install '))
+        for package, version in (('nftables', '1.1.3-1'), ('iproute2', '6.15.0-1')):
+            self.assertIn(package, install.split())
+            self.assertEqual(version, prepare.PACKAGE_PINS[package])
+            self.assertIn("'${Version}' " + package + ')\" = ' + version, script)
+
     def test_base_snapshot_pins_opened_bytes_and_rejects_changed_content(self):
         import hashlib
         with tempfile.TemporaryDirectory() as temporary:

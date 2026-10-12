@@ -1,5 +1,10 @@
 """Offline artifact tests; these deliberately do not claim host isolation execution."""
+import hashlib
 import importlib.util
+import os
+import stat
+import tracemalloc
+from types import SimpleNamespace
 from pathlib import Path
 import tempfile
 import unittest
@@ -9,6 +14,117 @@ from unittest.mock import Mock, mock_open, patch
 SPEC = importlib.util.spec_from_file_location('installation', Path(__file__).with_name('installation.py'))
 installation = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(installation)
+
+
+class SecuredPathTraversalTests(unittest.TestCase):
+    def metadata(self, *, uid=0, mode=stat.S_IFDIR | 0o755):
+        return SimpleNamespace(st_uid=uid, st_mode=mode)
+
+    def stat_hooks(self, overrides, observed):
+        def query(path, *, follow_symlinks=True, **kwargs):
+            key = os.fspath(path)
+            if not follow_symlinks:
+                observed.append(key)
+            return overrides.get(key, self.metadata())
+        return (patch.object(installation.os, 'stat', new=query),
+                patch.object(installation.os, 'lstat',
+                             new=lambda path: query(path, follow_symlinks=False)))
+
+    def test_every_lexical_ancestor_is_checked_for_absolute_and_relative_paths(self):
+        cases = {
+            '/opt/bundle/nested/module.py': ['/opt/bundle/nested/module.py', '/opt/bundle/nested', '/opt/bundle', '/opt', '/'],
+            'bundle/nested/module.py': ['bundle/nested/module.py', 'bundle/nested', 'bundle', '.'],
+            'bundle/../current/module.py': ['bundle/../current/module.py', 'bundle/../current', 'bundle/..', 'bundle', '.'],
+            '//host/bundle/module.py': ['//host/bundle/module.py', '//host/bundle', '//host', '//'],
+            '.': ['.'],
+        }
+        for path, expected in cases.items():
+            with self.subTest(path=path):
+                observed = []
+                first, second = self.stat_hooks({}, observed)
+                with first, second:
+                    result = installation.secured(path)
+                self.assertEqual(Path(path), result)
+                self.assertEqual(expected, observed)
+
+    def test_untrusted_ownership_writable_modes_and_links_at_each_ancestor_are_rejected(self):
+        ancestors = ['/opt/bundle/module.py', '/opt/bundle', '/opt', '/']
+        unsafe = [self.metadata(uid=1000), self.metadata(mode=stat.S_IFDIR | 0o775),
+                  self.metadata(mode=stat.S_IFDIR | 0o757), self.metadata(mode=stat.S_IFLNK | 0o777)]
+        for ancestor in ancestors:
+            for metadata in unsafe:
+                with self.subTest(ancestor=ancestor, uid=metadata.st_uid, mode=metadata.st_mode):
+                    observed = []
+                    first, second = self.stat_hooks({ancestor: metadata}, observed)
+                    with first, second, self.assertRaisesRegex(installation.InstallationError, 'not-root-owned'):
+                        installation.secured(ancestors[0])
+                    self.assertIn(ancestor, observed)
+
+    def test_successful_check_does_not_cache_an_ancestor_across_calls(self):
+        overrides, observed = {}, []
+        first, second = self.stat_hooks(overrides, observed)
+        with first, second:
+            installation.secured('/opt/bundle/module.py')
+            overrides['/opt/bundle'] = self.metadata(uid=1000)
+            with self.assertRaisesRegex(installation.InstallationError, 'not-root-owned'):
+                installation.secured('/opt/bundle/module.py')
+
+    def test_private_leaf_permissions_are_checked_after_all_ancestors(self):
+        path = '/opt/bundle/approval.json'
+        observed = []
+        overrides = {path: self.metadata(mode=stat.S_IFREG | 0o600)}
+        first, second = self.stat_hooks(overrides, observed)
+        with first, second:
+            self.assertEqual(Path(path), installation.secured(path, private=True))
+            overrides[path] = self.metadata(mode=stat.S_IFREG | 0o644)
+            with self.assertRaisesRegex(installation.InstallationError, 'approval-not-private'):
+                installation.secured(path, private=True)
+
+    def test_deep_valid_path_checks_use_bounded_temporary_memory(self):
+        # Kernel metadata is simulated; this is a scratch-allocation regression,
+        # never an installed ownership or isolation observation.
+        path = Path('/') / Path(*(['segment-with-32-ascii-characters-x'] * 96)) / 'module.py'
+        self.assertLess(len(str(path).encode()), 4096)
+        metadata = self.metadata()
+        def query(*args, **kwargs):
+            return metadata
+        with patch.object(installation.os, 'stat', new=query), \
+                patch.object(installation.os, 'lstat', new=query):
+            tracemalloc.start()
+            try:
+                installation.secured(path)
+                peak = tracemalloc.get_traced_memory()[1]
+            finally:
+                tracemalloc.stop()
+        self.assertLessEqual(peak, 128 * 1024)
+
+
+class InventoryRelativeNameTests(unittest.TestCase):
+    def test_nested_names_and_manifest_exclusion_survive_relative_root_aliases(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary)
+            root = parent / 'bundle'
+            nested = root / 'deep' / 'β space'
+            nested.mkdir(parents=True)
+            (parent / 'pivot').mkdir()
+            payloads = {'plain.py': b'plain\n', 'deep/β space/module\\name.py': b'backslash\n',
+                        'deep/' + installation.MANIFEST: b'nested manifest\n'}
+            for name, raw in payloads.items():
+                path = root / name
+                path.write_bytes(raw)
+                path.chmod(0o644)
+            (root / installation.MANIFEST).write_bytes(b'excluded root manifest\n')
+            (root / 'plain.py').chmod(0o755)
+            expected = {name: {'sha256': hashlib.sha256(raw).hexdigest(), 'size': len(raw),
+                               'executable': name == 'plain.py'} for name, raw in payloads.items()}
+            self.assertEqual(expected, installation.inventory(root))
+            self.assertEqual(expected, installation.inventory(parent / 'pivot' / '..' / 'bundle'))
+            previous = Path.cwd()
+            try:
+                os.chdir(parent)
+                self.assertEqual(expected, installation.inventory(Path('bundle')))
+            finally:
+                os.chdir(previous)
 
 
 class InstallationArtifactTests(unittest.TestCase):
@@ -39,7 +155,8 @@ class InstallationArtifactTests(unittest.TestCase):
 
     def test_current_manifest_cannot_admit_a_declared_test_seam(self):
         for name in sorted(installation.TEST_SEAMS | {'test_hook.py', 'package/tests/helper.py',
-                                                       'tools/probe/test/helper.py'}):
+                                                       'tools/probe/test/helper.py',
+            'tools/release-certification/restricted/pr315-probe-app/bin/probe.py'}):
             with self.subTest(name=name), tempfile.TemporaryDirectory(dir=self.root) as temporary:
                 bundle = Path(temporary)
                 member = bundle / name
@@ -133,9 +250,12 @@ class InstallationArtifactTests(unittest.TestCase):
     def test_plan_excludes_committed_test_seams_without_changing_selected_blob_bytes(self):
         source = self.committed_source()
         excluded = sorted(installation.TEST_SEAMS | {'test_module.py', 'package/tests/helper.py',
-                                                      'tools/example/test/provider.py'})
+            'tools/example/test/provider.py',
+            'tools/release-certification/restricted/pr315-probe-app/bin/probe.py'})
         resource = 'platform-devtools/src/test/resources/runtime.db'
-        for name in [*excluded, resource]:
+        controller_dependency = ('tools/release-certification/protected/'
+                                 'restricted_workload_revocation_barrier.py')
+        for name in [*excluded, resource, controller_dependency]:
             path = source / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b'REVIEWED-FIXTURE\x00\xff')
@@ -152,9 +272,10 @@ class InstallationArtifactTests(unittest.TestCase):
         self.assertEqual(2, manifest['schemaVersion'])
         self.assertEqual(installation.EXPORT_POLICY, manifest['exportPolicy'])
         self.assertEqual(revision, manifest['sourceCommit'])
-        self.assertEqual({'module.py', resource}, set(manifest['files']))
+        self.assertEqual({'module.py', resource, controller_dependency}, set(manifest['files']))
         self.assertEqual(b'VALUE = 1\n', (output / 'module.py').read_bytes())
         self.assertEqual(b'REVIEWED-FIXTURE\x00\xff', (output / resource).read_bytes())
+        self.assertEqual(b'REVIEWED-FIXTURE\x00\xff', (output / controller_dependency).read_bytes())
         for name in excluded:
             self.assertFalse((output / name).exists(), name)
 
@@ -434,6 +555,25 @@ class StartupDependencyTests(unittest.TestCase):
 
 
 class SudoPolicyDenialTests(unittest.TestCase):
+    def test_selected_role_denial_is_bound_to_exact_account(self):
+        for user in ('cryptad-soak', 'cryptad-wl-candidate-sender', 'cryptad-wl-candidate-recipient',
+                     'cryptad-wl-previous', 'cryptad-wl-relay-no-apps'):
+            message = ('User ' + user + ' is not allowed to run sudo on pr311-disposable.\n').encode()
+            result = subprocess.CompletedProcess([], 0, message, b'')
+            with self.subTest(user=user):
+                installation.verify_sudo_denial(result, user=user)
+                with self.assertRaises(installation.InstallationError):
+                    installation.verify_sudo_denial(result)
+                with self.assertRaises(installation.InstallationError):
+                    installation.verify_sudo_denial(result, user='cryptad-wl-other')
+
+    def test_expected_account_cannot_be_a_pattern_or_malformed_name(self):
+        result = subprocess.CompletedProcess([], 0,
+            b'User cryptad-runner is not allowed to run sudo on pr311-disposable.\n', b'')
+        for user in ('cryptad-.*', '', None, 'x' * 32, 'cryptad-runner\n'):
+            with self.subTest(user=user), self.assertRaises(installation.InstallationError):
+                installation.verify_sudo_denial(result, user=user)
+
     def test_explicit_denial_survives_administrator_listing_exit_status_difference(self):
         message = b'User cryptad-runner is not allowed to run sudo on pr311-disposable.\n'
         for status in (0, 1):
@@ -834,6 +974,9 @@ class ExecutionPublicationTests(unittest.TestCase):
         self.root.chmod(0o755)
         self.public = self.root / 'installation'
         self.public.mkdir(mode=0o755)
+        # Prior CLI tests may have left a restrictive process umask in this
+        # shared test process; the publication premise is an actually traversable path.
+        self.public.chmod(0o755)
         self.private = self.root / 'private-config'
         self.private.mkdir(mode=0o700)
         self.execution = self.public / 'restricted-execution.json'

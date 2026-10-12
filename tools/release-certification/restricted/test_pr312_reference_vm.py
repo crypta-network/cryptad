@@ -11,6 +11,126 @@ import pr312_reference_vm as driver
 
 
 class ReferenceDriverTest(unittest.TestCase):
+    def test_boot_closure_includes_emulator_dependency_and_private_inputs(self):
+        record = {'files': {'boot-runtime/libpcre2-8.so.0': 'a' * 64},
+                  'bootInputs': {'seedDigest': 'b' * 64,
+                    'sshHostKeyPinDigest': 'c' * 64, 'sshKeyDigest': 'd' * 64}}
+        original = driver.boot_closure_digest(record)
+        for changed in (
+                {**record, 'files': {'boot-runtime/libpcre2-8.so.0': 'e' * 64}},
+                {**record, 'bootInputs': {**record['bootInputs'], 'sshKeyDigest': 'e' * 64}}):
+            self.assertNotEqual(original, driver.boot_closure_digest(changed))
+        with self.assertRaises(KeyError):
+            driver.boot_closure_digest({'files': record['files'], 'bootInputs': {}})
+
+    def test_fixed_workload_command_preserves_measurement_selection(self):
+        import shlex
+        base = ['sudo', '/usr/bin/python3',
+            '/root/cryptad/tools/release-certification/restricted/pr315_workload_guest.py',
+            '--fixture-manifest-digest', 'a' * 64, '--product-source-commit', 'b' * 40,
+            '--lifecycle-scenario', 'cancellation']
+        outputs = ['>', '/home/vmadmin/report.json', '2>/home/vmadmin/driver.private.log']
+        for measurement in (False, True):
+            args = SimpleNamespace(fixture_manifest_digest='a' * 64,
+                product_source_commit='b' * 40, startup_measurement=measurement)
+            self.assertEqual(base + (['--startup-measurement'] if measurement else []) + outputs,
+                             shlex.split(driver.workload_guest_command(args)))
+        args.lifecycle_scenario = 'controller-restart'
+        self.assertEqual('controller-restart',
+                         shlex.split(driver.workload_guest_command(args))[base.index('cancellation')])
+        args.startup_measurement = False
+        args.lifecycle_scenario = 'none'
+        args.workload_group = 'positive'
+        self.assertIn('--lifecycle-scenario none --workload-group positive',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'lost-start-response'
+        self.assertIn('--lifecycle-scenario none --workload-group lost-start-response',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'output-symlink'
+        selected = driver.workload_guest_command(args)
+        self.assertIn('--lifecycle-scenario none --workload-group output-symlink', selected)
+        args.startup_measurement = True
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
+        args.startup_measurement = False
+        args.workload_group = 'role-readiness-diagnostic'
+        self.assertIn('--lifecycle-scenario none --workload-group role-readiness-diagnostic',
+                      driver.workload_guest_command(args))
+        args.retired_authority_preparation = True
+        self.assertIn('--retired-authority-preparation',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'output-fifo'
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
+        args.retired_authority_preparation = False
+        args.workload_group = 'output-fifo'
+        self.assertIn('--lifecycle-scenario none --workload-group output-fifo',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'output-hardlink'
+        self.assertIn('--lifecycle-scenario none --workload-group output-hardlink',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'output-flood'
+        self.assertIn('--lifecycle-scenario none --workload-group output-flood',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'output-replacement'
+        self.assertIn('--lifecycle-scenario none --workload-group output-replacement',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'role-boundary'
+        self.assertIn('--lifecycle-scenario none --workload-group role-boundary',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'authority'
+        self.assertIn('--lifecycle-scenario none --workload-group authority',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'network-app'
+        self.assertIn('--lifecycle-scenario none --workload-group network-app',
+                      driver.workload_guest_command(args))
+        args.workload_group = 'resource-exhaustion'
+        self.assertIn('--lifecycle-scenario none --workload-group resource-exhaustion',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'cancellation'
+        args.workload_group = 'cancellation'
+        self.assertIn('--lifecycle-scenario cancellation --workload-group cancellation',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'controller-restart'
+        args.workload_group = 'controller-restart'
+        self.assertIn('--lifecycle-scenario controller-restart --workload-group controller-restart',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'deadline'
+        args.workload_group = 'deadline'
+        self.assertIn('--lifecycle-scenario deadline --workload-group deadline',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'revocation-running'
+        args.workload_group = 'revocation-running'
+        self.assertIn('--lifecycle-scenario revocation-running --workload-group revocation-running',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'setsid-double-fork'
+        args.workload_group = 'setsid-double-fork'
+        self.assertIn('--lifecycle-scenario setsid-double-fork --workload-group setsid-double-fork',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'observer-death'
+        args.workload_group = 'observer-death'
+        self.assertIn('--lifecycle-scenario observer-death --workload-group observer-death',
+                      driver.workload_guest_command(args))
+        args.lifecycle_scenario = 'cancellation'
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
+
+    def test_fixed_workload_command_rejects_nonidentity_shell_tokens(self):
+        for field in ('fixture_manifest_digest', 'product_source_commit'):
+            args = SimpleNamespace(fixture_manifest_digest='a' * 64,
+                product_source_commit='b' * 40, startup_measurement=True)
+            setattr(args, field, '; unselected-command')
+            with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+                driver.workload_guest_command(args)
+        args = SimpleNamespace(fixture_manifest_digest='a' * 64,
+            product_source_commit='b' * 40, lifecycle_scenario='; unselected-command')
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
+        args = SimpleNamespace(fixture_manifest_digest='a' * 64,
+            product_source_commit='b' * 40, workload_group='output-socket')
+        with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.workload_guest_command(args)
+
     def test_fixture_public_classification_excludes_private_fields_and_unknown_text(self):
         allowed = {'fatalSignal': 'SIGSEGV', 'failureClass': 'jvm-sigsegv',
                    'fatalFrame': 'long-rotate-right'}
@@ -190,7 +310,7 @@ class ReferenceDriverTest(unittest.TestCase):
             fixture = SimpleNamespace(ROOT=root / 'test-kit', __file__=str(root / 'test-kit/test.py'))
             with patch.object(integration, 'INSTALLED', current):
                 integration.installed_fixture_resources(fixture)
-            self.assertEqual(bundle, fixture.ROOT)
+            self.assertEqual(bundle.resolve(), fixture.ROOT)
             self.assertFalse(any(path.is_symlink() for path in (fixture.ROOT, *fixture.ROOT.parents)))
             self.assertEqual(str(root / 'test-kit/test.py'), fixture.__file__)
 

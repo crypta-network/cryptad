@@ -201,6 +201,16 @@ def canonical_digest(value):
                                                  allow_nan=False).encode()).hexdigest()
 
 
+def fixed_pr315_payload(helper_commit, operation):
+    """Derive public synthetic CHK bytes from the pinned helper and one fresh operation."""
+    if (not isinstance(helper_commit, str) or re.fullmatch('[0-9a-f]{40}', helper_commit) is None
+            or not isinstance(operation, str)
+            or re.fullmatch('op-[0-9a-f]{32}', operation) is None):
+        raise RuntimeFailure('fixed-content-selection-invalid')
+    digest = hashlib.sha256((helper_commit + ':' + operation).encode('ascii')).hexdigest()
+    return ('PUBLIC SYNTHETIC PR315 CHK ' + digest).encode('ascii')
+
+
 def tree_digest(root, require_java=True):
     """Bind the complete executable runtime, refusing links outside the selected runtime."""
     root = Path(root).resolve(strict=True)
@@ -797,7 +807,9 @@ class AppHandle:
         parser = _BootstrapParser()
         parser.feed(raw.decode("utf-8"))
         if status != 200 or parser.count != 1:
-            raise RuntimeFailure("owned-host-bootstrap-unavailable")
+            # Fixed classifications only: never include HTML, redirect locations or tokens.
+            reason = "http-status" if status != 200 else "document-shape"
+            raise RuntimeFailure("owned-host-bootstrap-unavailable-" + reason)
         value = json.loads("".join(parser.parts))
         password = value.get("formPassword")
         if not isinstance(password, str) or not password or len(password) > 4096:
@@ -1386,8 +1398,8 @@ class Supervisor:
             with absolute_deadline(self.remaining(180)), self.client(role) as client, self.client(relay.role) as peer:
                 interop.add_peer(client, "peer-add", relay.reference)
                 interop.add_peer(peer, "peer-add", node.reference)
-                interop.wait_for_peer_connection(client, "peer-check", relay.reference["identity"], 150)
-                interop.wait_for_peer_connection(peer, "peer-check", node.reference["identity"], 150)
+                interop.wait_for_peer_connection(client, peer, node.reference["identity"],
+                                                 relay.reference["identity"], 150)
 
     def save_state(self):
         if not self.prepared or self.resume_pending_roles:
@@ -1768,9 +1780,19 @@ class Supervisor:
             raise RuntimeFailure("operation-budget-exceeded")
         return "op-" + uuid.uuid4().hex
 
-    def content(self, source, recipient, scenario="network-chk"):
-        operation = self.next_operation()
-        payload = ("PUBLIC SYNTHETIC CROSS-VERSION " + uuid.uuid4().hex).encode("ascii")
+    def content(self, source, recipient, scenario="network-chk", *, verify_local_source=False,
+                operation=None, payload=None):
+        selected = operation is not None or payload is not None
+        if selected:
+            if (scenario != 'network-chk' or not verify_local_source
+                    or not isinstance(operation, str)
+                    or re.fullmatch('op-[0-9a-f]{32}', operation) is None
+                    or not isinstance(payload, bytes) or not 1 <= len(payload) <= 1024 * 1024):
+                raise RuntimeFailure('fixed-content-selection-invalid')
+        else:
+            operation = self.next_operation()
+            payload = ("PUBLIC SYNTHETIC CROSS-VERSION " + uuid.uuid4().hex).encode("ascii")
+        started_ns = time.monotonic_ns()
         uri = "CHK@"
         with absolute_deadline(self.remaining(180)), self.client(source) as sender, self.client(recipient) as receiver:
             if scenario != "network-chk":
@@ -1781,9 +1803,31 @@ class Supervisor:
                     uri = interop.usk_from_ssk(insert, operation, 0)
             reference = interop.put_and_wait_for_success(sender, operation + "-insert", uri, payload, "text/plain",
                                                          local_request_only=True)
+            if verify_local_source:
+                # PutSuccessful does not independently establish local availability.
+                # DSOnly is the normal ClientGet local-only field; never seed the
+                # recipient or extend the surrounding operation/campaign deadline.
+                control_id = operation + "-source-control"
+                fields = interop.build_client_get_fields(control_id, reference)
+                fields.update(DSOnly="true", MaxRetries="0", WriteToClientCache="false")
+                sender.send("ClientGet", fields)
+                control = sender.read_until(30, {"AllData", "GetFailed"})
+                if (control.name != "AllData" or control.fields.get("Identifier") != control_id
+                        or control.payload != payload):
+                    raise RuntimeFailure("local-content-control-not-established")
             actual = interop.fetch_direct(receiver, operation + "-fetch", reference, 120, ignore_ds=True)
             if actual != payload:
                 raise RuntimeFailure("cross-node-content-mismatch")
+            if selected:
+                finished_ns = time.monotonic_ns()
+                request = interop.build_client_get_fields(operation + '-fetch', reference, ignore_ds=True)
+                self.content_evidence = {'source': source, 'recipient': recipient,
+                    'operation': operation, 'referenceDigest': hashlib.sha256(reference.encode()).hexdigest(),
+                    'requestDigest': canonical_digest(request)[7:],
+                    'payloadDigest': hashlib.sha256(payload).hexdigest(),
+                    'sourceControlDigest': hashlib.sha256(control.payload).hexdigest(),
+                    'responseDigest': hashlib.sha256(actual).hexdigest(), 'bytes': len(payload),
+                    'startedMonotonicNs': started_ns, 'finishedMonotonicNs': finished_ns}
             if scenario == "network-usk":
                 later = payload + b" edition-one"
                 edition = interop.usk_from_ssk(insert, operation, 1)
@@ -2252,8 +2296,9 @@ class Supervisor:
         self.start(role)
         peers = ROLES[:-1] if role == "relay-no-apps" else ("relay-no-apps",)
         for peer in peers:
-            with absolute_deadline(self.remaining(180)), self.client(role) as client:
-                interop.wait_for_peer_connection(client, "restart-peer", self.nodes[peer].reference["identity"], 150)
+            with absolute_deadline(self.remaining(180)), self.client(role) as client, self.client(peer) as peer_client:
+                interop.wait_for_peer_connection(client, peer_client, self.nodes[role].reference["identity"],
+                                                 self.nodes[peer].reference["identity"], 150)
         for (app_role, app_id), handle in self.apps.items():
             if app_role != role:
                 continue
@@ -2299,7 +2344,8 @@ class Supervisor:
             with absolute_deadline(self.remaining(180)), self.client(relay) as control, self.client(role) as recipient:
                 interop.modify_peer(control, "rejoin", self.nodes[role].reference["identity"], {"IsDisabled": "false"})
                 interop.modify_peer(recipient, "rejoin", self.nodes[relay].reference["identity"], {"IsDisabled": "false"})
-                interop.wait_for_peer_connection(recipient, "rejoin-peer", self.nodes[relay].reference["identity"], 150)
+                interop.wait_for_peer_connection(recipient, control, self.nodes[role].reference["identity"],
+                                                 self.nodes[relay].reference["identity"], 150)
         with absolute_deadline(self.remaining(120)), self.client(role) as receiver:
             if interop.fetch_direct(receiver, operation + "-recover", reference, 90, ignore_ds=True) != payload:
                 raise RuntimeFailure("partition-recovery-content-mismatch")

@@ -220,7 +220,7 @@ public class RandomGrabArray implements RemoveRandom, RequestSelectionTreeNode {
       RandomGrabArrayItem item = reqs[offset];
       if (item == null) continue;
       long wake = item.getWakeupTime(context, now);
-      if (wake == 0 && excluding.exclude(item, context, now) == 0) {
+      if (wake == 0 && excluding.exclude(item, context, now) <= 0) {
         if (count == nth) return item;
         count++;
       }

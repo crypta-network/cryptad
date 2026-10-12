@@ -119,7 +119,7 @@ def unit(role):
 
 def account(role):
     unit(role)
-    row = pwd.getpwnam('cryptad-role-' + role)
+    row = pwd.getpwnam('cryptad-wl-' + role)
     if row.pw_uid == 0 or row.pw_gid == 0 or row.pw_shell != '/usr/sbin/nologin':
         reject('role-account-invalid')
     return row
@@ -258,6 +258,9 @@ def start(handle):
             if tree_identity(inputs / name, deadline=campaign['deadlineMonotonicNs'] / 1e9) != identity:
                 reject('input-substituted')
         current(campaign)
+        if record['state'] == 'quiescent':
+            archive_stop(role, record)
+            record['previousStopGeneration'] = record['generation']
         record.update(state='launching', generation=secrets.token_hex(32), managerInvocation=None,
                       cgroupIdentity=None, stopReason=None)
         write(ROOT / 'authority' / (role + '.json'), record)
@@ -283,9 +286,118 @@ def summary(role, record):
     return {key: record[key] for key in ('handle', 'state', 'generation', 'managerInvocation', 'bootId')}
 
 
+def stop_receipt(role, record):
+    """Validate the manager-only terminal membership observation for this launch."""
+    receipt = read(ROOT / 'authority' / (role + '-stop.json'))
+    fields = {'schemaVersion', 'role', 'campaign', 'generation', 'bootId', 'managerInvocation',
+              'cgroupIdentity', 'helperPid', 'helperStartTimeTicks', 'startedMonotonicNs',
+              'observedMonotonicNs', 'membership', 'descendantCgroups'}
+    if (not isinstance(receipt, dict) or set(receipt) != fields or type(receipt['schemaVersion']) is not int
+            or receipt['schemaVersion'] != 1 or receipt['role'] != role
+            or any(type(receipt[key]) is not type(record.get(key)) or receipt[key] != record.get(key) for key in
+                   ('campaign', 'generation', 'bootId', 'managerInvocation', 'cgroupIdentity'))
+            or not isinstance(receipt['cgroupIdentity'], list) or len(receipt['cgroupIdentity']) != 2
+            or any(type(value) is not int or value < 0 for value in receipt['cgroupIdentity'])
+            or record['bootId'] != boot() or not record.get('managerInvocation')
+            or receipt['membership'] != 'only-stop-helper'
+            or type(receipt['descendantCgroups']) is not int or receipt['descendantCgroups'] != 0
+            or any(type(receipt[key]) is not int or receipt[key] <= 0 for key in
+                   ('helperPid', 'helperStartTimeTicks', 'startedMonotonicNs', 'observedMonotonicNs'))
+            or not receipt['startedMonotonicNs'] <= receipt['observedMonotonicNs'] <= time.monotonic_ns()):
+        reject('stop-receipt-mismatch')
+    marker = read(ROOT / 'authority' / (role + '-start.json'))
+    if any(marker.get(key) != record.get(key) for key in
+           ('generation', 'bootId', 'managerInvocation', 'cgroupIdentity')):
+        reject('stop-start-receipt-mismatch')
+    return receipt
+
+
+def terminal_role(role, record, state):
+    """Removal counts only after a matched trusted helper and manager completion."""
+    if (state['ActiveState'] not in {'inactive', 'failed'}
+            or state['SubState'] not in {'dead', 'failed'} or state['MainPID'] != '0'):
+        reject('descendants-not-quiescent')
+    receipt = stop_receipt(role, record)
+    if state['InvocationID'] not in {'', record['managerInvocation']}:
+        reject('invocation-changed-reconciliation-required')
+    if state['ControlGroup'] not in {'', '/system.slice/' + unit(role)}:
+        reject('cgroup-changed-reconciliation-required')
+    try:
+        info = group(role).stat()
+    except FileNotFoundError:
+        # systemd may remove the original cgroup before the owner can observe zero.
+        # The exact stop receipt is the positive membership premise, not this absence.
+        pass
+    else:
+        if [info.st_dev, info.st_ino] != record['cgroupIdentity']:
+            reject('cgroup-changed-reconciliation-required')
+        if not quiescent(role):
+            reject('descendants-not-quiescent')
+    if manager(role, 'show') != state or stop_receipt(role, record) != receipt:
+        reject('terminal-observation-changed')
+    return receipt
+
+
+def archive_stop(role, record):
+    """Keep the preceding invocation witness before reusing the fixed receipt slot."""
+    receipt = terminal_role(role, record, manager(role, 'show'))
+    generation = record.get('generation')
+    if not isinstance(generation, str) or re.fullmatch('[0-9a-f]{64}', generation) is None:
+        reject('stop-generation-invalid')
+    archive = ROOT / 'authority' / (role + '-stop-' + generation + '.json')
+    if archive.exists():
+        if read(archive) != receipt:
+            reject('stop-history-changed')
+    else:
+        write(archive, receipt, create=True)
+
+
+def fence_campaign():
+    """Persist terminal launch admission under the existing ownership lease."""
+    with locked():
+        campaign = read(ROOT / 'campaign.json')
+        if campaign['bootId'] != boot():
+            reject('boot-changed-reconciliation-required')
+        if campaign.get('state') == 'prepared':
+            campaign['state'] = 'terminalizing'
+            write(ROOT / 'campaign.json', campaign)
+
+
+def recover_controller():
+    """An initial prepared roster is distinct from a controller's interrupted campaign."""
+    with locked():
+        campaign = read(ROOT / 'campaign.json')
+        records = [retained(campaign['handles'][role])[2] for role in ROLES]
+        if any(record.get('generation') is not None or record['state'] != 'prepared'
+               for record in records):
+            if campaign['bootId'] != boot():
+                reject('boot-changed-reconciliation-required')
+            if campaign.get('state') == 'prepared':
+                campaign['state'] = 'terminalizing'
+                write(ROOT / 'campaign.json', campaign)
+    reconcile()
+
+
 def _stop(role, record, reason):
     state = manager(role, 'show')
-    if state['ActiveState'] in {'inactive', 'failed'} and quiescent(role):
+    if record['state'] == 'prepared' and record.get('generation') is None:
+        if (state['ActiveState'] not in {'inactive', 'failed'} or state['InvocationID']
+                or state['ControlGroup'] or not quiescent(role)):
+            reject('unlaunched-role-slot-busy')
+        # Never-launched authority remains distinct from a terminal launched epoch.
+        return summary(role, record)
+    if state['ActiveState'] in {'inactive', 'failed'}:
+        if record['state'] == 'launching':
+            marker = read(ROOT / 'authority' / (role + '-start.json'))
+            if any(marker.get(key) != record.get(key) for key in ('generation', 'bootId')):
+                reject('launch-reconciliation-required')
+            record.update(managerInvocation=marker['managerInvocation'], cgroupIdentity=marker['cgroupIdentity'])
+        try:
+            terminal_role(role, record, state)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            record.update(state='reconciliation-required', stopReason=reason)
+            write(ROOT / 'authority' / (role + '.json'), record)
+            raise
         record.update(state='quiescent', stopReason=reason)
         write(ROOT / 'authority' / (role + '.json'), record)
         return summary(role, record)
@@ -294,12 +406,29 @@ def _stop(role, record, reason):
     exact(role, record, state)
     record.update(state='stopping', stopReason=reason)
     write(ROOT / 'authority' / (role + '.json'), record)
-    manager(role, 'stop')
-    after = manager(role, 'show')
-    if after['ActiveState'] not in {'inactive', 'failed'} or not quiescent(role):
+    if role == 'candidate-sender' and reason == 'requested':
+        from restricted_workload_lifecycle_barrier import REQUEST, await_release
+        if os.path.lexists(REQUEST):
+            campaign = read(ROOT / 'campaign.json')
+            if campaign['generation'] != record['campaign']:
+                reject('lifecycle-barrier-campaign-changed')
+            await_release(role, record, campaign['deadlineMonotonicNs'])
+    try:
+        # The manager may replace a role after the first observation. Never
+        # issue a name-based stop against a newly observed invocation/cgroup.
+        exact(role, record, manager(role, 'show'))
+    except (OSError, ValueError, subprocess.SubprocessError):
         record['state'] = 'reconciliation-required'
         write(ROOT / 'authority' / (role + '.json'), record)
-        reject('descendants-not-quiescent')
+        raise
+    manager(role, 'stop')
+    after = manager(role, 'show')
+    try:
+        terminal_role(role, record, after)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        record['state'] = 'reconciliation-required'
+        write(ROOT / 'authority' / (role + '.json'), record)
+        raise
     record['state'] = 'quiescent'
     write(ROOT / 'authority' / (role + '.json'), record)
     return summary(role, record)
@@ -342,6 +471,9 @@ def _process_sample(pid, role, expected_uid):
     """A fixed kernel-only projection. No cmdline, environment or caller-selected PID."""
     path = Path('/proc') / str(pid)
     before = (path / 'stat').read_text().rsplit(')', 1)[1].split()
+    before_network = (path / 'ns/net').stat()
+    before_mount = (path / 'ns/mnt').stat()
+    before_user = (path / 'ns/user').stat()
     status = dict(line.split(':', 1) for line in (path / 'status').read_text().splitlines() if ':' in line)
     if (set(map(int, status['Uid'].split())) != {expected_uid}
             or (path / 'cgroup').read_text().strip() != '0::/system.slice/' + unit(role)):
@@ -365,8 +497,19 @@ def _process_sample(pid, role, expected_uid):
     after = (path / 'stat').read_text().rsplit(')', 1)[1].split()
     if before[19] != after[19]:
         reject('process-epoch-changed')
+    network = (path / 'ns/net').stat()
+    mount = (path / 'ns/mnt').stat()
+    user = (path / 'ns/user').stat()
+    if (before_network.st_dev, before_network.st_ino) != (network.st_dev, network.st_ino):
+        reject('process-network-namespace-changed')
+    if ((before_mount.st_dev, before_mount.st_ino) != (mount.st_dev, mount.st_ino)
+            or (before_user.st_dev, before_user.st_ino) != (user.st_dev, user.st_ino)):
+        reject('process-namespace-changed')
     return {'hostPid': pid, 'hostParentPid': int(before[1]),
             'pidNamespace': os.readlink(path / 'ns/pid'),
+            'networkNamespaceIdentity': [network.st_dev, network.st_ino],
+            'mountNamespaceIdentity': [mount.st_dev, mount.st_ino],
+            'userNamespaceIdentity': [user.st_dev, user.st_ino],
             'namespacePids': list(map(int, status['NSpid'].split())),
             'startTicks': int(before[19]), 'executableDigest': 'sha256:' + digest.hexdigest(),
             'rssBytes': int(status['VmRSS'].split()[0]) * 1024 if 'VmRSS' in status else None,
@@ -374,10 +517,43 @@ def _process_sample(pid, role, expected_uid):
             'effectiveCapabilities': int(status['CapEff'].strip(), 16)}
 
 
+def _synthetic_state_digest(role):
+    """Sample only the fixed PR-315 state subject; absence grants no state witness."""
+    if role != 'candidate-sender':
+        return None
+    directory = ROOT / 'state/candidate-sender'
+    try:
+        parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            owner = os.fstat(parent)
+            if (owner.st_uid != account(role).pw_uid or owner.st_mode & 0o077):
+                return None
+            fd = os.open('pr315-retention-sentinel', os.O_RDONLY | os.O_NOFOLLOW
+                         | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent)
+            try:
+                before = os.fstat(fd)
+                if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size != 32:
+                    return None
+                raw = os.read(fd, 33)
+                after = os.fstat(fd)
+                if (len(raw) != 32 or any(getattr(before, key) != getattr(after, key)
+                        for key in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns'))):
+                    return None
+                return hashlib.sha256(raw).hexdigest()
+            finally:
+                os.close(fd)
+        finally:
+            os.close(parent)
+    except (OSError, ValueError):
+        return None
+
+
 def observe(handle):
     with locked():
         campaign, role, record = retained(handle)
         admit(campaign)
+        from restricted_workload_network import _namespace_identity, namespace
+        role_network = _namespace_identity(namespace(role))
         before = manager(role, 'show')
         exact(role, record, before)
         root = group(role)
@@ -393,9 +569,16 @@ def observe(handle):
                 processes.append(_process(pid, role, account(role).pw_uid))
             except (FileNotFoundError, ProcessLookupError):
                 exited += 1
+        if _namespace_identity(namespace(role)) != role_network:
+            reject('role-network-namespace-changed')
         exact(role, record, manager(role, 'show'))
         return {**summary(role, record), 'provenance': 'controller-kernel-sample',
                 'processes': processes, 'exitedDuringSample': exited,
+                'cgroupIdentity': record['cgroupIdentity'],
+                'networkNamespaceIdentity': role_network,
+                'stateDigest': _synthetic_state_digest(role),
+                'deadlineMonotonicNs': campaign.get('deadlineMonotonicNs'),
+                'observedMonotonicNs': time.monotonic_ns(),
                 'cgroupMemoryBytes': int((root / 'memory.current').read_text()),
                 'cgroupTasks': int((root / 'pids.current').read_text())}
 

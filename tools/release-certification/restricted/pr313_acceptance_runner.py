@@ -121,6 +121,8 @@ def storage_policy(args, output):
 
 def allocated_bytes(root):
     """Count retained siblings and current work without following links or crossing mounts."""
+    if Path('/proc/self/mountinfo').is_file() and Path('/usr/bin/du').is_file():
+        return _native_allocated_bytes(root)
     device = root.stat().st_dev
     total = count = 0
     deadline = time.monotonic() + 30
@@ -141,6 +143,44 @@ def allocated_bytes(root):
             if stat.S_ISLNK(info.st_mode):
                 total += info.st_blocks * 512
     return total
+
+
+def _native_allocated_bytes(root):
+    """Use bounded C traversal on Linux while rejecting uncounted foreign mounts."""
+    root = Path(root).resolve(strict=True)
+    device = root.stat().st_dev
+    prefix = str(root).rstrip('/') + '/'
+    mounts = Path('/proc/self/mountinfo').read_bytes()
+    if len(mounts) > 1024 * 1024:
+        raise ValueError('pr313-storage-inventory-unavailable')
+    for line in os.fsdecode(mounts).splitlines():
+        fields = line.split(' - ', 1)[0].split()
+        if len(fields) < 5:
+            raise ValueError('pr313-storage-inventory-unavailable')
+        mount = re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), fields[4])
+        if mount.startswith(prefix) and Path(mount).stat().st_dev != device:
+            raise ValueError('pr313-storage-inventory-unavailable')
+    if os.path.ismount(root):
+        # A private storage root that is itself a mount can conservatively charge the
+        # entire filesystem. This includes retained files and metadata, without a
+        # latency-sensitive second walk as the task history grows.
+        usage = os.statvfs(root)
+        if (usage.f_frsize <= 0 or usage.f_blocks <= 0
+                or not 0 <= usage.f_bfree <= usage.f_blocks):
+            raise ValueError('pr313-storage-inventory-unavailable')
+        return (usage.f_blocks - usage.f_bfree) * usage.f_frsize
+    try:
+        result = subprocess.run(['/usr/bin/du', '-slx', '--block-size=1', '--null', '--', str(root)],
+            stdin=subprocess.DEVNULL, capture_output=True, timeout=30, check=True,
+            env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'})
+        if len(result.stdout) > 8192 or result.stderr or not result.stdout.endswith(b'\0'):
+            raise ValueError('pr313-storage-inventory-unavailable')
+        amount, selected = result.stdout[:-1].split(b'\t', 1)
+        if selected != os.fsencode(root) or not amount.isdigit():
+            raise ValueError('pr313-storage-inventory-unavailable')
+        return int(amount)
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        raise ValueError('pr313-storage-inventory-unavailable') from error
 
 
 def capacity_reason(args, root, required):

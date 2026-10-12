@@ -222,6 +222,15 @@ def fixture_summary(value):
 
 def public_report(report):
     """Construct a closed export; never forward guest JSON, exceptions or console output."""
+    if report.get('mode') == 'workload-positive':
+        # Workload selections and all correlatable private identities remain private.
+        return {'schemaVersion': 1, 'kind': 'pr315-workload-reference-attempt',
+                'executed': report.get('executed') is True,
+                'status': 'transport-completed' if report.get('status') == 'guest-report-retained'
+                          else 'setup-or-execution-failed',
+                'guestStopped': report.get('guestStopped') is True,
+                'installedWorkloadAcceptanceSatisfied': False,
+                'protectedExecutionEnabled': False, 'phaseComplete': False}
     fields = ('schemaVersion', 'kind', 'executed', 'status', 'stage', 'helperSourceCommit',
               'helperSourceTree', 'productSourceCommit', 'productSourceVerification',
               'productDigest', 'sourceArchiveDigest',
@@ -262,6 +271,17 @@ def expected_installation(source, output, commit):
     return expected_bundle, hashlib.sha256(json.dumps(kit, sort_keys=True).encode()).hexdigest()
 
 
+def boot_closure_digest(boot_record):
+    """Identify the exact runtime bytes and fixed machine, independent of a guest run."""
+    import installation
+    closure = {'files': boot_record['files'],
+               'privateInputs': {key: boot_record['bootInputs'][key] for key in
+                   ('seedDigest', 'sshHostKeyPinDigest', 'sshKeyDigest')},
+               'machine': 'pc,smm=off', 'cpu': CPU_MODEL,
+               'accelerator': ACCELERATOR, 'vcpus': 4, 'memoryMiB': 5632}
+    return installation.digest(installation.encode(closure))
+
+
 def verified_attempt_identity(report, attempt, expected_bundle, expected_kit):
     """Pinned SSH transports installed verification; local bytes bind the helper and kit."""
     import installation
@@ -275,15 +295,11 @@ def verified_attempt_identity(report, attempt, expected_bundle, expected_kit):
                 'executionClosureDigest': 'sha256:' + installation.digest(installation.encode(execution['dependencies']))}):
         raise ValueError('installed-identity-substituted')
     boot_record = installation.read_json(attempt / 'boot-inputs.private.json')
-    closure = {'files': boot_record['files'],
-               'privateInputs': {key: boot_record['bootInputs'][key] for key in
-                   ('seedDigest', 'sshHostKeyPinDigest', 'sshKeyDigest')}, 'machine': 'pc,smm=off', 'cpu': CPU_MODEL,
-               'accelerator': ACCELERATOR, 'vcpus': 4, 'memoryMiB': 5632}
     return {key: report[key] for key in ('helperSourceCommit', 'helperSourceTree', 'productSourceCommit',
         'productDigest', 'preparedImageDigest', 'fixtureManifestDigest')} | {
         'bundleIdentity': expected_bundle, 'testKitDigest': expected_kit,
         'profileDigest': installation.digest(installation.encode(execution['dependencies'])),
-        'bootClosureDigest': installation.digest(installation.encode(closure))}
+        'bootClosureDigest': boot_closure_digest(boot_record)}
 
 
 def identity_observations(identity):
@@ -300,6 +316,52 @@ def identity_observations(identity):
             'managerInvocationId': None, 'attackWitness': witness,
             'quiescent': {'activeState': 'inactive', 'cgroupPopulated': False, 'activeRecordPresent': False}})
     return rows
+
+
+def workload_guest_command(args):
+    """One fixed administrator-kit invocation; no arbitrary command or shell selection."""
+    scenario = getattr(args, 'lifecycle_scenario', 'cancellation')
+    workload_group = getattr(args, 'workload_group', None)
+    if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
+            or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
+            or scenario not in ('cancellation', 'controller-restart', 'deadline',
+                                'revocation-running', 'setsid-double-fork',
+                                'observer-death', 'none')
+            or workload_group not in (None, 'positive', 'lost-start-response',
+                                      'partial-launch', 'stuck-output', 'late-child',
+                                      'cleanup-race',
+                                      'resource-exhaustion',
+                                      'output-symlink', 'output-fifo',
+                                      'output-hardlink', 'output-flood',
+                                      'output-replacement',
+                                      'role-readiness-diagnostic', 'role-boundary',
+                                      'authority', 'network-app', 'cancellation',
+                                      'controller-restart', 'deadline',
+                                      'revocation-running', 'setsid-double-fork',
+                                      'observer-death')
+            or (workload_group in ('cancellation', 'controller-restart', 'deadline',
+                                   'revocation-running', 'setsid-double-fork',
+                                   'observer-death')
+                and scenario != workload_group)
+            or (workload_group not in (None, 'cancellation', 'controller-restart',
+                                      'deadline', 'revocation-running',
+                                      'setsid-double-fork', 'observer-death')
+                and scenario != 'none')
+            or (workload_group is None and scenario == 'none')
+            or (workload_group is not None and getattr(args, 'startup_measurement', False))
+            or (getattr(args, 'retired_authority_preparation', False)
+                and workload_group != 'role-readiness-diagnostic')):
+        raise ValueError('workload-guest-command-identity-invalid')
+    return ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/'
+            'pr315_workload_guest.py --fixture-manifest-digest '
+            + args.fixture_manifest_digest + ' --product-source-commit '
+            + args.product_source_commit
+            + ' --lifecycle-scenario ' + scenario
+            + (' --workload-group ' + workload_group if workload_group is not None else '')
+            + (' --retired-authority-preparation'
+               if getattr(args, 'retired_authority_preparation', False) else '')
+            + (' --startup-measurement' if getattr(args, 'startup_measurement', False) else '')
+            + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
 
 
 def run(args):
@@ -319,6 +381,22 @@ def run(args):
               'status': 'failed', 'stage': 'preparation', 'guestStopped': True, 'mode': args.mode,
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
+    if args.mode == 'workload-positive':
+        report['workloadPurpose'] = ('startup-measurement' if getattr(args, 'startup_measurement', False)
+                                     else 'role-readiness-measurement'
+                                     if getattr(args, 'workload_group', None) == 'role-readiness-diagnostic'
+                                     else 'selected-group'
+                                     if getattr(args, 'workload_group', None) in
+                                     ('output-symlink', 'output-fifo', 'output-hardlink',
+                                      'output-flood', 'output-replacement',
+                                      'role-boundary', 'authority', 'network-app',
+                                      'cancellation', 'controller-restart', 'deadline',
+                                      'revocation-running', 'setsid-double-fork',
+                                      'observer-death', 'lost-start-response',
+                                      'resource-exhaustion', 'partial-launch',
+                                      'stuck-output', 'late-child',
+                                      'cleanup-race')
+                                     else 'positive')
     process = None
     log = (attempt / 'driver.private.log').open('xb')
     try:
@@ -355,7 +433,10 @@ def run(args):
             seedDigest=report['seedDigest'], sshHostKeyPinDigest=report['sshHostKeyPinDigest'],
             sshKeyDigest=key_digest, cpuModel=CPU_MODEL, accelerator=ACCELERATOR,
             machine='pc,smm=off', vcpus=4, memoryMiB=5632)
-        for name in ('pr312_reference_vm.py', 'pr313_boot_inputs.py', 'pr313_fixtures.py', 'installation.py'):
+        helper_names = ['pr312_reference_vm.py', 'pr313_boot_inputs.py', 'pr313_fixtures.py', 'installation.py']
+        if args.mode == 'workload-positive':
+            helper_names.extend(('pr315_workload_fixtures.py', 'pr315_workload_guest.py'))
+        for name in helper_names:
             if sha256(Path(__file__).resolve().parent / name) != sha256(source / 'tools/release-certification/restricted' / name):
                 raise ValueError('executing-reference-source-mismatch')
         clone = attempt / 'cryptad'
@@ -370,17 +451,25 @@ def run(args):
             args.product_source_commit, report['productDigest'])
         report['productSourceVerification'] = 'local-git-and-embedded-marker-v1'
         if args.prepared_fixtures is not None:
-            import pr313_fixtures
-            fixtures = clone / 'build/pr313-inputs'
+            if args.mode == 'workload-positive':
+                import pr315_workload_fixtures as fixture_module
+                fixtures = clone / 'build/pr315-inputs'
+            else:
+                import pr313_fixtures as fixture_module
+                fixtures = clone / 'build/pr313-inputs'
             fixtures.parent.mkdir(parents=True, exist_ok=True)
             shutil.copytree(args.prepared_fixtures, fixtures, symlinks=True)
-            pr313_fixtures.verify(fixtures, args.fixture_manifest_digest, clone,
-                                 args.product_source_commit)
+            fixture_module.verify(fixtures, args.fixture_manifest_digest, clone,
+                                  args.product_source_commit)
             report['fixtureManifestDigest'] = args.fixture_manifest_digest
         expected_bundle, expected_kit = expected_installation(clone, attempt, report['helperSourceCommit'])
         archive = attempt / 'source.tar.gz'
         report['stage'] = 'source-archive'
-        command(['tar', '-czf', str(archive), '-C', str(attempt), 'cryptad'], stdout=log, stderr=log)
+        # Slower task-owned storage may need longer for host-only packaging. This does
+        # not extend any guest startup, campaign, or workload-operation deadline.
+        archive_timeout = 420 if args.mode == 'workload-positive' else 120
+        command(['tar', '-czf', str(archive), '-C', str(attempt), 'cryptad'],
+                timeout=archive_timeout, stdout=log, stderr=log)
         report['sourceArchiveDigest'] = sha256(archive)
         report['stage'] = 'guest-overlay'
         command([str(qemu_img), 'create', '-f', 'qcow2', '-F', 'qcow2',
@@ -412,6 +501,22 @@ def run(args):
         with archive.open('rb') as stream:
             subprocess.run([*ssh, 'cat > /home/vmadmin/source.tar.gz'], stdin=stream,
                            stdout=log, stderr=log, check=True, timeout=180, env=boot.ENVIRONMENT)
+        retired_input = getattr(args, 'retired_authority_input', None)
+        if retired_input is not None:
+            if (args.mode != 'workload-positive'
+                    or getattr(args, 'workload_group', None) != 'authority'):
+                raise ValueError('retired-authority-guest-selection-invalid')
+            raw_retired = retired_input.read_bytes()
+            digest = hashlib.sha256(raw_retired).hexdigest()
+            if (not 0 < len(raw_retired) <= 8192
+                    or digest != getattr(args,
+                        'retired_authority_input_digest', None)):
+                raise ValueError('retired-authority-transfer-input-changed')
+            report['retiredAuthorityInputDigest'] = digest
+            subprocess.run([*ssh, 'sudo /usr/bin/install -m 0600 /dev/stdin '
+                '/root/pr315-retired-authority-source.private.json'],
+                input=raw_retired, stdout=log, stderr=log, check=True,
+                timeout=20, env=boot.ENVIRONMENT)
         script = 'set -eu\numask 022\nsudo systemctl start dbus.service polkit.service\n'
         script += 'test "$(sha256sum /home/vmadmin/source.tar.gz | cut -d " " -f 1)" = ' + report['sourceArchiveDigest'] + '\n'
         script += 'sudo test ! -e /root/cryptad\nsudo tar --no-same-owner -xzf /home/vmadmin/source.tar.gz -C /root\n'
@@ -419,6 +524,8 @@ def run(args):
                    'install -m 0600 /dev/null /home/vmadmin/driver.private.log\n')
         if args.mode == 'baseline':
             script += "sudo /usr/bin/python3 - <<'PR312_DRIVER' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n" + BASELINE + '\nPR312_DRIVER\n'
+        elif args.mode == 'workload-positive':
+            script += workload_guest_command(args)
         else:
             script += ('sudo /usr/bin/python3 /root/cryptad/tools/release-certification/restricted/disposable_integration.py '
                        '--disposable-vm --source /root/cryptad --product-source-commit '
@@ -468,6 +575,13 @@ print(json.dumps(records))
         for label, remote, maximum in (
                 ('fixture-commands.private.json', '/root/pr313-fixture-commands.private.json', 262144),
                 ('pr313-observation.private.json', '/root/pr313-observation.private.json', 65536),
+                ('pr314-workload-observation.private.json', '/root/pr314-workload-observation.private.json', 65536),
+                ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
+                ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
+                ('pr315-retired-authority.private.json', '/root/pr315-retired-authority.private.json', 8192),
+                ('pr315-resource-children.private.json', '/root/pr315-resource-children.private.json', 131072),
+                ('pr315-workload-failure.private.json', '/root/pr315-workload-failure.private.json', 8192),
+                ('pr315-readiness-jcmd.private.json', '/root/pr315-readiness-jcmd.private.json', 262144),
                 ('test-kit.private.json', '/opt/cryptad-restricted-test-kit/.test-kit.json', 1048576),
                 ('execution.private.json', '/opt/cryptad-cross-version/restricted-execution.json', 8388608),
                 ('native-consumer.private.log', '/root/pr312-native-consumer.private.log', 65536),
@@ -493,7 +607,7 @@ print(json.dumps(records))
                            stdout=stream, stderr=log, check=True, timeout=120, env=boot.ENVIRONMENT)
         if args.prepared_fixtures is not None:
             report['hostVerifiedIdentity'] = verified_attempt_identity(report, attempt, expected_bundle, expected_kit)
-            if getattr(args, 'case_group', None) == 'positive':
+            if args.mode != 'workload-positive' and getattr(args, 'case_group', None) == 'positive':
                 evidence_path = attempt / 'pr313-observation.private.json'
                 rows = json.loads(evidence_path.read_bytes())
                 if not isinstance(rows, list):
@@ -598,6 +712,7 @@ def main():
             or (args.case_group == 'public' and args.fault_case not in PUBLIC_CASES)
             or (args.case_group is not None and args.mode != 'native-slice')
             or (args.prepared_fixtures is None) != (args.fixture_manifest_digest is None)
+            or (args.mode == 'workload-positive' and args.prepared_fixtures is None)
             or (args.fixture_manifest_digest is not None
                 and re.fullmatch('[0-9a-f]{64}', args.fixture_manifest_digest) is None)):
         parser.error('invalid fixed case or fixture selection')

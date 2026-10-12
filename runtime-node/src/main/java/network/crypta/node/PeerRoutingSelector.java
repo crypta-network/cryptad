@@ -571,12 +571,13 @@ public class PeerRoutingSelector {
       long timeoutFT,
       long ignoreBackoffUnder,
       boolean realTime) {
-    boolean chosen = updateOverallBest(st, p, d);
+    boolean overallChosen = updateOverallBest(st, p, d);
     boolean backedOff = p.isRoutingBackedOff(ignoreBackoffUnder, realTime);
-    chosen = chosen || updateBestBackedOff(st, p, d, timedOut, backedOff);
-    chosen = chosen || updateBestNotBackedOff(st, p, d, timedOut, backedOff);
+    // Each tracker must run even when an earlier tracker selected this peer.
+    boolean backedOffChosen = updateBestBackedOff(st, p, d, timedOut, backedOff);
+    boolean notBackedOffChosen = updateBestNotBackedOff(st, p, d, timedOut, backedOff);
     updateTimedOutOrdering(st, p, d.diff, timeoutFT, timedOut, backedOff);
-    return chosen;
+    return overallChosen || backedOffChosen || notBackedOffChosen;
   }
 
   private boolean updateOverallBest(PeerSelectionState st, PeerNode p, DiffInfo d) {

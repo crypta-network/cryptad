@@ -1,0 +1,4100 @@
+"""Offline orchestration regression tests; they do not execute installed acceptance."""
+import base64
+from contextlib import redirect_stdout
+import copy
+import hashlib
+import io
+import json
+import os
+import subprocess
+from pathlib import Path
+import sys
+import tempfile
+import time
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+import installation
+import pr315_workload_runner as runner
+
+
+def synthetic_role_kernel_roster():
+    """Offline schema fixture only; never an installed observation."""
+    return {'observerUid': 987, 'runnerUid': 1000,
+            'roles': [{'role': role, 'uid': 983 + index, 'gid': 983 + index,
+                       'invocationId': format(index + 1, '032x'),
+                       'processEpoch': 100 + index, 'bootId': 'a' * 32,
+                       'cgroupDigest': runner.fixtures.runtime.canonical_digest({
+                           'role': role, 'identity': [1, 99 + index]})[7:],
+                       'networkNamespace': 200 + index}
+                      for index, role in enumerate(runner.acceptance.ROLES)]}
+
+
+def synthetic_terminal_roster(roster):
+    """Offline cross-check fixture, never a captured administrator record."""
+    records, receipts = {}, {}
+    for index, row in enumerate(roster['roles']):
+        role = row['role']
+        record = {'role': role, 'state': 'quiescent', 'generation': 'c' * 64,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'managerInvocation': row['invocationId'], 'cgroupIdentity': [1, 99 + index]}
+        records[role] = {'status': 'captured', 'record': record}
+        receipts[role] = {'current': {'status': 'captured', 'record': {
+            **record, 'membership': 'only-stop-helper', 'descendantCgroups': 0}}}
+    receipts['candidate-sender']['previous'] = {'status': 'captured'}
+    return {'schemaVersion': 1, 'kind': 'pr315-private-volatile-diagnostics',
+            'cleanupReportedByCaller': True, 'sentinel': {'status': 'matched'},
+            'controllerRecords': records, 'stopReceipts': receipts}
+
+
+def synthetic_daemon_epochs(roster, observed_ns=120):
+    """Full offline daemon fixture; synthetic JSON never grants installed acceptance."""
+    return {row['role']: {
+        'kind': 'installed-role-daemon-kernel-v1', 'uid': row['uid'], 'gid': row['gid'],
+        'bootId': row['bootId'], 'hostPid': 1200 + index, 'startTicks': row['processEpoch'],
+        'managerInvocation': row['invocationId'], 'namespacePids': [1200 + index, 2],
+        'pidNamespace': 'pid:[4000]', 'networkNamespaceIdentity': [1, row['networkNamespace']],
+        'mountNamespaceIdentity': [1, 300 + index], 'userNamespaceIdentity': [1, 400 + index],
+        'cgroupIdentity': [1, 99 + index], 'executableDigest': 'sha256:' + 'e' * 64,
+        'pidfdObserved': True, 'observedMonotonicNs': observed_ns}
+        for index, row in enumerate(roster['roles'])}
+
+
+def synthetic_host_identity():
+    return {'helperSourceCommit': 'b' * 40, 'helperSourceTree': 'c' * 40,
+            'productSourceCommit': 'd' * 40, 'productDigest': 'e' * 64,
+            'bundleIdentity': 'a' * 64, 'testKitDigest': 'f' * 64,
+            'profileDigest': '1' * 64, 'bootClosureDigest': '2' * 64,
+            'preparedImageDigest': '3' * 64, 'fixtureManifestDigest': '4' * 64}
+
+
+def synthetic_lifecycle_actor(source, observed_ns):
+    """Offline root test-kit epoch fixture; never an installed identity."""
+    boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    cgroup = [1, 50]
+    digest = runner.reference.sha256(source /
+        'tools/release-certification/restricted/pr314_workload_driver.py')
+    invocation = hashlib.sha256(json.dumps({'bootId': boot, 'pid': 500,
+        'startTicks': 33, 'cgroupIdentity': cgroup,
+        'sourceDigest': digest}, sort_keys=True,
+        separators=(',', ':')).encode()).hexdigest()[:32]
+    return {'pid': 500, 'uid': 0, 'gid': 0, 'startTicks': 33, 'bootId': boot,
+            'namespacePids': [500],
+            'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
+            'cgroupIdentity': cgroup, 'cgroupDigest':
+                runner.fixtures.runtime.canonical_digest({
+                    'role': 'lifecycle-administrator', 'identity': cgroup})[7:],
+            'invocationId': invocation, 'sourceDigest': digest,
+            'observedMonotonicNs': observed_ns}
+
+
+def synthetic_resource_diagnostics(roster):
+    return {'during': {'services': {
+        'cryptad-workload@' + row['role'] + '.service': {
+            'lastObserved': {'cgroupIdentity': [1, 99 + index],
+                             'memory.current': 1024 + index,
+                             'pids.current': 2 + index,
+                             'cpu.stat': {'usage_usec': 100 + index}},
+            'lastObservedWindow': {'startedMonotonicNs': 50 + index * 10,
+                                   'finishedMonotonicNs': 51 + index * 10}}
+        for index, row in enumerate(roster['roles'])}}}
+
+
+def synthetic_exchange_audits(roster):
+    """Synthetic root/observer copies with matching digests for offline verifier tests."""
+    audits, observed = {}, {}
+    for index, (case, method) in enumerate((('own-management', 'connect-fcp'),
+                                            ('dynamic-app-bootstrap', 'bootstrap-mail'))):
+        request = format(100 + index, '064x')
+        response = format(200 + index, '064x')
+        audits[case] = {'status': 'captured', 'record': {
+            'schemaVersion': 1, 'kind': 'pr315-fixed-exchange-audit',
+            'caseId': case, 'method': method, 'role': 'candidate-sender',
+            'managerInvocation': roster['roles'][0]['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 99], 'requestDigest': request,
+            'responseDigest': response, 'startedMonotonicNs': 50 + index * 10,
+            'finishedMonotonicNs': 51 + index * 10, 'serverRequests': 1}}
+        observed[case] = {'method': method, 'requestDigest': request,
+                          'responseDigest': response}
+    return audits, observed
+
+
+def synthetic_fnp_observation(roster, helper_commit):
+    """Offline fixed CHK transcript and six-link root counter pair only."""
+    operation = 'op-' + 'c' * 32
+    uri = 'CHK@synthetic-fixed-reference'
+    payload = runner.fixtures.runtime.fixed_pr315_payload(helper_commit, operation)
+    fields = runner.fixtures.runtime.interop.build_client_get_fields(
+        operation + '-fetch', uri, ignore_ds=True)
+    text = ('[synthetic] SEND ClientGet\n'
+            + ''.join(f'{key}={value}\n' for key, value in fields.items())
+            + 'EndMessage\n[synthetic] RECV AllData\n'
+            + f'Identifier={operation}-fetch\nDataLength={len(payload)}\nData\n'
+            + f'PayloadLength={len(payload)}\nPayloadBase64={base64.b64encode(payload).decode()}\n')
+    recipient = roster['roles'][1]
+    names = runner.workload_network.FNP_COUNTERS
+    before = {'schemaVersion': 1, 'kind': 'pr315-fixed-fnp-counters',
+              'policyDigest': hashlib.sha256(runner.workload_network.switch_rules().encode()).hexdigest(),
+              'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+              'switchNamespaceIdentity': [1, 42], 'observedMonotonicNs': 10,
+              'counters': {name: {'packets': 1, 'bytes': 100} for name in names.values()}}
+    after = copy.deepcopy(before)
+    after['observedMonotonicNs'] = 100
+    for link in (('candidate-recipient', 'relay-no-apps'),
+                 ('relay-no-apps', 'candidate-sender'),
+                 ('candidate-sender', 'relay-no-apps'),
+                 ('relay-no-apps', 'candidate-recipient')):
+        after['counters'][names[link]] = {'packets': 2, 'bytes': 200}
+    root = {'schemaVersion': 1, 'kind': 'pr315-administrator-fnp-counter-pair',
+            'caseId': 'fnp-content-retrieval', 'role': 'candidate-recipient',
+            'managerInvocation': recipient['invocationId'], 'before': before, 'after': after}
+    observed = {phase: {'phase': phase, 'managerInvocation': recipient['invocationId'],
+                        'snapshot': snapshot} for phase, snapshot in (('before', before), ('after', after))}
+    content = {'source': 'candidate-sender', 'recipient': 'candidate-recipient',
+               'operation': operation, 'referenceDigest': hashlib.sha256(uri.encode()).hexdigest(),
+               'requestDigest': runner.fixtures.runtime.canonical_digest(fields)[7:],
+               'payloadDigest': hashlib.sha256(payload).hexdigest(),
+               'sourceControlDigest': hashlib.sha256(payload).hexdigest(),
+               'responseDigest': hashlib.sha256(payload).hexdigest(), 'bytes': len(payload),
+               'startedMonotonicNs': 20, 'finishedMonotonicNs': 80}
+    return root, observed, content, text
+
+
+class HostFailureDiagnosticCliTests(unittest.TestCase):
+    def test_real_probe_cli_failure_keeps_private_diagnostic_and_never_allocates(self):
+        source = Path(__file__).resolve().parents[3]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / 'attempt'
+            command = [sys.executable, str(Path(runner.__file__)), '--probe',
+                '--startup-measurement', '--role-readiness-measurement',
+                '--source', str(source), '--output', str(output),
+                '--storage-root', str(root), '--profile', 'tcg-multi',
+                '--host-key-pin-origin', 'preselected-host-key',
+                '--storage-budget-bytes', str(224 * 1024**3),
+                '--min-free-bytes', str(16 * 1024**3),
+                '--memory-budget-bytes', str(7 * 1024**3),
+                '--min-host-memory-bytes', str(1024**3),
+                '--product-source-commit', 'a' * 40,
+                '--prepared-image-digest', 'b' * 64,
+                '--fixture-manifest-digest', 'c' * 64]
+            for name in ('prepared-image', 'qemu-root', 'seed', 'ssh-key',
+                         'known-hosts', 'prepared-fixtures'):
+                command.extend(['--' + name, str(root / name)])
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            self.assertEqual(2, result.returncode, result.stderr)
+            public = json.loads(result.stdout)
+            private = json.loads(result.stderr)
+            self.assertFalse(public['installedWorkloadAcceptanceSatisfied'])
+            self.assertEqual('pr315-private-host-assessment-failure', private['kind'])
+            self.assertEqual('private-diagnostic-not-acceptance', private['classification'])
+            self.assertNotIn('Traceback', result.stderr)
+            self.assertFalse(output.exists())
+
+
+class RunnerTests(unittest.TestCase):
+    def assert_observer_sidecar_normalizes_with_measured_roster(self, sidecar, host, roster):
+        """Exercise the host conversion used by the installed authority group."""
+        from pr315_case_v10 import generic_case_record
+
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity.update(productSelectionDigest=host['productDigest'],
+                        admittedAppDigest='a' * 64)
+        frozen = runner.campaign_seal.plan(identity, '1' * 64,
+            runner.host_admission.POLICY, '2' * 64, '3' * 64, '4' * 64)
+        raw = {'guestReport': '5' * 64, 'volatile': '6' * 64,
+               'hostMonitor': '7' * 64}
+        source = Path(__file__).resolve().parents[3]
+        record = generic_case_record(frozen, 'suite-203', identity, None,
+                                    sidecar, source, raw, roster=roster)
+        self.assertEqual(sidecar['actorEpoch'], record['actorEpoch'])
+        self.assertEqual(sidecar['targetEpoch'], record['targetEpoch'])
+        for field in ('observerUid', 'runnerUid'):
+            changed = copy.deepcopy(roster)
+            changed[field] = changed['roles'][0]['uid']
+            with self.subTest(field=field), self.assertRaisesRegex(
+                    ValueError, 'sidecar-source-invalid'):
+                generic_case_record(frozen, 'suite-203', identity, None,
+                    sidecar, source, raw, roster=changed)
+        changed = copy.deepcopy(sidecar)
+        changed['actorEpoch']['uid'] = roster['runnerUid']
+        with self.assertRaisesRegex(ValueError, 'observer-epoch-invalid'):
+            generic_case_record(frozen, 'suite-203', identity, None,
+                changed, source, raw, roster=roster)
+
+    def test_frozen_campaign_policy_probe_and_product_are_checked_before_vm(self):
+        source = Path(__file__).resolve().parents[3]
+        commit = runner.subprocess.run(['git', '-C', str(source),
+            'rev-parse', 'HEAD'], capture_output=True, check=True,
+            text=True).stdout.strip()
+        tree = runner.subprocess.run(['git', '-C', str(source),
+            'rev-parse', 'HEAD^{tree}'], capture_output=True,
+            check=True, text=True).stdout.strip()
+        identity = {'helperSourceCommit': commit,
+            'helperSourceTree': tree,
+            'preparedImageDigest': 'a' * 64,
+            'fixtureManifestDigest': 'b' * 64,
+            'productSelectionDigest': 'c' * 64,
+            'admittedAppDigest': 'd' * 64}
+        plan = {'identity': identity,
+            'runtimePolicyDigest': runner.campaign_seal._digest(
+                runner.fixtures.preparation.launcher_policy()),
+            'probeDigest': 'e' * 64}
+        fixture = {'schemaVersion': 4, 'sourceCommit': commit,
+            'mailDigest': 'sha256:' + 'd' * 64,
+            'probeDigest': 'sha256:' + 'e' * 64}
+        args = SimpleNamespace(source=source, prepared_fixtures=source,
+            fixture_manifest_digest='b' * 64,
+            product_source_commit='f' * 40,
+            prepared_image_digest='a' * 64)
+        with patch.object(runner.fixtures, 'verify', return_value=fixture), \
+                patch.object(runner.reference, 'sha256',
+                             return_value='c' * 64):
+            self.assertEqual(fixture,
+                runner.verify_campaign_runtime_inputs(args, plan))
+            for changed in (
+                    {**plan, 'runtimePolicyDigest': '0' * 64},
+                    {**plan, 'probeDigest': '0' * 64},
+                    {**plan, 'identity': {**identity,
+                        'productSelectionDigest': '0' * 64}}):
+                with self.assertRaisesRegex(ValueError,
+                                            'frozen-input-mismatch'):
+                    runner.verify_campaign_runtime_inputs(args, changed)
+
+    def test_lost_start_requires_first_invocation_before_retry_and_exact_stop(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        for index, row in enumerate(roster['roles']):
+            receipt = terminal['stopReceipts'][row['role']]['current']['record']
+            receipt['startedMonotonicNs'] = 800 + index
+            receipt['observedMonotonicNs'] = 820 + index
+        sender = roster['roles'][0]
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        before = {'role': 'candidate-sender', 'state': 'prepared',
+            'generation': None, 'managerInvocation': None,
+            'cgroupIdentity': None, 'bootId': boot, 'mainPid': 0,
+            'observedMonotonicNs': 5}
+        first = {'role': 'candidate-sender', 'generation': 'b' * 64,
+            'managerInvocation': sender['invocationId'], 'bootId': boot,
+            'cgroupIdentity': [1, 99], 'mainPid': 123,
+            'observedMonotonicNs': 50}
+        retry = dict(first, observedMonotonicNs=700)
+        dropped = {'requestDigest': 'd' * 64, 'sendStartedNs': 30,
+                   'sendFinishedNs': 40}
+        context = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-lost-start-intent',
+            'before': before, 'requestDigest': dropped['requestDigest'],
+            'first': first, 'droppedRequest': dropped, 'retry': retry}
+        source = Path(__file__).resolve().parents[3]
+        private = {'cleanup': 'completed', 'cleanupFinishedNs': 900,
+            'probeStart': {'schemaVersion': 1, 'kind': 'pr315-workload-probe-start',
+                'caseId': 'lost-start-response', 'startedMonotonicNs': 20},
+            'lostStartBefore': before, 'lostStartResponse': context,
+            'lifecycleActorBefore': synthetic_lifecycle_actor(source, 10),
+            'lifecycleActorAfter': synthetic_lifecycle_actor(source, 950)}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 100,
+                                       'finishedMonotonicNs': 600},
+            'campaignDeadlineMonotonicNs': 1000}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'lost-start-response'))
+            self.assertEqual(first, sidecar['targetEpoch']['lostStartFirst'])
+            changed = copy.deepcopy(private)
+            changed['lostStartResponse']['retry']['managerInvocation'] = 'f' * 32
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, changed, terminal, source))
+            changed = copy.deepcopy(private)
+            changed['lostStartResponse']['droppedRequest']['sendFinishedNs'] = 55
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, changed, terminal, source))
+            changed = copy.deepcopy(private)
+            changed['lifecycleActorBefore']['uid'] = roster['observerUid']
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, changed, terminal, source))
+            changed_terminal = copy.deepcopy(terminal)
+            changed_terminal['stopReceipts']['candidate-sender']['current'][
+                'record']['startedMonotonicNs'] = 650
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'lost-start-response', report, result, fixture, private,
+                changed_terminal, source))
+
+    def test_wrong_port_for_pinned_host_key_stops_before_guest_allocation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            for name in ('fixtures', 'qemu'):
+                (root / name).mkdir()
+            for name in ('image', 'seed', 'key'):
+                (root / name).write_bytes(b'fixed-input')
+            wire = (len(b'ssh-ed25519').to_bytes(4, 'big') + b'ssh-ed25519'
+                    + (32).to_bytes(4, 'big') + b'K' * 32)
+            pin = root / 'pin'
+            pin.write_bytes(b'[127.0.0.1]:23112 ssh-ed25519 '
+                            + base64.b64encode(wire) + b' pr312-reference\n')
+            pin.chmod(0o600)
+            args = SimpleNamespace(source=Path(runner.__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root, case_group='positive',
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=pin, port=23112, storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            self.assertEqual([], runner.prerequisites(args))
+            args.port = 23113
+            self.assertEqual(['known-hosts-port-pin-invalid'], runner.prerequisites(args))
+            with patch.object(runner, 'memory_snapshot', return_value={
+                    'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.reference, 'run') as launch, \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(78, runner.run(args))
+            launch.assert_not_called()
+            self.assertFalse((args.output / 'attempt-01').exists())
+            self.assertEqual(['known-hosts-port-pin-invalid'], json.loads(
+                (args.output / 'assessment.json').read_text())['reasons'])
+            args.port = 23112
+            self.assertTrue(runner.known_hosts_matches_port(pin, args.port))
+            pin.write_bytes(pin.read_bytes() + pin.read_bytes())
+            self.assertFalse(runner.known_hosts_matches_port(pin, args.port))
+
+    def test_output_group_preparation_requires_four_bound_roles_without_restarting_sender(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        report = {'mode': 'workload-positive', 'workloadPurpose': 'selected-group',
+                  'status': 'guest-report-retained',
+                  'guestStopped': True, 'guestExitCode': 0,
+                  'hostVerifiedIdentity': synthetic_host_identity()}
+        result = {'identity': {'sourceCommit': 'b' * 40, 'bundleIdentity': 'a' * 64},
+                  'groupPreparation': 'output-symlink',
+                  'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+                  'topologyRoles': 4, 'signedAppWorkers': 0,
+                  'profile': runner.acceptance.PROFILE,
+                  'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+                  'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                             'finishedMonotonicNs': 5},
+                  'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+                  'protectedExecutionEnabled': False}
+        self.assertTrue(runner.group_prepared(report, result, terminal, 'output-symlink'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'output-fifo'}, terminal, 'output-fifo'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'output-hardlink'}, terminal,
+            'output-hardlink'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'output-flood'}, terminal,
+            'output-flood'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'output-replacement'}, terminal,
+            'output-replacement'))
+        self.assertTrue(runner.group_prepared(report,
+            {**result, 'groupPreparation': 'role-boundary'}, terminal,
+            'role-boundary'))
+        authority = {**result, 'groupPreparation': 'authority',
+                     'signedAppWorkers': 3,
+                     'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'}}
+        self.assertTrue(runner.group_prepared(report, authority, terminal,
+                                              'authority'))
+        self.assertFalse(runner.group_prepared(report,
+            {**authority, 'signedAppWorkers': 0}, terminal, 'authority'))
+        network = {**result, 'groupPreparation': 'network-app',
+                   'signedAppWorkers': 3,
+                   'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'},
+                   'recipientMailAppKernelProcess': {
+                       'provenance': 'controller-kernel-sample'}}
+        self.assertTrue(runner.group_prepared(report, network, terminal, 'network-app'))
+        self.assertFalse(runner.group_prepared(report,
+            {**network, 'signedAppWorkers': 0}, terminal, 'network-app'))
+        resource = {**result, 'groupPreparation': 'resource-exhaustion',
+                    'signedAppWorkers': 3,
+                    'probeAppKernelProcess': {
+                        'provenance': 'controller-kernel-sample'}}
+        self.assertTrue(runner.group_prepared(report, resource, terminal,
+                                              'resource-exhaustion'))
+        self.assertFalse(runner.group_prepared(report,
+            {**resource, 'signedAppWorkers': 0}, terminal,
+            'resource-exhaustion'))
+        for lifecycle in ('cancellation', 'controller-restart', 'deadline',
+                          'revocation-running', 'setsid-double-fork',
+                          'observer-death'):
+            self.assertTrue(runner.group_prepared(report,
+                {**result, 'groupPreparation': lifecycle}, terminal, lifecycle))
+        diagnostic = dict(result, groupPreparation='role-readiness-diagnostic',
+            workloadAcceptance='not-executed-role-readiness-measurement')
+        self.assertTrue(runner.group_prepared({**report,
+            'workloadPurpose': 'role-readiness-measurement'}, diagnostic, terminal,
+            'role-readiness-diagnostic'))
+        self.assertFalse(runner.group_prepared({**report, 'workloadPurpose': 'positive'},
+            result, terminal, 'output-symlink'))
+        terminal['stopReceipts']['candidate-sender']['previous'] = {'status': 'captured'}
+        self.assertFalse(runner.group_prepared(report, result, terminal, 'output-symlink'))
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        self.assertFalse(runner.group_prepared(report,
+            {**result, 'contentRetrieval': 'observed'}, terminal, 'output-symlink'))
+        self.assertFalse(runner.group_prepared({**report, 'guestStopped': False},
+            result, terminal, 'output-symlink'))
+
+    def test_private_kvm_diagnostic_cannot_enter_tcg_case_runner(self):
+        with self.assertRaisesRegex(ValueError, 'accepted-tcg-profile-required'):
+            runner.run(SimpleNamespace(profile='kvm-diagnostic'))
+
+    def test_observer_private_read_requires_bound_role_child_and_active_canary(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]',
+                 'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
+                 'effectiveCapabilities': 0}
+        audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-private-read',
+                 'caseId': 'observer-private-read',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'roleInvocationBefore': sender['invocationId'],
+                 'roleInvocationAfter': sender['invocationId'],
+                 'targetDigestBefore': 'c' * 64, 'targetDigestAfter': 'c' * 64,
+                 'triggerMonotonicNs': 50, 'attackStartedNs': 60,
+                 'attackFinishedNs': 70, 'controllerObservedBeforeNs': 40,
+                 'controllerObservedAfterNs': 80,
+                 'kernelOpenResult': {'opened': False, 'errno': 'ENOENT'}}
+        terminal = synthetic_terminal_roster(roster)
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        receipt.update(startedMonotonicNs=100, observedMonotonicNs=110)
+        terminal['observerPrivateReadAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        value = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster,
+                 'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                            'finishedMonotonicNs': 5}}
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + 'd' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            case = runner.observer_private_read_attempt(report, value, fixture, terminal, source)
+            self.assertEqual('passed', case['status'])
+            self.assertEqual(sender['invocationId'], case['actorEpoch']['systemdInvocation'])
+            self.assertEqual(sender['bootId'], case['actorEpoch']['bootId'])
+            self.assertEqual('pid:[4026532603]', case['actorEpoch']['pidNamespace'])
+            self.assertEqual({'startedMonotonicNs': 60, 'finishedMonotonicNs': 70},
+                             case['operationWindow'])
+            import pr315_campaign_seal as seal
+            import pr315_case_v10 as case_v10
+            host = report['hostVerifiedIdentity']
+            identity = {key: host[key] for key in (
+                'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+                'testKitDigest', 'profileDigest', 'bootClosureDigest',
+                'preparedImageDigest', 'fixtureManifestDigest')}
+            identity['productSelectionDigest'] = host['productDigest']
+            identity['admittedAppDigest'] = '5' * 64
+            frozen = seal.plan(identity, 'a' * 64,
+                'pve-tcg-swap-admission-v1', 'd' * 64,
+                'c' * 64, 'd' * 64)
+            raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+                   'hostMonitor': '3' * 64}
+            v10 = case_v10.generic_case_record(frozen,
+                'suite-205', identity, None, case, source, raw,
+                roster=value['roleKernelRoster'])
+            self.assertEqual('observer-private-read', v10['caseId'])
+            self.assertIsNone(v10['v8AttemptDigest'])
+            self.assertEqual({'controllerObservedBeforeNs': 40, 'controllerObservedAfterNs': 80},
+                             {key: case['targetEpoch'][key] for key in
+                              ('controllerObservedBeforeNs', 'controllerObservedAfterNs')})
+            for mutate in (
+                    lambda row: row['actorAfter'].update(startTicks=46),
+                    lambda row: row['actorAfter'].update(pidNamespace='pid:[4026539999]'),
+                    lambda row: row.update(targetDigestAfter='d' * 64),
+                    lambda row: row.update(kernelOpenResult={'opened': True, 'errno': None}),
+                    lambda row: row.update(roleInvocationAfter='e' * 32)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed['observerPrivateReadAudit']['record'])
+                self.assertIsNone(runner.observer_private_read_attempt(
+                    report, value, fixture, changed, source))
+            write_audit = dict(audit, kind='pr315-administrator-observer-private-write',
+                               caseId='observer-private-write', attackStartedNs=71,
+                               attackFinishedNs=75)
+            terminal['observerPrivateWriteAudit'] = {'status': 'captured', 'record': write_audit}
+            write_case = runner.observer_private_write_attempt(
+                report, value, fixture, terminal, source)
+            self.assertEqual('passed', write_case['status'])
+            self.assertEqual('observer-private-write', write_case['caseId'])
+            self.assertNotEqual(case['attackDigest'], write_case['attackDigest'])
+            invalid = copy.deepcopy(terminal)
+            invalid['observerPrivateWriteAudit']['record']['actorAfter']['startTicks'] = 46
+            self.assertIsNone(runner.observer_private_write_attempt(
+                report, value, fixture, invalid, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            self.assertEqual('passed', runner.observer_private_read_attempt(
+                report, value, fixture, terminal, source)['status'])
+            self.assertEqual('passed', runner.observer_private_write_attempt(
+                report, value, fixture, terminal, source)['status'])
+            late = copy.deepcopy(value)
+            late['roleKernelRosterWindow']['finishedMonotonicNs'] = 40
+            self.assertIsNone(runner.observer_private_read_attempt(
+                report, late, fixture, terminal, source))
+
+    def test_false_claims_need_actual_role_kernel_identity_and_metrics(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]',
+                 'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
+                 'effectiveCapabilities': 0}
+        common = {'schemaVersion': 1,
+                  'sourceDigest': runner.reference.sha256(source /
+                      'tools/release-certification/restricted/pr315_role_probe.py'),
+                  'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                  'actorBefore': actor, 'actorAfter': dict(actor),
+                  'roleInvocationBefore': sender['invocationId'],
+                  'roleInvocationAfter': sender['invocationId'],
+                  'cgroupIdentityBefore': [1, 99], 'cgroupIdentityAfter': [1, 99],
+                  'targetActiveBeforeNs': 40, 'targetActiveAfterNs': 80,
+                  'denial': 'kernel-mismatch-observed'}
+        identity_audit = {**common,
+            'kind': 'pr315-administrator-forged-runtime-identity',
+            'caseId': 'forged-runtime-identity', 'attackStartedNs': 76,
+            'attackFinishedNs': 77, 'claimedHostPid': 1, 'claimedHostUid': 0,
+            'actualHostPid': 123, 'actualHostUid': sender['uid']}
+        counter_audit = {**common, 'kind': 'pr315-administrator-forged-counters',
+            'caseId': 'forged-counters', 'attackStartedNs': 78,
+            'attackFinishedNs': 79, 'claimedMemoryCurrentBytes': 0,
+            'claimedTasksCurrent': 0, 'actualMemoryBefore': 200,
+            'actualTasksBefore': 3, 'actualMemoryAfter': 210,
+            'actualTasksAfter': 3}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=100, observedMonotonicNs=110)
+        terminal['forgedRuntimeIdentityAudit'] = {'status': 'captured', 'record': identity_audit}
+        terminal['forgedCountersAudit'] = {'status': 'captured', 'record': counter_audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + 'd' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            first = runner._fixed_claim_attempt(
+                'forged-runtime-identity', report, result, fixture, terminal, source)
+            second = runner._fixed_claim_attempt(
+                'forged-counters', report, result, fixture, terminal, source)
+            self.assertEqual('passed', first['status'])
+            self.assertEqual('passed', second['status'])
+            self.assertEqual(sender['cgroupDigest'], first['actorEpoch']['cgroupDigest'])
+            self.assertEqual({'startedMonotonicNs': 78, 'finishedMonotonicNs': 79},
+                             second['operationWindow'])
+            self.assertNotEqual(first['attackDigest'], second['attackDigest'])
+            for field, key, value in (
+                    ('forgedRuntimeIdentityAudit', 'claimedHostPid', 2),
+                    ('forgedCountersAudit', 'actualMemoryAfter', 0),
+                    ('forgedCountersAudit', 'cgroupIdentityAfter', [1, 100])):
+                changed = copy.deepcopy(terminal)
+                changed[field]['record'][key] = value
+                case_id = ('forged-runtime-identity' if field == 'forgedRuntimeIdentityAudit'
+                           else 'forged-counters')
+                self.assertIsNone(runner._fixed_claim_attempt(
+                    case_id, report, result, fixture, changed, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            for case_id in ('forged-runtime-identity', 'forged-counters'):
+                self.assertEqual('passed', runner._fixed_claim_attempt(
+                    case_id, report, result, fixture, terminal, source)['status'])
+
+    def test_fixed_role_access_needs_active_sibling_or_package_and_stop_receipt(self):
+        roster = synthetic_role_kernel_roster()
+        sender, recipient = roster['roles'][:2]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]',
+                 'namespacePids': [123, 2], 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300], 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64, 'noNewPrivileges': True,
+                 'effectiveCapabilities': 0}
+        common = {'schemaVersion': 1,
+                  'kind': 'pr315-administrator-fixed-role-access-denial',
+                  'sourceDigest': runner.reference.sha256(source /
+                      'tools/release-certification/restricted/pr315_role_probe.py'),
+                  'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                  'actorBefore': actor, 'actorAfter': dict(actor),
+                  'actorInvocationBefore': sender['invocationId'],
+                  'actorInvocationAfter': sender['invocationId'],
+                  'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99]}
+        terminal = synthetic_terminal_roster(roster)
+        for role in ('candidate-sender', 'candidate-recipient'):
+            terminal['stopReceipts'][role]['current']['record'].update(
+                startedMonotonicNs=150, observedMonotonicNs=160)
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                             'finishedMonotonicNs': 5}}
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + 'd' * 64,
+                   'products': {'candidate': {'daemonDigest': 'sha256:' + 'f' * 64}}}
+        cases = (
+            ('sibling-data', 'siblingDataAudit', recipient, [1, 100], 'e' * 64, 'ENOENT', 60),
+            ('package-expectation', 'packageExpectationAudit', sender, [1, 99], 'f' * 64,
+             'EACCES', 71),
+            ('cgroup-migration', 'cgroupMigrationAudit', recipient, [1, 100], None,
+             'ENOENT', 81))
+        found = []
+        with patch.object(runner, 'positive_executed', return_value=True):
+            for case_id, field, target, group, digest, errno_code, start in cases:
+                if digest is None:
+                    digest = hashlib.sha256(json.dumps({'role': target['role'],
+                        'managerInvocation': target['invocationId'],
+                        'cgroupIdentity': group}, sort_keys=True,
+                        separators=(',', ':')).encode()).hexdigest()
+                snapshot = {'role': target['role'],
+                            'managerInvocation': target['invocationId'],
+                            'cgroupIdentity': group,
+                            'observedMonotonicNs': 40, 'controlDigest': digest}
+                audit = {**common, 'caseId': case_id,
+                    'targetBefore': snapshot,
+                    'targetAfter': dict(snapshot, observedMonotonicNs=120),
+                    'attackStartedNs': start, 'attackFinishedNs': start + 1,
+                    'kernelOpenResult': {'opened': False, 'errno': errno_code},
+                    'writtenBytes': 0}
+                terminal[field] = {'status': 'captured', 'record': audit}
+                case = runner._fixed_role_access_attempt(
+                    case_id, report, result, fixture, terminal, source)
+                self.assertEqual('passed', case['status'])
+                self.assertEqual(sender['invocationId'], case['actorEpoch']['systemdInvocation'])
+                self.assertEqual(target['invocationId'], case['targetEpoch']['systemdInvocation'])
+                self.assertEqual(target['cgroupDigest'], case['targetEpoch']['cgroupDigest'])
+                self.assertEqual({'startedMonotonicNs': start,
+                                  'finishedMonotonicNs': start + 1}, case['operationWindow'])
+                found.append(case['attackDigest'])
+                changed = copy.deepcopy(terminal)
+                changed[field]['record']['targetAfter']['cgroupIdentity'] = [1, 999]
+                self.assertIsNone(runner._fixed_role_access_attempt(
+                    case_id, report, result, fixture, changed, source))
+            self.assertEqual(3, len(set(found)))
+            changed = copy.deepcopy(terminal)
+            changed['packageExpectationAudit']['record']['targetBefore']['controlDigest'] = '0' * 64
+            self.assertIsNone(runner._fixed_role_access_attempt(
+                'package-expectation', report, result, fixture, changed, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            for case_id, *_ in cases:
+                self.assertEqual('passed', runner._fixed_role_access_attempt(
+                    case_id, report, result, fixture, terminal, source)['status'])
+            late = copy.deepcopy(result)
+            late['roleKernelRosterWindow']['finishedMonotonicNs'] = 40
+            self.assertIsNone(runner._fixed_role_access_attempt(
+                'sibling-data', report, late, fixture, terminal, source))
+
+    def test_resolver_denial_needs_real_role_epoch_active_service_and_stable_canary(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': None, 'managerInvocation': '9' * 32,
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'cgroupIdentity': [3, 5], 'mainPid': 211,
+                  'mainStartTicks': 42, 'canaryIdentity': [3, 6],
+                  'observedMonotonicNs': 40, 'controlDigest': 'e' * 64}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-resolver-authority-denial',
+                 'caseId': 'resolver-authority',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'actorInvocationBefore': sender['invocationId'],
+                 'actorInvocationAfter': sender['invocationId'],
+                 'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99],
+                 'actorStateBefore': 'd' * 64, 'actorStateAfter': 'd' * 64,
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=100),
+                 'targetPathDigest': hashlib.sha256(
+                     b'/var/lib/cryptad-restricted/resolver/pr315-workload-canary').hexdigest(),
+                 'attackStartedNs': 60, 'attackFinishedNs': 70,
+                 'kernelOpenResult': {'opened': False, 'errno': 'ENOENT'}}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['resolverAuthorityAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            identity, attempt, sidecar = runner._resolver_authority_attempt(
+                report, result, fixture, terminal, source)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'resolver-authority'))
+            self.assertEqual('9' * 32, sidecar['targetEpoch']['systemdInvocation'])
+            for mutate in (
+                    lambda row: row['resolverAuthorityAudit']['record']['actorAfter'].update(
+                        startTicks=46),
+                    lambda row: row['resolverAuthorityAudit']['record']['targetAfter'].update(
+                        managerInvocation='8' * 32),
+                    lambda row: row['resolverAuthorityAudit']['record']['targetAfter'].update(
+                        controlDigest='f' * 64),
+                    lambda row: row['resolverAuthorityAudit']['record'].update(
+                        kernelOpenResult={'opened': True, 'errno': None}),
+                    lambda row: row['stopReceipts']['candidate-sender']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._resolver_authority_attempt(
+                    report, result, fixture, changed, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, _sidecar = runner._resolver_authority_attempt(
+                report, result, fixture, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [attempt])['cases']
+                if row['caseId'] == 'resolver-authority'))
+
+    def test_hostile_origin_needs_candidate_actor_live_signed_app_and_root_controls(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': 'candidate-sender',
+                  'managerInvocation': sender['invocationId'],
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'cgroupIdentity': [1, 99], 'workerHostPid': 211,
+                  'workerStartTicks': 42, 'javaHostPid': 212,
+                  'javaStartTicks': 43, 'observedMonotonicNs': 40,
+                  'controlResponseDigest': 'e' * 64}
+        control = {'status': 200, 'errorCode': None,
+                   'responseDigest': 'c' * 64,
+                   'startedMonotonicNs': 50, 'finishedMonotonicNs': 55}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-hostile-app-origin-denial',
+                 'caseId': 'hostile-app-origin',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'actorInvocationBefore': sender['invocationId'],
+                 'actorInvocationAfter': sender['invocationId'],
+                 'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99],
+                 'actorStateBefore': 'd' * 64, 'actorStateAfter': 'd' * 64,
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=100),
+                 'inputDigest': 'a' * 64, 'sessionDigest': 'f' * 64,
+                 'expectedOriginDigest': 'g' * 64,
+                 'hostileOriginDigest': hashlib.sha256(
+                     b'http://127.0.0.1:1').hexdigest(),
+                 'targetEndpointDigest': hashlib.sha256(
+                     b'/api/v1/app-data/status').hexdigest(),
+                 'controlBefore': control,
+                 'controlAfter': dict(control, startedMonotonicNs=75,
+                                      finishedMonotonicNs=80),
+                 'attackStartedNs': 60, 'attackFinishedNs': 70,
+                 'attackResponseDigest': '9' * 64,
+                 'denialStatus': 403, 'denialCode': 'origin_mismatch'}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['hostileAppOriginAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        worker = {'provenance': 'controller-kernel-sample',
+                  'hostPid': 211, 'startTicks': 42,
+                  'managerInvocation': sender['invocationId'],
+                  'bootId': target['bootId'],
+                  'handle': 'a' * 64, 'generation': 'b' * 64,
+                  'namespacePid': 21,
+                  'javaHostPid': 212, 'javaStartTicks': 43}
+        result = {'identity': {'sourceCommit': 'b' * 40},
+                  'roleKernelRoster': roster,
+                  'mailAppKernelProcess': worker,
+                  'mailUiOriginDigest': 'g' * 64}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        diagnostics = {'hostileOriginSessionDigest': 'f' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, sidecar = runner._hostile_origin_attempt(
+                report, result, fixture, terminal, source, diagnostics)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'hostile-app-origin'))
+            self.assertEqual('origin_mismatch', sidecar['denialCode'])
+            for mutate in (
+                    lambda row: row['hostileAppOriginAudit']['record'][
+                        'actorAfter'].update(startTicks=46),
+                    lambda row: row['hostileAppOriginAudit']['record'][
+                        'targetAfter'].update(workerStartTicks=43),
+                    lambda row: row['hostileAppOriginAudit']['record'][
+                        'targetBefore'].update(cgroupIdentity=[1, 199]),
+                    lambda row: row['hostileAppOriginAudit']['record'].update(
+                        denialCode='invalid_app_browser_session'),
+                    lambda row: row['stopReceipts']['candidate-sender']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._hostile_origin_attempt(
+                    report, result, fixture, changed, source, diagnostics))
+            self.assertIsNone(runner._hostile_origin_attempt(
+                report, result, fixture, terminal, source,
+                {'hostileOriginSessionDigest': '0' * 64}))
+            for changed_worker in (
+                    dict(worker, bootId='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'),
+                    dict(worker, hostPid=999),
+                    dict(worker, managerInvocation='0' * 32)):
+                self.assertIsNone(runner._hostile_origin_attempt(report,
+                    dict(result, mailAppKernelProcess=changed_worker),
+                    fixture, terminal, source, diagnostics))
+
+    def test_provider_authority_requires_signed_app_child_live_root_canary_and_stop(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        leader = {'hostPid': 300, 'namespacePids': [300, 20, 1],
+            'startTicks': 40, 'executableDigest': 'sha256:' + 'b' * 64,
+            'mountNamespaceIdentity': [1, 3], 'userNamespaceIdentity': [1, 4],
+            'networkNamespaceIdentity': [1, 200], 'pidNamespaceIdentity': 5}
+        actor = {'role': 'candidate-sender', 'hostPid': 301,
+            'namespacePid': 20, 'namespacePids': [301, 20, 2],
+            'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+            'mountNamespaceIdentity': [1, 3],
+            'outerMountNamespaceIdentity': [1, 7],
+            'userNamespaceIdentity': [1, 4], 'pidNamespaceIdentity': 5,
+            'managerInvocation': sender['invocationId'],
+            'cgroupIdentity': [1, 99],
+            'networkNamespaceIdentity': [1, 200], 'stateDigest': 'd' * 64,
+            'observedMonotonicNs': 60, 'sandboxLeader': leader,
+            'provenance': 'controller-kernel-sample'}
+        target = {'role': None, 'managerInvocation': '9' * 32,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [3, 5], 'mainPid': 211,
+            'mainStartTicks': 42, 'resolverCanaryIdentity': [3, 6],
+            'resolverControlDigest': 'a' * 64,
+            'providerCanaryIdentity': [3, 7],
+            'credentialIdentity': [3, 8],
+            'credentialDigest': 'f' * 64,
+            'observedMonotonicNs': 40, 'controlDigest': 'b' * 64}
+        nonce = 'c' * 64
+        app_result = {'schemaVersion': 1,
+            'kind': 'pr315-signed-provider-authority-probe',
+            'caseId': 'provider-authority', 'nonce': nonce,
+            'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
+            'startedMonotonicNs': 70, 'finishedMonotonicNs': 80,
+            'targetPathDigest': hashlib.sha256(
+                b'/etc/cryptad-certification/restricted-provider.json').hexdigest(),
+            'outcome': {'opened': False, 'errno': 'ENOENT'}}
+        installed_worker_digest = hashlib.sha256((Path(__file__).resolve().parents[3] /
+            'tools/release-certification/protected/restricted_worker.py').read_bytes()).hexdigest()
+        worker_control = {'kind': 'pr315-installed-worker-synthetic-provider-control-v2',
+            'jobAuthentication': 'installed-policy-fixed-no-network-provider-stub',
+            'workerSourceDigest': installed_worker_digest,
+            'credentialDigest': 'f' * 64,
+            'registrationDigest': '1' * 64,
+            'resultDigest': '2' * 64,
+            'bundleIdentity': synthetic_host_identity()['bundleIdentity'],
+            'callerUid': installation.REFERENCE_RUNNER_UID}
+        audit = {'schemaVersion': 2,
+            'kind': 'pr315-administrator-provider-authority-denial',
+            'caseId': 'provider-authority',
+            'bundleDigest': 'sha256:' + '8' * 64,
+            'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+            'actorUid': sender['uid'],
+            'actorBefore': actor,
+            'actorAfter': dict(actor, observedMonotonicNs=100),
+            'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=120),
+            'workerControlBefore': dict(worker_control, ordinal=1,
+                handleDigest='3' * 64,
+                startedMonotonicNs=10, finishedMonotonicNs=20),
+            'workerControlAfter': dict(worker_control, ordinal=2,
+                handleDigest='4' * 64,
+                startedMonotonicNs=130, finishedMonotonicNs=140),
+            'targetPathDigest': app_result['targetPathDigest'],
+            'attackStartedNs': 70, 'attackFinishedNs': 80,
+            'kernelOpenResult': app_result['outcome'],
+            'appResultDigest': hashlib.sha256(json.dumps(app_result,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['providerAuthorityAudit'] = {'status': 'captured', 'record': audit}
+        terminal['providerAppResult'] = {'status': 'captured', 'record': app_result}
+        terminal['probeAdministratorRecord'] = {'status': 'captured', 'record': {
+            'bundleDigest': 'sha256:' + '8' * 64,
+            'worker': {'hostPid': 301, 'startTicks': 45},
+            'cgroupIdentity': [1, 99]}}
+        terminal['probeKernelCheckpoint'] = {'status': 'captured', 'record': {
+            'probeWorker': {'hostPid': 301, 'startTicks': 45}}}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40},
+                  'roleKernelRoster': roster,
+                  'probeAppKernelProcess': dict(actor)}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64,
+                   'probeDigest': 'sha256:' + '8' * 64}
+        normal_checked = {'recordContractValid': True,
+            'cases': [{'caseId': 'namespace-mount-escape', 'status': 'passed'}]}
+        with patch.object(runner, 'group_prepared', return_value=True), \
+                patch.object(runner, 'probe_denial_attempt', return_value=({}, {})), \
+                patch.object(runner.acceptance, 'verify_attempts',
+                             return_value=normal_checked):
+            identity, attempt, sidecar = runner._provider_authority_attempt(
+                report, result, fixture, terminal)
+            self.assertEqual('normally-signed-apphost-child', sidecar['actorEpoch']['kind'])
+            for mutate in (
+                    lambda row: row['providerAuthorityAudit']['record'].update(
+                        bundleDigest='sha256:' + '0' * 64),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'actorAfter'].update(startTicks=46),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'targetAfter'].update(managerInvocation='8' * 32),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'workerControlBefore'].update(credentialDigest='0' * 64),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'workerControlBefore'].update(callerUid=roster['runnerUid']),
+                    lambda row: row['providerAuthorityAudit']['record'][
+                        'workerControlAfter'].update(handleDigest='3' * 64),
+                    lambda row: row['providerAppResult']['record'].update(
+                        outcome={'opened': True, 'errno': None}),
+                    lambda row: row['stopReceipts']['candidate-sender']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._provider_authority_attempt(
+                    report, result, fixture, changed))
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                         if row['caseId'] == 'provider-authority'))
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '8' * 64,
+            'c' * 64, 'd' * 64)
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        v10 = case_v10.generic_case_record(frozen,
+            'suite-204', identity, attempt, sidecar,
+            Path(__file__).resolve().parents[3], raw)
+        self.assertEqual('normally-signed-apphost-child',
+                         v10['actorEpoch']['kind'])
+        for label in ('installedWorkerBefore', 'installedWorkerAfter'):
+            for uid in (0, roster['runnerUid'], installation.REFERENCE_RUNNER_UID + 1):
+                changed = copy.deepcopy(sidecar)
+                changed['targetEpoch'][label]['callerUid'] = uid
+                with self.subTest(label=label, uid=uid), self.assertRaisesRegex(
+                        ValueError, 'provider-worker-target-invalid'):
+                    case_v10.generic_case_record(frozen, 'suite-204', identity,
+                        attempt, changed, Path(__file__).resolve().parents[3], raw)
+
+    def test_sibling_app_requires_signed_actor_active_mail_and_own_drop_counter(self):
+        roster = synthetic_role_kernel_roster()
+        sender, recipient = roster['roles'][:2]
+        leader = {'hostPid': 300, 'namespacePids': [300, 20, 1],
+            'startTicks': 40, 'executableDigest': 'sha256:' + 'b' * 64,
+            'mountNamespaceIdentity': [1, 3], 'userNamespaceIdentity': [1, 4],
+            'networkNamespaceIdentity': [1, 200], 'pidNamespaceIdentity': 5}
+        actor = {'role': 'candidate-sender', 'hostPid': 301,
+            'namespacePid': 20, 'namespacePids': [301, 20, 2],
+            'startTicks': 45, 'executableDigest': 'sha256:' + 'a' * 64,
+            'mountNamespaceIdentity': [1, 3],
+            'outerMountNamespaceIdentity': [1, 7],
+            'userNamespaceIdentity': [1, 4], 'pidNamespaceIdentity': 5,
+            'managerInvocation': sender['invocationId'],
+            'cgroupIdentity': [1, 99],
+            'networkNamespaceIdentity': [1, 200], 'stateDigest': 'd' * 64,
+            'observedMonotonicNs': 10, 'sandboxLeader': leader,
+            'provenance': 'controller-kernel-sample'}
+        target = {'role': 'candidate-recipient',
+            'managerInvocation': recipient['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 100], 'workerHostPid': 311,
+            'workerStartTicks': 52, 'javaHostPid': 312,
+            'javaStartTicks': 53, 'observedMonotonicNs': 20,
+            'controlObservedNs': 19, 'controlDigest': 'f' * 64,
+            'appUiOriginDigest': hashlib.sha256(
+                b'http://127.0.0.1:12345').hexdigest()}
+        names = runner.workload_network.SIBLING_DROP_COUNTERS
+        counts = {name: {'packets': 0, 'bytes': 0} for name in names.values()}
+        counter = {'schemaVersion': 1,
+            'kind': 'pr315-fixed-sibling-drop-counters',
+            'policyDigest': hashlib.sha256(runner.workload_network.role_rules(
+                'candidate-sender').encode()).hexdigest(),
+            'bootId': target['bootId'], 'roleNamespaceIdentity': [1, 200],
+            'observedMonotonicNs': 30, 'counters': counts}
+        later_counts = copy.deepcopy(counts)
+        later_counts[names['sibling-app']] = {'packets': 1, 'bytes': 60}
+        counter_after = dict(counter, observedMonotonicNs=70,
+                             counters=later_counts)
+        nonce = 'c' * 64
+        app_result = {'schemaVersion': 1,
+            'kind': 'pr315-signed-sibling-app-probe',
+            'caseId': 'sibling-app', 'nonce': nonce,
+            'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
+            'startedMonotonicNs': 50, 'finishedMonotonicNs': 60,
+            'sourcePort': 19404,
+            'targetEndpointDigest': hashlib.sha256(
+                b'10.231.0.2:19402').hexdigest(),
+            'outcome': {'connected': False, 'phase': 'connect',
+                        'errno': 'ETIMEDOUT'}}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-sibling-app-denial',
+            'caseId': 'sibling-app', 'bundleDigest': 'sha256:' + '8' * 64,
+            'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+            'actorUid': sender['uid'],
+            'actorBefore': actor,
+            'actorAfter': dict(actor, observedMonotonicNs=80),
+            'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=90,
+                                controlObservedNs=89),
+            'counterBefore': counter, 'counterAfter': counter_after,
+            'counterName': names['sibling-app'], 'sourcePort': 19404,
+            'targetEndpointDigest': app_result['targetEndpointDigest'],
+            'triggerMonotonicNs': 40,
+            'attackStartedNs': 50, 'attackFinishedNs': 60,
+            'kernelConnectResult': app_result['outcome'],
+            'appResultDigest': hashlib.sha256(json.dumps(app_result,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        for role in ('candidate-sender', 'candidate-recipient'):
+            terminal['stopReceipts'][role]['current']['record'].update(
+                startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['siblingAppAudit'] = {'status': 'captured', 'record': audit}
+        terminal['siblingAppResult'] = {'status': 'captured', 'record': app_result}
+        terminal['probeAdministratorRecord'] = {'status': 'captured', 'record': {
+            'bundleDigest': 'sha256:' + '8' * 64,
+            'worker': {'hostPid': 301, 'startTicks': 45}}}
+        terminal['probeKernelCheckpoint'] = {'status': 'captured', 'record': {
+            'probeWorker': {'hostPid': 301}}}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40},
+            'roleKernelRoster': roster,
+            'probeAppKernelProcess': dict(actor),
+            'recipientMailAppKernelProcess': {'hostPid': 311,
+                'startTicks': 52, 'javaHostPid': 312,
+                'javaStartTicks': 53,
+                'provenance': 'controller-kernel-sample'},
+            'recipientMailUiOriginDigest': target['appUiOriginDigest']}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64,
+                   'probeDigest': 'sha256:' + '8' * 64}
+        normal_checked = {'recordContractValid': True,
+            'cases': [{'caseId': 'namespace-mount-escape', 'status': 'passed'}]}
+        with patch.object(runner, 'group_prepared', return_value=True), \
+                patch.object(runner, 'probe_denial_attempt', return_value=({}, {})), \
+                patch.object(runner.acceptance, 'verify_attempts',
+                             return_value=normal_checked):
+            identity, attempt, sidecar = runner._sibling_app_attempt(
+                report, result, fixture, terminal)
+            self.assertEqual(names['sibling-app'], sidecar['counterName'])
+            for mutate in (
+                    lambda row: row['siblingAppAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-app']].update(packets=0),
+                    lambda row: row['siblingAppAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-http']].update(packets=1, bytes=60),
+                    lambda row: row['siblingAppAudit']['record'][
+                        'targetAfter'].update(workerHostPid=999),
+                    lambda row: row['siblingAppResult']['record'].update(
+                        outcome={'connected': True, 'phase': 'connect', 'errno': None}),
+                    lambda row: row['stopReceipts']['candidate-recipient']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._sibling_app_attempt(
+                    report, result, fixture, changed))
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                         if row['caseId'] == 'sibling-app'))
+
+    def test_output_symlink_requires_role_artifact_and_actual_collector_epoch(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        cgroup = [3, 5]
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        invocation = hashlib.sha256(json.dumps({'bootId': boot, 'pid': 211,
+            'startTicks': 42, 'cgroupIdentity': cgroup,
+            'sourceDigest': source_digest}, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()[:32]
+        collector = {'pid': 211, 'uid': 0, 'gid': 0, 'startTicks': 42, 'bootId': boot,
+                     'namespacePids': [211],
+                     'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
+                     'cgroupIdentity': cgroup,
+                     'cgroupDigest': runner.fixtures.runtime.canonical_digest({
+                         'role': 'output-collector', 'identity': cgroup})[7:],
+                     'invocationId': invocation, 'sourceDigest': source_digest,
+                     'observedMonotonicNs': 20}
+        target = {'controlDigest': 'e' * 64,
+                  'fileIdentity': [3, 6, 32, 100, 101],
+                  'observedMonotonicNs': 10}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-output-symlink-denial',
+                 'caseId': 'output-symlink',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'actorInvocationBefore': sender['invocationId'],
+                 'actorInvocationAfter': sender['invocationId'],
+                 'actorCgroupBefore': [1, 99], 'actorCgroupAfter': [1, 99],
+                 'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+                 'collectorBefore': collector,
+                 'collectorAfter': dict(collector, observedMonotonicNs=90),
+                 'collectorStartedNs': 60, 'collectorFinishedNs': 70,
+                 'collectorDenial': 'workload-snapshot-file-invalid',
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=80),
+                 'artifactIdentity': [3, 7], 'artifactOwnerUid': sender['uid'],
+                 'linkTargetDigest': hashlib.sha256(
+                     b'/node/tmp/pr315-output-target-canary').hexdigest(),
+                 'triggerMonotonicNs': 30, 'attackStartedNs': 40,
+                 'attackFinishedNs': 50}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=150, observedMonotonicNs=160)
+        terminal['outputSymlinkAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                             'finishedMonotonicNs': 5}}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, sidecar = runner._output_symlink_attempt(
+                report, result, fixture, terminal, source)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'output-symlink'))
+            self.assertEqual(invocation, sidecar['targetEpoch']['testKitInvocation'])
+            import pr315_campaign_seal as seal
+            import pr315_case_v10 as case_v10
+            frozen = seal.plan(identity, 'a' * 64,
+                'pve-tcg-swap-admission-v1', 'b' * 64,
+                'c' * 64, 'd' * 64)
+            raw = {name: str(index) * 64 for index, name in enumerate(
+                ('guestReport', 'volatile', 'hostMonitor'), 1)}
+            case_record = case_v10.output_symlink_record(frozen,
+                'suite-201', identity, attempt, sidecar, raw)
+            self.assertEqual('pr315-installed-case-v10', case_record['kind'])
+            self.assertEqual('output-symlink', case_record['caseId'])
+            self.assertRegex(case_v10.verify_output_symlink_record(frozen,
+                'suite-201', identity, attempt, sidecar, raw, case_record),
+                '^[0-9a-f]{64}$')
+            changed_record = copy.deepcopy(case_record)
+            changed_record['actorEpoch']['startTicks'] += 1
+            with self.assertRaisesRegex(ValueError, 'record-changed'):
+                case_v10.verify_output_symlink_record(frozen,
+                    'suite-201', identity, attempt, sidecar, raw, changed_record)
+            changed_sidecar = copy.deepcopy(sidecar)
+            changed_sidecar['actorEpoch']['systemdInvocation'] = 'f' * 32
+            with self.assertRaisesRegex(ValueError, 'epoch-invalid'):
+                case_v10.output_symlink_record(frozen,
+                    'suite-201', identity, attempt, changed_sidecar, raw)
+            for mutate in (
+                    lambda row: row['outputSymlinkAudit']['record']['actorAfter'].update(
+                        startTicks=46),
+                    lambda row: row['outputSymlinkAudit']['record']['collectorAfter'].update(
+                        pid=212),
+                    lambda row: row['outputSymlinkAudit']['record'].update(
+                        collectorDenial='workload-snapshot-deadline'),
+                    lambda row: row['outputSymlinkAudit']['record']['targetAfter'].update(
+                        controlDigest='f' * 64),
+                    lambda row: row['stopReceipts']['candidate-sender']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._output_symlink_attempt(
+                    report, result, fixture, changed, source))
+            late_roster = copy.deepcopy(result)
+            late_roster['roleKernelRosterWindow']['finishedMonotonicNs'] = 10
+            self.assertIsNone(runner._output_symlink_attempt(
+                report, late_roster, fixture, terminal, source))
+            fifo_terminal = copy.deepcopy(terminal)
+            fifo_audit = fifo_terminal.pop('outputSymlinkAudit')['record']
+            fifo_audit['kind'] = 'pr315-administrator-output-fifo-denial'
+            fifo_audit['caseId'] = 'output-fifo'
+            del fifo_audit['linkTargetDigest']
+            fifo_audit['artifactType'] = 'fifo'
+            fifo_audit['artifactMode'] = 0o600
+            fifo_terminal['outputFifoAudit'] = {'status': 'captured', 'record': fifo_audit}
+            fifo_identity, fifo_attempt, fifo_sidecar = runner._output_fifo_attempt(
+                report, result, fixture, fifo_terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(fifo_identity,
+                    [fifo_attempt])['cases'] if row['caseId'] == 'output-fifo'))
+            fifo_v10 = case_v10.generic_case_record(frozen,
+                'suite-202', fifo_identity, fifo_attempt, fifo_sidecar,
+                source, raw)
+            self.assertEqual('output-fifo', fifo_v10['caseId'])
+            bad_sidecar = copy.deepcopy(fifo_sidecar)
+            bad_sidecar['actorEpoch']['systemdInvocation'] = 'f' * 32
+            with self.assertRaisesRegex(ValueError, 'candidate-epoch-invalid'):
+                case_v10.generic_case_record(frozen, 'suite-202',
+                    fifo_identity, fifo_attempt, bad_sidecar, source, raw)
+            self.assertEqual('fifo', fifo_sidecar['targetEpoch']['artifactType'])
+            fifo_audit['artifactMode'] = 0o666
+            self.assertIsNone(runner._output_fifo_attempt(
+                report, result, fixture, fifo_terminal, source))
+            hardlink_terminal = copy.deepcopy(terminal)
+            hardlink_audit = hardlink_terminal.pop('outputSymlinkAudit')['record']
+            hardlink_audit['kind'] = 'pr315-administrator-output-hardlink-denial'
+            hardlink_audit['caseId'] = 'output-hardlink'
+            del hardlink_audit['linkTargetDigest']
+            hardlink_audit['artifactType'] = 'hardlink'
+            hardlink_audit['artifactMode'] = 0o600
+            hardlink_audit['artifactLinkCount'] = 2
+            hardlink_audit['artifactIdentity'] = target['fileIdentity'][:2]
+            hardlink_audit['targetBefore']['linkCount'] = 1
+            hardlink_audit['targetAfter']['linkCount'] = 2
+            hardlink_audit['targetAfter']['fileIdentity'] = list(
+                hardlink_audit['targetBefore']['fileIdentity'])
+            hardlink_audit['targetAfter']['fileIdentity'][4] = 102
+            hardlink_terminal['outputHardlinkAudit'] = {
+                'status': 'captured', 'record': hardlink_audit}
+            hardlink_identity, hardlink_attempt, hardlink_sidecar = (
+                runner._output_hardlink_attempt(report, result, fixture,
+                                                hardlink_terminal, source))
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(hardlink_identity,
+                    [hardlink_attempt])['cases'] if row['caseId'] == 'output-hardlink'))
+            self.assertEqual(2, hardlink_sidecar['targetEpoch']['artifactLinkCount'])
+            hardlink_audit['targetAfter']['linkCount'] = 1
+            self.assertIsNone(runner._output_hardlink_attempt(
+                report, result, fixture, hardlink_terminal, source))
+            flood_terminal = copy.deepcopy(terminal)
+            flood_audit = flood_terminal.pop('outputSymlinkAudit')['record']
+            flood_audit['kind'] = 'pr315-administrator-output-flood-denial'
+            flood_audit['caseId'] = 'output-flood'
+            del flood_audit['linkTargetDigest']
+            flood_audit['artifactType'] = 'regular'
+            flood_audit['artifactMode'] = 0o600
+            flood_audit['artifactSize'] = 65537
+            flood_audit['artifactDigest'] = hashlib.sha256(b'F' * 65537).hexdigest()
+            flood_terminal['outputFloodAudit'] = {'status': 'captured',
+                                                  'record': flood_audit}
+            flood_identity, flood_attempt, flood_sidecar = runner._output_flood_attempt(
+                report, result, fixture, flood_terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(flood_identity,
+                    [flood_attempt])['cases'] if row['caseId'] == 'output-flood'))
+            self.assertEqual(65537, flood_sidecar['targetEpoch']['artifactSize'])
+            flood_audit['artifactSize'] = 65536
+            self.assertIsNone(runner._output_flood_attempt(
+                report, result, fixture, flood_terminal, source))
+            replacement_terminal = copy.deepcopy(terminal)
+            replacement_audit = replacement_terminal.pop('outputSymlinkAudit')['record']
+            replacement_audit['kind'] = 'pr315-administrator-output-replacement-denial'
+            replacement_audit['caseId'] = 'output-replacement'
+            del replacement_audit['linkTargetDigest']
+            replacement_audit['artifactType'] = 'replacement'
+            replacement_audit['artifactMode'] = 0o600
+            replacement_audit['collectorDenial'] = 'workload-snapshot-changed'
+            replacement_audit['replacementIdentity'] = [3, 8]
+            replacement_audit['initialDigest'] = hashlib.sha256(b'A' * 32).hexdigest()
+            replacement_audit['replacementDigest'] = hashlib.sha256(b'B' * 32).hexdigest()
+            replacement_audit['swapTriggerNs'] = 62
+            replacement_audit['swapStartedNs'] = 63
+            replacement_audit['swapFinishedNs'] = 64
+            replacement_terminal['outputReplacementAudit'] = {
+                'status': 'captured', 'record': replacement_audit}
+            replaced_identity, replaced_attempt, replaced_sidecar = (
+                runner._output_replacement_attempt(report, result, fixture,
+                                                   replacement_terminal, source))
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(replaced_identity,
+                    [replaced_attempt])['cases']
+                    if row['caseId'] == 'output-replacement'))
+            self.assertEqual([3, 8],
+                replaced_sidecar['targetEpoch']['replacementIdentity'])
+            replacement_audit['swapStartedNs'] = 61
+            self.assertIsNone(runner._output_replacement_attempt(
+                report, result, fixture, replacement_terminal, source))
+
+    def test_sibling_fcp_denial_needs_named_drop_active_target_and_exact_role_epoch(self):
+        roster = synthetic_role_kernel_roster()
+        sender, recipient = roster['roles'][:2]
+        source = Path(__file__).resolve().parents[3]
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        target = {'role': 'candidate-recipient',
+                  'managerInvocation': recipient['invocationId'],
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'cgroupIdentity': [1, 100], 'observedMonotonicNs': 40,
+                  'controlObservedNs': 45, 'controlDigest': 'e' * 64}
+        names = runner.workload_network.SIBLING_DROP_COUNTERS
+        counter = {'schemaVersion': 1, 'kind': 'pr315-fixed-sibling-drop-counters',
+                   'policyDigest': hashlib.sha256(runner.workload_network.role_rules(
+                       'candidate-sender').encode()).hexdigest(),
+                   'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                   'roleNamespaceIdentity': [1, 200], 'observedMonotonicNs': 60,
+                   'counters': {name: {'packets': 0, 'bytes': 0}
+                                for name in names.values()}}
+        after_counter = copy.deepcopy(counter)
+        after_counter['observedMonotonicNs'] = 170
+        after_counter['counters'][names['sibling-fcp']] = {'packets': 1, 'bytes': 60}
+        audit = {'schemaVersion': 1,
+                 'kind': 'pr315-administrator-sibling-network-denial',
+                 'caseId': 'sibling-fcp',
+                 'sourceDigest': runner.reference.sha256(source /
+                     'tools/release-certification/restricted/pr315_role_probe.py'),
+                 'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+                 'actorBefore': actor, 'actorAfter': dict(actor),
+                 'senderInvocationBefore': sender['invocationId'],
+                 'senderInvocationAfter': sender['invocationId'],
+                 'senderCgroupBefore': [1, 99], 'senderCgroupAfter': [1, 99],
+                 'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+                 'targetBefore': target,
+                 'targetAfter': dict(target, observedMonotonicNs=180,
+                                     controlObservedNs=190, controlDigest='f' * 64),
+                 'counterBefore': counter, 'counterAfter': after_counter,
+                 'triggerMonotonicNs': 70, 'attackStartedNs': 80,
+                 'attackFinishedNs': 90,
+                 'targetEndpointDigest': hashlib.sha256(b'10.231.0.2:19401').hexdigest(),
+                 'kernelConnectResult': {'connected': False, 'errno': 'ETIMEDOUT'},
+                 'counterName': names['sibling-fcp']}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        for role in ('candidate-sender', 'candidate-recipient'):
+            terminal['stopReceipts'][role]['current']['record'].update(
+                startedMonotonicNs=300, observedMonotonicNs=310)
+        terminal['siblingFcpAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}, 'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            identity, attempt, sidecar = runner._sibling_network_attempt(
+                'sibling-fcp', report, result, fixture, terminal, source)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'sibling-fcp'))
+            self.assertEqual(names['sibling-fcp'], sidecar['counterName'])
+            for mutate in (
+                    lambda row: row['siblingFcpAudit']['record']['actorAfter'].update(
+                        startTicks=46),
+                    lambda row: row['siblingFcpAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-fcp']].update(packets=0),
+                    lambda row: row['siblingFcpAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-http']].update(packets=1, bytes=60),
+                    lambda row: row['siblingFcpAudit']['record']['counterAfter'][
+                        'counters'][names['sibling-app']].update(packets=1, bytes=60),
+                    lambda row: row['siblingFcpAudit']['record']['targetAfter'].update(
+                        managerInvocation='0' * 32),
+                    lambda row: row['stopReceipts']['candidate-recipient']['current'][
+                        'record'].update(descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner._sibling_network_attempt(
+                    'sibling-fcp', report, result, fixture, changed, source))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, _sidecar = runner._sibling_network_attempt(
+                'sibling-fcp', report, result, fixture, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [attempt])['cases']
+                if row['caseId'] == 'sibling-fcp'))
+
+    def test_host_network_requires_live_host_listener_and_its_own_drop_counter(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        source = Path(__file__).resolve().parents[3]
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        driver_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        identity = {'bootId': boot, 'pid': 500, 'startTicks': 33,
+            'cgroupIdentity': [1, 50], 'sourceDigest': driver_digest}
+        invocation = hashlib.sha256(json.dumps(identity, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()[:32]
+        control = hashlib.sha256(b'pr315-host-probe\0pr315-host-ready').hexdigest()
+        target = {'pid': 500, 'uid': 0, 'startTicks': 33,
+            'bootId': boot, 'cgroupIdentity': [1, 50],
+            'networkNamespace': 3000, 'initNetworkNamespace': 3000,
+            'addressBinding': {'ifindex': 2, 'ifname': 'eth0',
+                               'address': '10.0.2.15'},
+            'sourceDigest': driver_digest,
+            'invocationId': invocation, 'controlDigest': control,
+            'observedMonotonicNs': 40}
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+            'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+            'networkNamespaceIdentity': [1, 200],
+            'mountNamespaceIdentity': [1, 300],
+            'userNamespaceIdentity': [1, 400],
+            'executableDigest': 'sha256:' + 'a' * 64,
+            'rssBytes': 1024, 'processThreads': 1,
+            'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        names = runner.workload_network.SIBLING_DROP_COUNTERS
+        counter = {'schemaVersion': 1,
+            'kind': 'pr315-fixed-sibling-drop-counters',
+            'policyDigest': hashlib.sha256(runner.workload_network.role_rules(
+                'candidate-sender').encode()).hexdigest(),
+            'bootId': boot, 'roleNamespaceIdentity': [1, 200],
+            'observedMonotonicNs': 60,
+            'counters': {name: {'packets': 0, 'bytes': 0}
+                         for name in names.values()}}
+        after_counter = copy.deepcopy(counter)
+        after_counter['observedMonotonicNs'] = 170
+        after_counter['counters'][names['host-network']] = {
+            'packets': 1, 'bytes': 60}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-host-network-denial',
+            'caseId': 'host-network',
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_role_probe.py'),
+            'nonceDigest': 'b' * 64, 'actorUid': sender['uid'],
+            'actorBefore': actor, 'actorAfter': dict(actor),
+            'senderInvocationBefore': sender['invocationId'],
+            'senderInvocationAfter': sender['invocationId'],
+            'senderCgroupBefore': [1, 99], 'senderCgroupAfter': [1, 99],
+            'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+            'targetBefore': target,
+            'targetAfter': dict(target, observedMonotonicNs=180),
+            'counterBefore': counter, 'counterAfter': after_counter,
+            'triggerMonotonicNs': 70, 'attackStartedNs': 80,
+            'attackFinishedNs': 90,
+            'targetEndpointDigest': hashlib.sha256(b'10.0.2.15:19405').hexdigest(),
+            'kernelConnectResult': {'connected': False, 'errno': 'ETIMEDOUT'},
+            'counterName': names['host-network']}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=300, observedMonotonicNs=310)
+        terminal['hostNetworkAudit'] = {'status': 'captured', 'record': audit}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40},
+                  'roleKernelRoster': roster}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            selected = runner._host_network_attempt(
+                report, result, fixture, terminal, source)
+        self.assertIsNotNone(selected)
+        identity_record, attempt, sidecar = selected
+        checked = runner.acceptance.verify_attempts(identity_record, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                         if row['caseId'] == 'host-network'))
+        self.assertEqual(names['host-network'], sidecar['counterName'])
+        if sys.platform.startswith('linux'):
+            import pr315_workload_evidence as evidence
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'authority').mkdir()
+                (root / 'authority/host-network-denial.json').write_text(
+                    json.dumps(audit))
+                retained = evidence._sibling_network_audit(
+                    root, time.monotonic() + 3, 'host-network')
+                self.assertEqual('captured', retained['status'])
+        for mutate in (
+                lambda row: row['hostNetworkAudit']['record']['targetAfter'].update(
+                    networkNamespace=200),
+                lambda row: row['hostNetworkAudit']['record']['targetBefore'].update(
+                    initNetworkNamespace=999),
+                lambda row: row['hostNetworkAudit']['record']['targetBefore']
+                    ['addressBinding'].update(address='10.0.2.16'),
+                lambda row: row['hostNetworkAudit']['record']['counterAfter']
+                    ['counters'][names['host-network']].update(packets=0),
+                lambda row: row['hostNetworkAudit']['record']['counterAfter']
+                    ['counters'][names['sibling-fcp']].update(packets=1, bytes=60),
+                lambda row: row['hostNetworkAudit']['record']['targetAfter'].update(
+                    invocationId='0' * 32),
+                lambda row: row['stopReceipts']['candidate-sender']['current']
+                    ['record'].update(descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            with patch.object(runner, 'group_prepared', return_value=True):
+                self.assertIsNone(runner._host_network_attempt(
+                    report, result, fixture, changed, source))
+
+    def test_observer_control_denial_needs_root_controller_and_exact_actor_epoch(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        state = 'd' * 64
+        response = hashlib.sha256(b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+        observer = {'schemaVersion': 1, 'kind': 'pr315-observer-control-denial-checkpoint',
+                    'caseId': 'observer-control', 'actorPid': 123,
+                    'actorStartTicks': 45, 'roleKernelRoster': roster,
+                    'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                               'finishedMonotonicNs': 20},
+                    'senderStateBefore': state, 'requestDigest': 'e' * 64,
+                    'responseDigest': response}
+        target = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 25],
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'observedMonotonicNs': 30}
+        root = {'schemaVersion': 1, 'kind': 'pr315-administrator-observer-control-denial',
+                'caseId': 'observer-control',
+                'actor': {'pid': 123, 'uid': roster['observerUid'], 'startTicks': 45},
+                'targetBefore': target, 'targetAfter': dict(target, observedMonotonicNs=60),
+                'senderManagerInvocation': sender['invocationId'],
+                'senderCgroupIdentity': [1, 99], 'senderStateBefore': state,
+                'senderStateAfter': state, 'requestObservedNs': 40,
+                'responseSentNs': 50, 'requestDigest': observer['requestDigest'],
+                'responseDigest': response}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + state
+        terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        terminal['stopReceipts']['candidate-sender']['current']['record']['observedMonotonicNs'] = 90
+        terminal['observerControlCheckpoint'] = {'status': 'captured', 'record': observer}
+        terminal['observerControlAudit'] = {'status': 'captured', 'record': root}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.observer_control_denial_attempt(report, fixture, terminal)
+        assessment = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(assessment['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in assessment['cases']
+                         if row['caseId'] == 'observer-control'))
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        source = Path(__file__).resolve().parents[3]
+        diagnostic = {'authorityObserverEpoch': {
+            'kind': 'installed-observer-process', 'pid': 123,
+            'uid': roster['observerUid'], 'startTicks': 45,
+            'bootId': target['bootId'], 'cgroupIdentity': [1, 50],
+            'cgroupDigest': 'a' * 64,
+            'namespaces': {'pid': 2, 'net': 3, 'mnt': 4, 'user': 5},
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr314_workload_driver.py'),
+            'observedMonotonicNs': 25}}
+        sidecar = runner._v10_legacy_sidecar('observer-control', report,
+            fixture, terminal, diagnostic, identity, attempt)
+        self.assertIsNotNone(sidecar)
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', 'b' * 64,
+            'c' * 64, 'd' * 64)
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        self.assertEqual('observer-control', case_v10.generic_case_record(
+            frozen, 'suite-207', identity, attempt, sidecar,
+            source, raw)['caseId'])
+        for mutate in (
+                lambda row: row['observerControlAudit']['record']['actor'].update(startTicks=46),
+                lambda row: row['observerControlAudit']['record'].update(responseDigest='0' * 64),
+                lambda row: row['observerControlAudit']['record']['targetAfter'].update(
+                    observedMonotonicNs=81),
+                lambda row: row['observerControlAudit']['record'].update(senderStateAfter='0' * 64)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner.observer_control_denial_attempt(report, fixture, changed))
+
+    def test_arbitrary_endpoint_needs_real_observer_denial_and_active_sibling_fcp(self):
+        roster = synthetic_role_kernel_roster()
+        sender, recipient = roster['roles'][:2]
+        sender_state, recipient_state = 'd' * 64, None
+        response = hashlib.sha256(b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+        observer = {'schemaVersion': 1, 'kind': 'pr315-arbitrary-endpoint-denial-checkpoint',
+                    'caseId': 'arbitrary-endpoint', 'actorPid': 123, 'actorStartTicks': 45,
+                    'roleKernelRoster': roster,
+                    'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                               'finishedMonotonicNs': 20},
+                    'requestDigest': 'f' * 64, 'responseDigest': response}
+        controller = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 25],
+                      'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                      'observedMonotonicNs': 30}
+        def role_record(principal, identity, state, observed):
+            return {'managerInvocation': principal['invocationId'],
+                    'cgroupIdentity': identity,
+                    'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                    'stateDigest': state, 'observedMonotonicNs': observed}
+        root = {'schemaVersion': 1,
+                'kind': 'pr315-administrator-arbitrary-endpoint-denial',
+                'caseId': 'arbitrary-endpoint',
+                'actor': {'pid': 123, 'uid': roster['observerUid'], 'startTicks': 45},
+                'targetBefore': controller,
+                'targetAfter': dict(controller, observedMonotonicNs=70),
+                'senderBefore': role_record(sender, [1, 99], sender_state, 42),
+                'senderAfter': role_record(sender, [1, 99], sender_state, 67),
+                'recipientBefore': role_record(recipient, [1, 100], recipient_state, 45),
+                'recipientAfter': role_record(recipient, [1, 100], recipient_state, 60),
+                'recipientControlBeforeNs': 50, 'recipientControlAfterNs': 65,
+                'recipientControlBeforeDigest': '1' * 64,
+                'recipientControlAfterDigest': '2' * 64,
+                'endpointSelection': 'sibling-fcp',
+                'denial': 'restricted-workload-network-rejected',
+                'requestObservedNs': 40, 'attackStartedNs': 55,
+                'attackFinishedNs': 56, 'responseSentNs': 57,
+                'requestDigest': observer['requestDigest'], 'responseDigest': response}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + sender_state
+        for role in ('candidate-sender', 'candidate-recipient'):
+            terminal['stopReceipts'][role]['current']['record']['startedMonotonicNs'] = 90
+            terminal['stopReceipts'][role]['current']['record']['observedMonotonicNs'] = 100
+        terminal['arbitraryEndpointCheckpoint'] = {'status': 'captured', 'record': observer}
+        terminal['arbitraryEndpointAudit'] = {'status': 'captured', 'record': root}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'identity': {'sourceCommit': 'b' * 40}}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'positive_executed', return_value=True):
+            identity, attempt, sidecar = runner.arbitrary_endpoint_denial_attempt(
+                report, result, fixture, terminal)
+            checked = runner.acceptance.verify_attempts(identity, [attempt])
+            self.assertTrue(checked['recordContractValid'])
+            self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                             if row['caseId'] == 'arbitrary-endpoint'))
+            self.assertEqual(recipient['invocationId'],
+                             sidecar['recipientBefore']['managerInvocation'])
+            import pr315_campaign_seal as seal
+            import pr315_case_v10 as case_v10
+            source = Path(__file__).resolve().parents[3]
+            diagnostic = {'authorityObserverEpoch': {
+                'kind': 'installed-observer-process', 'pid': 123,
+                'uid': roster['observerUid'], 'startTicks': 45,
+                'bootId': controller['bootId'], 'cgroupIdentity': [1, 50],
+                'cgroupDigest': 'a' * 64,
+                'namespaces': {'pid': 2, 'net': 3, 'mnt': 4, 'user': 5},
+                'sourceDigest': runner.reference.sha256(source /
+                    'tools/release-certification/restricted/pr314_workload_driver.py'),
+                'observedMonotonicNs': 25}}
+            converted = runner._v10_legacy_sidecar('arbitrary-endpoint',
+                report, fixture, terminal, diagnostic, identity, attempt)
+            self.assertIsNotNone(converted)
+            frozen = seal.plan(identity, 'a' * 64,
+                'pve-tcg-swap-admission-v1', 'b' * 64,
+                'c' * 64, 'd' * 64)
+            raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+                   'hostMonitor': '3' * 64}
+            self.assertEqual('arbitrary-endpoint',
+                case_v10.generic_case_record(frozen, 'suite-209',
+                    identity, attempt, converted, source, raw)['caseId'])
+            for mutate in (
+                    lambda row: row['arbitraryEndpointAudit']['record']['actor'].update(
+                        startTicks=46),
+                    lambda row: row['arbitraryEndpointAudit']['record']['recipientAfter'].update(
+                        managerInvocation='0' * 32),
+                    lambda row: row['arbitraryEndpointAudit']['record']['recipientBefore'].update(
+                        stateDigest='0' * 64),
+                    lambda row: row['arbitraryEndpointAudit']['record'].update(
+                        endpointSelection='host-fcp'),
+                    lambda row: row['arbitraryEndpointAudit']['record'].update(
+                        recipientControlAfterNs=54),
+                    lambda row: row['stopReceipts']['candidate-recipient']['current']['record'].update(
+                        descendantCgroups=1)):
+                changed = copy.deepcopy(terminal)
+                mutate(changed)
+                self.assertIsNone(runner.arbitrary_endpoint_denial_attempt(
+                    report, result, fixture, changed))
+        with patch.object(runner, 'positive_executed', return_value=False), \
+                patch.object(runner, 'group_prepared', return_value=True):
+            identity, attempt, _sidecar = runner.arbitrary_endpoint_denial_attempt(
+                report, result, fixture, terminal)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [attempt])['cases']
+                if row['caseId'] == 'arbitrary-endpoint'))
+
+    def test_runner_control_denial_requires_real_runner_and_unchanged_active_unit(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        window = {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20}
+        response = b'Failed to stop cryptad-workload-controller.service: Interactive authentication required.\n'
+        command = ['/usr/bin/systemctl', '--no-ask-password', 'stop',
+                   'cryptad-workload-controller.service']
+        target = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 25],
+                  'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                  'mainPid': 200, 'mainStartTicks': 40, 'observedMonotonicNs': 30}
+        audit = {'schemaVersion': 1, 'kind': 'pr315-administrator-runner-control-denial',
+                 'caseId': 'runner-control',
+                 'actor': {'pid': 300, 'uid': roster['runnerUid'], 'startTicks': 45},
+                 'roleKernelRoster': roster, 'roleKernelRosterWindow': window,
+                 'targetBefore': target, 'targetAfter': dict(target, observedMonotonicNs=60),
+                 'senderManagerInvocation': sender['invocationId'],
+                 'senderCgroupIdentity': [1, 99],
+                 'senderStateBefore': 'd' * 64, 'senderStateAfter': 'd' * 64,
+                 'requestStartedNs': 40, 'responseObservedNs': 50,
+                 'requestDigest': hashlib.sha256(json.dumps(command,
+                     separators=(',', ':')).encode()).hexdigest(),
+                 'responseDigest': hashlib.sha256(response).hexdigest(),
+                 'responseBase64': base64.b64encode(response).decode(),
+                 'exitCode': 1, 'stdoutBytes': 0}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        terminal['stopReceipts']['candidate-sender']['current']['record']['observedMonotonicNs'] = 90
+        terminal['runnerControlAudit'] = {'status': 'captured', 'record': audit}
+        result = {'roleKernelRoster': roster, 'roleKernelRosterWindow': window}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+
+        identity, attempt = runner.runner_control_denial_attempt(report, result, fixture, terminal)
+        assessment = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(assessment['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in assessment['cases']
+                         if row['caseId'] == 'runner-control'))
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        source = Path(__file__).resolve().parents[3]
+        diagnostic = {'runnerControl': {'status': 'captured',
+            'actorEpoch': {'kind': 'installed-runner-process',
+                'pid': 300, 'uid': roster['runnerUid'], 'startTicks': 45,
+                'bootId': target['bootId'], 'cgroupIdentity': [1, 50],
+                'cgroupDigest': 'a' * 64,
+                'namespaces': {'pid': 2, 'net': 3, 'mnt': 4, 'user': 5},
+                'sourceDigest': runner.reference.sha256(source /
+                    'tools/release-certification/restricted/pr314_workload_driver.py'),
+                'observedMonotonicNs': 45}}}
+        sidecar = runner._v10_legacy_sidecar('runner-control', report,
+            fixture, terminal, diagnostic, identity, attempt)
+        self.assertIsNotNone(sidecar)
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', 'b' * 64,
+            'c' * 64, 'd' * 64)
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        self.assertEqual('runner-control', case_v10.generic_case_record(
+            frozen, 'suite-208', identity, attempt, sidecar,
+            source, raw)['caseId'])
+        for mutate in (
+                lambda row: row['runnerControlAudit']['record']['actor'].update(uid=roster['observerUid']),
+                lambda row: row['runnerControlAudit']['record'].update(responseDigest='0' * 64),
+                lambda row: row['runnerControlAudit']['record']['targetAfter'].update(
+                    invocationId='e' * 32),
+                lambda row: row['runnerControlAudit']['record'].update(senderStateAfter='0' * 64),
+                lambda row: row['runnerControlAudit']['record'].update(responseBase64='@@@')):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner.runner_control_denial_attempt(report, result, fixture, changed))
+
+    def test_probe_denial_requires_live_root_actor_target_and_immutable_app_result(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64,
+                   'probeDigest': 'sha256:' + '6' * 64}
+        result = {'schemaVersion': 1, 'kind': 'pr315-signed-apphost-probe',
+                  'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
+                  'startedMonotonicNs': 25,
+                  'namespaceInodes': {'mnt': 5, 'pid': 44, 'net': 7, 'user': 8},
+                  'mountEscape': {'operation': 'unshare-mount', 'startedMonotonicNs': 30,
+                                  'finishedMonotonicNs': 40, 'returnCode': -1, 'errno': 'EPERM'}}
+        measured = {'hostPid': 300, 'hostParentPid': 299,
+                    'namespacePids': [300, 20, 2], 'startTicks': 50,
+                    'mountNamespaceIdentity': [1, 5], 'userNamespaceIdentity': [1, 8],
+                    'networkNamespaceIdentity': [1, 7], 'pidNamespace': 'pid:[44]',
+                    'executableDigest': 'sha256:' + '7' * 64,
+                    'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        worker = {key: measured[key] for key in ('hostPid', 'namespacePids', 'startTicks',
+                  'mountNamespaceIdentity', 'userNamespaceIdentity',
+                  'networkNamespaceIdentity', 'executableDigest')}
+        worker.update(managerInvocation=sender['invocationId'], cgroupIdentity=[1, 99],
+                      outerMountNamespaceIdentity=[1, 6], observedMonotonicNs=50)
+        leader = dict(measured, hostPid=299, hostParentPid=100,
+                      namespacePids=[299, 19, 1], startTicks=40,
+                      executableDigest='sha256:' + 'a' * 64)
+        worker['namespacePid'] = 19
+        worker['sandboxLeader'] = {key: leader[key] for key in ('hostPid', 'namespacePids',
+            'startTicks', 'executableDigest', 'mountNamespaceIdentity',
+            'userNamespaceIdentity', 'networkNamespaceIdentity')}
+        worker['sandboxLeader']['pidNamespaceIdentity'] = 44
+        state = '8' * 64
+        admin = {'schemaVersion': 1, 'kind': 'pr315-administrator-probe-process',
+                 'caseId': 'namespace-mount-escape', 'role': 'candidate-sender',
+                 'bundleDigest': fixture['probeDigest'],
+                 'verifiedTree': {'digest': 'sha256:' + '9' * 64,
+                                  'fileCount': 3, 'sizeBytes': 1024},
+                 'firstResultDigest': hashlib.sha256(json.dumps(result, sort_keys=True,
+                     separators=(',', ':')).encode()).hexdigest(),
+                 'senderUid': sender['uid'], 'senderGid': sender['gid'],
+                 'managerInvocation': sender['invocationId'],
+                 'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                 'cgroupIdentity': [1, 99], 'stateBefore': state, 'stateAfter': state,
+                 'activeBeforeNs': 60, 'activeAfterNs': 70,
+                 'worker': measured, 'sandboxLeader': leader,
+                 'outer': {'mountNamespaceIdentity': [1, 6]}}
+        checkpoint = {'bundleDigest': fixture['probeDigest'], 'roleKernelRoster': roster,
+                      'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                                 'finishedMonotonicNs': 20},
+                      'senderStateBefore': state, 'probeWorker': worker,
+                      'administratorRecordDigest': hashlib.sha256(json.dumps(admin,
+                          sort_keys=True, separators=(',', ':')).encode()).hexdigest()}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + state
+        terminal['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 80
+        terminal['stopReceipts']['candidate-sender']['current']['record']['observedMonotonicNs'] = 90
+        for name, record in (('probeKernelCheckpoint', checkpoint),
+                             ('probeAdministratorRecord', admin), ('probeAppFirstResult', result)):
+            terminal[name] = {'status': 'captured', 'record': record}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        identity, attempt = runner.probe_denial_attempt(report, fixture, terminal)
+        assessment = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(assessment['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in assessment['cases']
+                         if row['caseId'] == 'namespace-mount-escape'))
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        sidecar = runner._v10_legacy_sidecar('namespace-mount-escape',
+            report, fixture, terminal, {}, identity, attempt)
+        self.assertIsNotNone(sidecar)
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '6' * 64,
+            'c' * 64, 'd' * 64)
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        v10 = case_v10.generic_case_record(frozen,
+            'suite-206', identity, attempt, sidecar,
+            Path(__file__).resolve().parents[3], raw)
+        self.assertEqual('normally-signed-apphost-child',
+                         v10['actorEpoch']['kind'])
+        for mutate in (
+                lambda row: row['probeAppFirstResult']['record'].update(uid=9999),
+                lambda row: row['probeAdministratorRecord']['record'].update(activeAfterNs=81),
+                lambda row: row['probeAdministratorRecord']['record']['worker'].update(hostPid=301),
+                lambda row: row['probeKernelCheckpoint']['record'].update(senderStateBefore='0' * 64)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner.probe_denial_attempt(report, fixture, changed))
+
+    def test_resource_exhaustion_binds_signed_actor_limit_and_live_siblings(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        fixture = {'schemaVersion': 4, 'probeDigest': 'sha256:' + '6' * 64,
+                   'mailDigest': 'sha256:' + '5' * 64}
+        cgroup = [1, 99]
+        actor = {'role': 'candidate-sender', 'hostPid': 300,
+            'namespacePid': 19, 'namespacePids': [300, 19, 2],
+            'startTicks': 50, 'executableDigest': 'sha256:' + '7' * 64,
+            'mountNamespaceIdentity': [1, 5],
+            'outerMountNamespaceIdentity': [1, 6],
+            'userNamespaceIdentity': [1, 8],
+            'pidNamespaceIdentity': 44,
+            'managerInvocation': sender['invocationId'],
+            'cgroupIdentity': cgroup,
+            'networkNamespaceIdentity': [1, sender['networkNamespace']],
+            'stateDigest': '8' * 64,
+            'sandboxLeader': {'hostPid': 299},
+            'provenance': 'controller-kernel-sample',
+            'observedMonotonicNs': 10}
+        role = {'role': 'candidate-sender',
+            'managerInvocation': sender['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': cgroup, 'pidsMax': 512,
+            'pidsCurrent': 10, 'pidsMaxEvents': 0,
+            'memoryMaxBytes': 1024**3, 'memoryOomKills': 0,
+            'observedMonotonicNs': 20}
+        siblings = []
+        for index, principal in enumerate(roster['roles'][1:]):
+            siblings.append({'role': principal['role'],
+                'managerInvocation': principal['invocationId'],
+                'bootId': role['bootId'],
+                'cgroupIdentity': [1, 100 + index],
+                'stateDigest': '9' * 64,
+                'observedMonotonicNs': 21 + index * 2,
+                'controlObservedNs': 22 + index * 2,
+                'controlDigest': format(index + 1, '064x')})
+        ready = {'schemaVersion': 1, 'kind': 'pr315-signed-resource-ready',
+            'caseId': 'resource-exhaustion', 'nonce': 'a' * 64,
+            'pid': 2, 'uid': sender['uid'],
+            'startedMonotonicNs': 40, 'limitReachedNs': 50,
+            'spawnedCount': 500, 'forkErrno': 'EAGAIN'}
+        app = {'schemaVersion': 1,
+            'kind': 'pr315-signed-resource-exhaustion-probe',
+            'caseId': 'resource-exhaustion', 'nonce': ready['nonce'],
+            'pid': 2, 'uid': sender['uid'], 'gid': sender['gid'],
+            'startedMonotonicNs': 40, 'finishedMonotonicNs': 50,
+            'cleanupFinishedNs': 90, 'forkLimit': 600,
+            'spawnedCount': 500, 'reapedCount': 500,
+            'forcedKillCount': 0, 'abnormalExitCount': 0,
+            'forkErrno': 'EAGAIN', 'barrierReadyNs': 50,
+            'releaseObservedNs': 85}
+        children = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-resource-child-epochs',
+            'caseId': 'resource-exhaustion',
+            'actorHostPid': actor['hostPid'],
+            'actorStartTicks': actor['startTicks'],
+            'roleCgroupIdentity': cgroup,
+            'observedMonotonicNs': 62,
+            'exitedMonotonicNs': 140,
+            'children': [{'pid': 400 + index, 'parentPid': actor['hostPid'],
+                'startTicks': 51 + index, 'uid': sender['uid'],
+                'namespacePid': 3 + index, 'pidNamespace': 44}
+                for index in range(500)]}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-resource-exhaustion-denial',
+            'caseId': 'resource-exhaustion',
+            'bundleDigest': fixture['probeDigest'],
+            'nonceDigest': hashlib.sha256(ready['nonce'].encode()).hexdigest(),
+            'actorUid': sender['uid'], 'actorBefore': actor,
+            'actorAfter': dict(actor, observedMonotonicNs=130),
+            'senderStateBefore': actor['stateDigest'],
+            'senderStateAfter': actor['stateDigest'],
+            'roleBefore': role,
+            'roleDuring': dict(role, pidsCurrent=510, pidsMaxEvents=1,
+                               observedMonotonicNs=60),
+            'roleAfter': dict(role, pidsMaxEvents=1, observedMonotonicNs=120),
+            'siblingsBefore': siblings,
+            'siblingsDuring': [dict(row, observedMonotonicNs=64 + index * 4,
+                controlObservedNs=65 + index * 4) for index, row in enumerate(siblings)],
+            'siblingsAfter': [dict(row, observedMonotonicNs=100 + index * 4,
+                controlObservedNs=101 + index * 4) for index, row in enumerate(siblings)],
+            'ready': ready, 'releasePublishedNs': 80,
+            'triggerMonotonicNs': 30, 'attackStartedNs': 40,
+            'attackFinishedNs': 50, 'childCleanupFinishedNs': 90,
+            'childEpochCount': 500,
+            'childEpochDigest': hashlib.sha256(json.dumps(children,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+            'childEpochsObservedNs': 62, 'childExitObservedNs': 140,
+            'kernelLimit': 'pids.max', 'limitEventDelta': 1,
+            'appResultDigest': hashlib.sha256(json.dumps(app, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest()}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + actor['stateDigest']
+        for principal in roster['roles']:
+            terminal['stopReceipts'][principal['role']]['current']['record'].update(
+                startedMonotonicNs=150, observedMonotonicNs=160)
+        for name, record in (('resourceAudit', audit),
+                             ('resourceAppReady', ready),
+                             ('resourceAppResult', app)):
+            terminal[name] = {'status': 'captured', 'record': record}
+        terminal['probeAdministratorRecord'] = {'status': 'captured', 'record': {
+            'bundleDigest': fixture['probeDigest'], 'cgroupIdentity': cgroup,
+            'worker': {'hostPid': 300, 'startTicks': 50}}}
+        terminal['probeKernelCheckpoint'] = {'status': 'captured', 'record': {
+            'probeWorker': {'hostPid': 300, 'startTicks': 50}}}
+        report = {'hostVerifiedIdentity': host, 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+            'identity': {'sourceCommit': host['helperSourceCommit']},
+            'probeAppKernelProcess': {'hostPid': 300, 'startTicks': 50,
+                'sandboxLeader': actor['sandboxLeader']}}
+        diagnostics = {'resourceExhaustion': {'status': 'captured',
+            'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest()}}
+        verified = {'recordContractValid': True,
+            'cases': [{'caseId': 'namespace-mount-escape', 'status': 'passed'}]}
+        with patch.object(runner, 'group_prepared', return_value=True), \
+                patch.object(runner, 'probe_denial_attempt', return_value=(None, None)), \
+                patch.object(runner.acceptance, 'verify_attempts', return_value=verified):
+            selected = runner._resource_exhaustion_attempt(
+                report, result, fixture, terminal, diagnostics, children)
+        self.assertIsNotNone(selected)
+        identity, attempt, sidecar = selected
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual('passed', next(row['status'] for row in checked['cases']
+                         if row['caseId'] == 'resource-exhaustion'))
+        self.assertEqual(1, sidecar['targetEpoch']['pidsMaxEventsDuring'])
+        self.assertEqual(500, sidecar['targetEpoch']['childEpochCount'])
+        import pr315_case_v10 as case_v10
+        campaign_identity = {**identity,
+            'admittedAppDigest': fixture['mailDigest'][7:]}
+        campaign_plan = runner.campaign_seal.plan(campaign_identity,
+            '4' * 64, runner.host_admission.POLICY,
+            fixture['probeDigest'][7:], '7' * 64, '8' * 64)
+        raw_digests = {'guestReport': '1' * 64,
+                       'volatile': '2' * 64,
+                       'hostMonitor': '3' * 64}
+        record = case_v10.generic_case_record(campaign_plan,
+            'suite-201', identity, attempt, sidecar,
+            Path(__file__).resolve().parents[3], raw_digests)
+        self.assertEqual('resource-exhaustion', record['caseId'])
+        with self.assertRaisesRegex(ValueError, 'generic-contract-invalid'):
+            changed = runner.campaign_seal.plan(campaign_identity,
+                '4' * 64, runner.host_admission.POLICY,
+                '9' * 64, '7' * 64, '8' * 64)
+            case_v10.generic_case_record(changed,
+                'suite-201', identity, attempt, sidecar,
+                Path(__file__).resolve().parents[3], raw_digests)
+        for change in (
+                lambda row: row['resourceAudit']['record']['roleDuring'].update(
+                    pidsMaxEvents=0),
+                lambda row: row['resourceAudit']['record']['siblingsDuring'][1].update(
+                    controlObservedNs=81),
+                lambda row: row['resourceAppResult']['record'].update(
+                    reapedCount=499),
+                lambda row: row['stopReceipts']['candidate-sender']['current']
+                    ['record'].update(descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            change(changed)
+            with patch.object(runner, 'group_prepared', return_value=True), \
+                    patch.object(runner, 'probe_denial_attempt', return_value=(None, None)), \
+                    patch.object(runner.acceptance, 'verify_attempts', return_value=verified):
+                self.assertIsNone(runner._resource_exhaustion_attempt(
+                    report, result, fixture, changed, diagnostics, children))
+        changed_children = copy.deepcopy(children)
+        changed_children['children'][0]['parentPid'] = 1
+        with patch.object(runner, 'group_prepared', return_value=True), \
+                patch.object(runner, 'probe_denial_attempt', return_value=(None, None)), \
+                patch.object(runner.acceptance, 'verify_attempts', return_value=verified):
+            self.assertIsNone(runner._resource_exhaustion_attempt(
+                report, result, fixture, terminal, diagnostics,
+                changed_children))
+
+    def test_partial_launch_v10_requires_two_live_roles_failed_previous_and_absent_relay(self):
+        import pr315_campaign_seal as seal
+        roster = synthetic_role_kernel_roster()
+        source = Path(__file__).resolve().parents[3]
+        host = synthetic_host_identity()
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = '5' * 64
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '8' * 64,
+            'c' * 64, 'd' * 64)
+        roles = roster['roles'][:2]
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        sender_state = 'd' * 64
+        def role_control(row, cgroup, observed):
+            return {'state': 'running', 'managerInvocation': row['invocationId'],
+                'bootId': boot, 'cgroupIdentity': cgroup,
+                'stateDigest': sender_state,
+                'observedMonotonicNs': observed}
+        marker = {'generation': 'c' * 64, 'bootId': boot,
+            'managerInvocation': 'd' * 32, 'cgroupIdentity': [1, 101]}
+        receipt = {**marker, 'membership': 'only-stop-helper',
+                   'descendantCgroups': 0, 'startedMonotonicNs': 180,
+                   'observedMonotonicNs': 210}
+        prepared = {'state': 'prepared', 'generation': None,
+            'managerInvocation': None, 'cgroupIdentity': None, 'bootId': boot}
+        driver_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        launcher_digest = runner.reference.sha256(source /
+            'tools/release-certification/protected/restricted_workload_launcher.py')
+        administrator = {'pid': 500, 'uid': 0, 'startTicks': 33,
+            'bootId': boot, 'cgroupIdentity': [1, 50],
+            'cgroupDigest': 'a' * 64, 'invocationId': 'f' * 32,
+            'sourceDigest': driver_digest, 'observedMonotonicNs': 10}
+        audit = {'schemaVersion': 2,
+            'kind': 'pr315-administrator-partial-launch',
+            'caseId': 'partial-launch', 'nonceDigest': hashlib.sha256(
+                ('c' * 64).encode()).hexdigest(),
+            'administratorBefore': administrator,
+            'administratorAfter': dict(administrator, observedMonotonicNs=300),
+            'observerUid': roster['observerUid'],
+            'observerActor': {'kind': 'installed-observer-process',
+                'pid': 301, 'uid': roster['observerUid'],
+                'startTicks': 40, 'bootId': boot,
+                'sourceDigest': driver_digest},
+            'senderBefore': role_control(roles[0], [1, 99], 20),
+            'senderAfter': role_control(roles[0], [1, 99], 260),
+            'recipientBefore': role_control(roles[1], [1, 100], 21),
+            'recipientAfter': role_control(roles[1], [1, 100], 270),
+            'previousBefore': prepared, 'previousStartMarker': marker,
+            'previousFault': {'kind': 'pr315-previous-launch-fault',
+                'caseId': 'partial-launch', 'nonce': 'c' * 64, 'pid': 300,
+                'uid': roster['roles'][2]['uid'], 'startTicks': 50,
+                'sourceDigest': launcher_digest,
+                'observedMonotonicNs': 60},
+            'previousActor': {'hostPid': 300, 'startTicks': 50,
+                'cgroupIdentity': [1, 101],
+                'executableDigest': 'sha256:' + 'e' * 64,
+                'observedMonotonicNs': 70},
+            'previousStopReceipt': receipt,
+            'relayBefore': prepared, 'relayAfter': dict(prepared),
+            'controllerResponse': 'controller-rejected-launch',
+            'probeStartedNs': 40, 'releasePublishedNs': 100,
+            'synchronizationPolicy': 'pr315-partial-launch-start-response-v2',
+            'startResponseStartedNs': 45, 'startResponseObservedNs': 55,
+            'faultWaitStartedNs': 56, 'faultWaitUntilNs': 90,
+            'terminalObservedNs': 310,
+            'launcherSourceDigest': launcher_digest}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + sender_state
+        for row in roles:
+            terminal['stopReceipts'][row['role']]['current']['record'].update(
+                startedMonotonicNs=400, observedMonotonicNs=410)
+        terminal['stopReceipts']['previous']['current'] = {
+            'status': 'captured', 'record': receipt}
+        terminal['stopReceipts']['relay-no-apps']['current'] = {
+            'status': 'unavailable-or-unsafe'}
+        terminal['controllerRecords']['previous']['record'].update(
+            state='quiescent', managerInvocation=marker['managerInvocation'],
+            cgroupIdentity=marker['cgroupIdentity'])
+        terminal['controllerRecords']['relay-no-apps']['record'].update(
+            state='prepared', generation=None, managerInvocation=None,
+            cgroupIdentity=None)
+        terminal['partialLaunchAudit'] = {'status': 'captured', 'record': audit}
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group', 'status': 'guest-report-retained',
+            'guestExitCode': 0, 'guestStopped': True,
+            'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit']},
+            'groupPreparation': 'partial-launch', 'topologyRoles': 2,
+            'signedAppWorkers': 0, 'contentRetrieval': 'not-executed-group',
+            'newEpoch': False, 'partialRoleRoster': roles,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 25,
+                                       'finishedMonotonicNs': 35},
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'protectedExecutionEnabled': False}
+        diagnostics = {'probeStart': {'schemaVersion': 1,
+            'kind': 'pr315-workload-probe-start', 'caseId': 'partial-launch',
+            'startedMonotonicNs': 9},
+            'partialLaunch': {'status': 'captured',
+                'auditDigest': hashlib.sha256(json.dumps(audit,
+                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        self.assertTrue(runner.partial_launch_prepared(report, result, terminal))
+        record = runner._partial_launch_record(frozen, 'suite-210', report,
+            result, terminal, diagnostics, source, raw)
+        self.assertIsNotNone(record)
+        self.assertEqual('partial-launch', record['caseId'])
+        self.assertTrue(record['targetEpoch']['relayNeverStarted'])
+        for field, value in (('synchronizationPolicy', 'unmeasured-policy'),
+                             ('startResponseObservedNs', 91),
+                             ('faultWaitUntilNs', 56),
+                             ('faultWaitUntilNs', 10*10**9)):
+            changed = copy.deepcopy(terminal)
+            changed['partialLaunchAudit']['record'][field] = value
+            updated_diagnostics = copy.deepcopy(diagnostics)
+            updated_diagnostics['partialLaunch']['auditDigest'] = hashlib.sha256(
+                json.dumps(changed['partialLaunchAudit']['record'], sort_keys=True,
+                           separators=(',', ':')).encode()).hexdigest()
+            self.assertIsNone(runner._partial_launch_record(frozen, 'suite-210',
+                report, result, changed, updated_diagnostics, source, raw))
+        if sys.platform.startswith('linux'):
+            import pr315_workload_evidence as evidence
+            with tempfile.TemporaryDirectory() as directory:
+                private_root = Path(directory)
+                (private_root / 'authority').mkdir()
+                (private_root / 'authority/partial-launch.json').write_text(
+                    json.dumps(audit))
+                self.assertEqual('captured', evidence._partial_launch_audit(
+                    private_root, time.monotonic() + 3)['status'])
+        for mutate in (
+                lambda row: row['partialLaunchAudit']['record']['relayAfter'].update(
+                    generation='a' * 64),
+                lambda row: row['partialLaunchAudit']['record']['previousActor'].update(
+                    startTicks=51),
+                lambda row: row['stopReceipts']['previous']['current']['record'].update(
+                    descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner._partial_launch_record(frozen,
+                'suite-210', report, result, changed, diagnostics, source, raw))
+
+
+    def test_stuck_output_v10_requires_live_role_writer_bounded_collector_and_stop(self):
+        import pr315_campaign_seal as seal
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        source = Path(__file__).resolve().parents[3]
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = '5' * 64
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '8' * 64,
+            'c' * 64, 'd' * 64)
+        base = 10**12
+        done = base + 50 + 5 * 10**9
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        root_actor = {'uid': 0, 'pid': 500, 'startTicks': 42,
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 50], 'cgroupDigest': 'a' * 64,
+            'invocationId': 'f' * 32, 'sourceDigest': source_digest,
+            'observedMonotonicNs': base + 10}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        for row in roster['roles']:
+            terminal['stopReceipts'][row['role']]['current']['record'].update(
+                startedMonotonicNs=done + 200, observedMonotonicNs=done + 300)
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        siblings = [{'role': row['role'],
+            'managerInvocation': row['invocationId'],
+            'stateDigest': 'd' * 64,
+            'controlDigest': format(index + 1, '064x')}
+            for index, row in enumerate(roster['roles'][1:])]
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-stuck-output',
+            'caseId': 'stuck-output',
+            'administratorBefore': root_actor,
+            'administratorAfter': dict(root_actor,
+                observedMonotonicNs=done + 400),
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_role_probe.py'),
+            'nonceDigest': 'e' * 64,
+            'roleBefore': {'managerInvocation': sender['invocationId'],
+                'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64},
+            'actor': {'hostPid': 123, 'startTicks': 50,
+                'namespacePids': [123, 2],
+                'networkNamespaceIdentity': [1, sender['networkNamespace']]},
+            'writer': {'hostPid': 124, 'hostParentPid': 123,
+                'startTicks': 51, 'namespacePids': [124, 3]},
+            'fifoIdentity': [3, 7],
+            'collector': {'pid': 211, 'uid': 0,
+                'startTicks': 44, 'session': 211,
+                'cgroupIdentity': [3, 5],
+                'executableDigest': 'e' * 64,
+                'observedMonotonicNs': base + 60},
+            'collectorOutputDigest': hashlib.sha256(
+                b'pr315-stuck-output\n').hexdigest(),
+            'collectorStartedNs': base + 50,
+            'collectorFinishedNs': done + 100,
+            'collectorDenial': 'bounded_process_deadline_exceeded',
+            'observerStopActor': {'kind': 'installed-observer-process',
+                'uid': roster['observerUid'], 'pid': 300,
+                'sourceDigest': source_digest},
+            'observerStopResponse': {'state': 'quiescent',
+                'managerInvocation': sender['invocationId']},
+            'senderStopReceipt': receipt,
+            'siblingsBefore': siblings,
+            'siblingsAfter': copy.deepcopy(siblings),
+            'terminalObservedNs': done + 500}
+        terminal['stuckOutputAudit'] = {'status': 'captured', 'record': audit}
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group',
+            'status': 'guest-report-retained', 'guestStopped': True,
+            'guestExitCode': 0, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'stuck-output', 'topologyRoles': 4,
+            'signedAppWorkers': 0, 'contentRetrieval': 'not-executed-group',
+            'newEpoch': False, 'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': base + 1,
+                                       'finishedMonotonicNs': base + 2},
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'profile': runner.acceptance.PROFILE,
+            'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+            'protectedExecutionEnabled': False}
+        diagnostics = {'probeStart': {'schemaVersion': 1,
+            'kind': 'pr315-workload-probe-start', 'caseId': 'stuck-output',
+            'startedMonotonicNs': base + 9},
+            'stuckOutput': {'status': 'captured',
+                'auditDigest': hashlib.sha256(json.dumps(audit,
+                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        self.assertTrue(runner.group_prepared(report, result, terminal,
+                                              'stuck-output'))
+        record = runner._stuck_output_record(frozen, 'suite-211',
+            report, result, terminal, diagnostics, source, raw)
+        self.assertIsNotNone(record)
+        self.assertEqual('stuck-output', record['caseId'])
+        if sys.platform.startswith('linux'):
+            import pr315_workload_evidence as evidence
+            with tempfile.TemporaryDirectory() as directory:
+                private_root = Path(directory)
+                (private_root / 'authority').mkdir()
+                (private_root / 'authority/stuck-output.json').write_text(
+                    json.dumps(audit))
+                self.assertEqual('captured', evidence._stuck_output_audit(
+                    private_root, time.monotonic() + 3)['status'])
+        for mutate in (
+                lambda row: row['stuckOutputAudit']['record']['writer'].update(
+                    hostParentPid=999),
+                lambda row: row['stuckOutputAudit']['record']['collector'].update(
+                    uid=1000),
+                lambda row: row['stopReceipts']['candidate-sender']['current']
+                    ['record'].update(descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner._stuck_output_record(frozen,
+                'suite-211', report, result, changed, diagnostics, source, raw))
+
+    def test_late_child_v10_requires_child_after_stop_intent_and_exact_cleanup(self):
+        import pr315_campaign_seal as seal
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        source = Path(__file__).resolve().parents[3]
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity['productSelectionDigest'] = host['productDigest']
+        identity['admittedAppDigest'] = '5' * 64
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', '8' * 64,
+            'c' * 64, 'd' * 64)
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        administrator = {'uid': 0, 'pid': 500, 'startTicks': 42,
+            'bootId': boot, 'cgroupIdentity': [1, 50],
+            'cgroupDigest': 'a' * 64, 'invocationId': 'f' * 32,
+            'sourceDigest': source_digest, 'observedMonotonicNs': 10}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        for row in roster['roles']:
+            terminal['stopReceipts'][row['role']]['current']['record'].update(
+                startedMonotonicNs=200, observedMonotonicNs=210)
+        receipt = terminal['stopReceipts']['candidate-sender']['current']['record']
+        receipt['startedMonotonicNs'] = 90
+        receipt['observedMonotonicNs'] = 100
+        siblings = [{'role': row['role'],
+            'managerInvocation': row['invocationId'],
+            'stateDigest': 'd' * 64,
+            'controlDigest': format(index + 1, '064x')}
+            for index, row in enumerate(roster['roles'][1:])]
+        nonce = 'a' * 64
+        phase = {'kind': 'pr315-fixed-stop-phase',
+            'caseId': 'late-child',
+            'managerInvocation': sender['invocationId'],
+            'cgroupIdentity': [1, 99],
+            'nonceDigest': hashlib.sha256(nonce.encode()).hexdigest(),
+            'observedMonotonicNs': 40}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-late-child', 'caseId': 'late-child',
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_lifecycle_role_probe.py'),
+            'barrierSourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/protected/restricted_workload_lifecycle_barrier.py'),
+            'nonceDigest': phase['nonceDigest'],
+            'administratorBefore': administrator,
+            'administratorAfter': dict(administrator, observedMonotonicNs=120),
+            'observerStopActor': {'kind': 'installed-observer-process',
+                'uid': roster['observerUid'], 'pid': 300,
+                'sourceDigest': source_digest},
+            'roleBefore': {'managerInvocation': sender['invocationId'],
+                'bootId': boot, 'cgroupIdentity': [1, 99],
+                'stateDigest': 'd' * 64},
+            'actor': {'hostPid': 123, 'startTicks': 50,
+                'networkNamespaceIdentity': [1, sender['networkNamespace']],
+                'mountNamespaceIdentity': [1, 300],
+                'userNamespaceIdentity': [1, 400],
+                'namespacePids': [123, 2]},
+            'phase': phase,
+            'childRecord': {'kind': 'pr315-candidate-late-child-created',
+                'caseId': 'late-child', 'nonce': nonce,
+                'parentPid': 2, 'childPid': 3,
+                'startedMonotonicNs': 60},
+            'childActor': {'hostPid': 124, 'hostParentPid': 123,
+                'namespacePids': [124, 3], 'cgroupIdentity': [1, 99],
+                'networkNamespaceIdentity': [1, sender['networkNamespace']],
+                'mountNamespaceIdentity': [1, 300],
+                'userNamespaceIdentity': [1, 400],
+                'noNewPrivileges': True, 'effectiveCapabilities': 0,
+                'startTicks': 51, 'observedMonotonicNs': 70},
+            'childExitObservedNs': 110,
+            'triggerPublishedNs': 50, 'releasePublishedNs': 80,
+            'stopReceipt': receipt,
+            'siblingsBefore': siblings,
+            'siblingsAfter': copy.deepcopy(siblings),
+            'terminalObservedNs': 130}
+        terminal['lateChildAudit'] = {'status': 'captured', 'record': audit}
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group',
+            'status': 'guest-report-retained', 'guestStopped': True,
+            'guestExitCode': 0, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'late-child', 'topologyRoles': 4,
+            'signedAppWorkers': 0, 'contentRetrieval': 'not-executed-group',
+            'newEpoch': False, 'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                       'finishedMonotonicNs': 2},
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'profile': runner.acceptance.PROFILE,
+            'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+            'protectedExecutionEnabled': False}
+        diagnostics = {'probeStart': {'schemaVersion': 1,
+            'kind': 'pr315-workload-probe-start', 'caseId': 'late-child',
+            'startedMonotonicNs': 9},
+            'lateChild': {'status': 'captured',
+                'auditDigest': hashlib.sha256(json.dumps(audit,
+                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        record = runner._late_child_record(frozen, 'suite-212',
+            report, result, terminal, diagnostics, source, raw)
+        self.assertIsNotNone(record)
+        self.assertEqual('late-child', record['caseId'])
+        if sys.platform.startswith('linux'):
+            import pr315_workload_evidence as evidence
+            with tempfile.TemporaryDirectory() as directory:
+                private_root = Path(directory)
+                (private_root / 'authority').mkdir()
+                (private_root / 'authority/late-child.json').write_text(
+                    json.dumps(audit))
+                self.assertEqual('captured', evidence._late_child_audit(
+                    private_root, time.monotonic() + 3)['status'])
+        for mutate in (
+                lambda row: row['lateChildAudit']['record']['childActor'].update(
+                    hostParentPid=999),
+                lambda row: row['lateChildAudit']['record']['phase'].update(
+                    managerInvocation='e' * 32),
+                lambda row: row['stopReceipts']['candidate-sender']['current']
+                    ['record'].update(descendantCgroups=1)):
+            changed = copy.deepcopy(terminal)
+            mutate(changed)
+            self.assertIsNone(runner._late_child_record(frozen,
+                'suite-212', report, result, changed, diagnostics, source, raw))
+
+    def test_cancellation_requires_active_administrator_trigger_and_exact_terminal_receipts(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        rows = []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 210 + index
+            receipt['observedMonotonicNs'] = 220 + index
+        event = {'kind': 'cancellation', 'roles': rows, 'campaignDeadlineNs': 1000}
+        context = {'schemaVersion': 1, 'kind': 'pr315-administrator-cancellation',
+                   'triggerStartedNs': 200, 'triggerEventDigest':
+                       runner.fixtures.runtime.canonical_digest(event)[7:],
+                   'campaignDeadlineNs': 1000, 'preRoles': rows,
+                   'terminalObservedNs': 300, 'populatedCgroups': [],
+                   'remainingDescendants': 0, 'retention': 'retained'}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50, 'finishedMonotonicNs': 100}}
+        fixture = {'mailDigest': 'sha256:' + '5' * 64}
+        diagnostics = {'cancellation': context}
+        identity, attempt = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, diagnostics, terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertIn('cancellation', attempt['declaredCases'])
+        invalid = copy.deepcopy(terminal)
+        invalid['stopReceipts']['previous']['current']['record']['observedMonotonicNs'] = 400
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, diagnostics, invalid)
+        self.assertNotIn('cancellation', rejected['declaredCases'])
+        invalid_context = copy.deepcopy(context)
+        invalid_context['preRoles'][0]['mainPid'] = 0
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'cancellation': invalid_context}, terminal)
+        self.assertNotIn('cancellation', rejected['declaredCases'])
+        source = Path(__file__).resolve().parents[3]
+        private = {'cancellation': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'cancellation', report, result, dict(fixture, schemaVersion=4),
+                private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'cancellation'))
+            self.assertEqual(private['lifecycleActorBefore']['invocationId'],
+                             sidecar['actorEpoch']['testKitInvocation'])
+            import pr315_campaign_seal as seal
+            import pr315_case_v10 as case_v10
+            frozen = seal.plan(identity, 'a' * 64,
+                'pve-tcg-swap-admission-v1', 'b' * 64,
+                'c' * 64, 'd' * 64)
+            raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+                   'hostMonitor': '3' * 64}
+            v10 = case_v10.generic_case_record(frozen,
+                'suite-203', identity, selected, sidecar, source, raw)
+            self.assertEqual('cancellation', v10['caseId'])
+            tampered = copy.deepcopy(private)
+            tampered['lifecycleActorAfter']['pid'] = 501
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'cancellation', report, result, dict(fixture, schemaVersion=4),
+                tampered, terminal, source))
+
+    def test_controller_restart_requires_changed_invocation_and_reconciled_role_receipts(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        rows = []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            terminal['controllerRecords'][role]['record']['stopReason'] = 'controller-reconciliation'
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 210 + index
+            receipt['observedMonotonicNs'] = 220 + index
+        before = {'InvocationID': 'b' * 32, 'ActiveState': 'active',
+                  'SubState': 'running', 'MainPID': '100', 'Result': 'success'}
+        after = dict(before, InvocationID='c' * 32, MainPID='200')
+        def kernel(state, ticks, observed):
+            return {'kind': 'fixed-controller-kernel-epoch-v1',
+                'pid': int(state['MainPID']), 'uid': 0, 'gid': 0,
+                'startTicks': ticks, 'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                'invocationId': state['InvocationID'],
+                'cgroupPath': '/system.slice/cryptad-workload-controller.service',
+                'cgroupIdentity': [1, 71], 'namespacePids': [int(state['MainPID'])],
+                'namespaces': {'pid': 21, 'net': 22, 'mnt': 23, 'user': 24},
+                'pidfdObserved': True, 'observedMonotonicNs': observed}
+        event = {'kind': 'controller-restart', 'roles': rows,
+                 'campaignDeadlineNs': 1000, 'oldControllerInvocation': before['InvocationID']}
+        context = {'schemaVersion': 1, 'kind': 'pr315-administrator-controller-restart',
+                   'triggerStartedNs': 200, 'triggerEventDigest':
+                       runner.fixtures.runtime.canonical_digest(event)[7:],
+                   'campaignDeadlineNs': 1000, 'preRoles': rows,
+                   'beforeController': before,
+                   'beforeControllerKernel': kernel(before, 31, 190), 'killReturnCode': 0,
+                   'preStartBoundRoles': [{'role': role['role'], 'activeState': 'inactive',
+                       'subState': 'dead', 'mainPid': 0,
+                       'receiptObservedMonotonicNs': 220 + index}
+                       for index, role in enumerate(rows)],
+                   'newControllerStartRequestedNs': 240, 'startReturnCode': 0,
+                   'afterController': after,
+                   'afterControllerKernel': kernel(after, 32, 250), 'terminalObservedNs': 300,
+                   'populatedCgroups': [], 'remainingDescendants': 0, 'retention': 'retained'}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50, 'finishedMonotonicNs': 100}}
+        fixture = {'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'controllerRestart': context}, terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertIn('controller-restart', attempt['declaredCases'])
+        invalid = copy.deepcopy(context)
+        invalid['afterController']['InvocationID'] = before['InvocationID']
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'controllerRestart': invalid}, terminal)
+        self.assertNotIn('controller-restart', rejected['declaredCases'])
+        source = Path(__file__).resolve().parents[3]
+        private = {'controllerRestart': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'controller-restart', report, result, dict(fixture, schemaVersion=4),
+                private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'controller-restart'))
+            self.assertEqual(context['beforeController'],
+                             sidecar['targetEpoch']['controllerBefore'])
+            tampered = copy.deepcopy(private)
+            tampered['lifecycleActorAfter']['cgroupIdentity'] = [1, 51]
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'controller-restart', report, result, dict(fixture, schemaVersion=4),
+                tampered, terminal, source))
+        invalid = copy.deepcopy(context)
+        invalid['preStartBoundRoles'][0]['activeState'] = 'active'
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'controllerRestart': invalid}, terminal)
+        self.assertNotIn('controller-restart', rejected['declaredCases'])
+        invalid_terminal = copy.deepcopy(terminal)
+        invalid_terminal['controllerRecords']['relay-no-apps']['record']['stopReason'] = 'requested'
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20, {'controllerRestart': context}, invalid_terminal)
+        self.assertNotIn('controller-restart', rejected['declaredCases'])
+
+        for field, changed in (('uid', 1001), ('startTicks', 0),
+                               ('namespaces', {}), ('pidfdObserved', False),
+                               ('pid', 999), ('invocationId', 'f' * 32),
+                               ('observedMonotonicNs', 230)):
+            with self.subTest(kernelField=field):
+                invalid = copy.deepcopy(context)
+                invalid['afterControllerKernel'][field] = changed
+                _, rejected = runner.positive_case_attempt(
+                    report, result, fixture, 10, 20,
+                    {'controllerRestart': invalid}, terminal)
+                self.assertNotIn('controller-restart', rejected['declaredCases'])
+
+        inactive_successor = copy.deepcopy(context)
+        inactive_successor['afterController'].update(
+            MainPID='0', ActiveState='inactive', SubState='dead')
+        _, rejected = runner.positive_case_attempt(
+            report, result, fixture, 10, 20,
+            {'controllerRestart': inactive_successor}, terminal)
+        self.assertNotIn('controller-restart', rejected['declaredCases'])
+
+        with patch.object(runner, 'group_prepared', return_value=True):
+            for key, value in (('hostPid', 0), ('uid', 1001),
+                               ('mountNamespaceIdentity', []), ('pidfdObserved', False),
+                               ('observedMonotonicNs', 400)):
+                changed = copy.deepcopy(result)
+                changed['roleDaemonEpochs']['candidate-sender'][key] = value
+                self.assertIsNone(runner._lifecycle_group_attempt(
+                    'controller-restart', report, changed, dict(fixture, schemaVersion=4),
+                    private, terminal, source))
+            missing = copy.deepcopy(result)
+            del missing['roleDaemonEpochs']
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'controller-restart', report, missing, dict(fixture, schemaVersion=4),
+                private, terminal, source))
+
+    def test_deadline_group_requires_original_expiry_and_each_prior_stop_receipt(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000}}
+        rows, stops = [], []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 1010 + index
+            receipt['observedMonotonicNs'] = 1020 + index
+            stops.append({'role': role,
+                          'managerInvocation': principal['invocationId'],
+                          'receiptStartedNs': receipt['startedMonotonicNs'],
+                          'receiptObservedNs': receipt['observedMonotonicNs']})
+        event = {'kind': 'deadline', 'roles': rows, 'campaignDeadlineNs': 1000}
+        context = {'schemaVersion': 1, 'kind': 'pr315-administrator-deadline',
+                   'armedMonotonicNs': 900,
+                   'triggerEventDigest': runner.fixtures.runtime.canonical_digest(event)[7:],
+                   'campaignDeadlineNs': 1000, 'preRoles': rows,
+                   'terminalObservedNs': 1100, 'roleStops': stops,
+                   'populatedCgroups': [], 'remainingDescendants': 0,
+                   'retention': 'retained'}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50,
+                                             'finishedMonotonicNs': 100}}
+        source = Path(__file__).resolve().parents[3]
+        private = {'deadline': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 850),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 1150)}
+        actor = {'kind': 'installed-observer-process', 'pid': 501, 'uid': roster['observerUid'],
+            'startTicks': 44, 'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'sourceDigest': private['lifecycleActorBefore']['sourceDigest'],
+            'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14}}
+        context['observerHeartbeatPolicy'] = 'fixed-observer-deadline-60s-v1'
+        context['observerHeartbeats'] = [{'actor': actor, 'requestDigest': 'd' * 64,
+            'responseDigest': 'e' * 64, 'requestStartedNs': 910, 'responseObservedNs': 920,
+            'exitStartedNs': 930, 'exitObservedNs': 940, 'pidfdUsed': True, 'exitStatus': 0,
+            'controllerInvocation': 'f' * 32, 'controllerPid': 600, 'controllerStartTicks': 45}]
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'deadline', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'deadline'))
+            self.assertEqual(stops, sidecar['targetEpoch']['roleStops'])
+            early = copy.deepcopy(terminal)
+            early['stopReceipts']['candidate-sender']['current']['record'][
+                'startedMonotonicNs'] = 999
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'deadline', report, result, fixture, private, early, source))
+            stale = copy.deepcopy(private)
+            stale['lifecycleActorAfter']['startTicks'] = 34
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'deadline', report, result, fixture, stale, terminal, source))
+            for field, value in (('observerHeartbeats', []),
+                                 ('observerHeartbeatPolicy', 'untrusted')):
+                changed = copy.deepcopy(private)
+                changed['deadline'][field] = value
+                self.assertIsNone(runner._lifecycle_group_attempt(
+                    'deadline', report, result, fixture, changed, terminal, source))
+            for field, value in (('uid', 0), ('pid', 0), ('namespaces', {})):
+                changed = copy.deepcopy(private)
+                changed['deadline']['observerHeartbeats'][0]['actor'][field] = value
+                self.assertIsNone(runner._lifecycle_group_attempt(
+                    'deadline', report, result, fixture, changed, terminal, source))
+
+    def test_revocation_group_needs_live_denial_and_owned_terminal_receipts(self):
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured', 'record': {
+            'state': 'terminalizing', 'deadlineMonotonicNs': 1000, 'generation': 'a' * 64}}
+        rows = []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            terminal['controllerRecords'][role]['record'][
+                'stopReason'] = 'controller-reconciliation'
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 250 + index
+            receipt['observedMonotonicNs'] = 260 + index
+        event = {'kind': 'revocation-running', 'roles': rows,
+                 'campaignDeadlineNs': 1000, 'markerDigest': 'e' * 64}
+        controller = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 30],
+                      'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                      'mainPid': 100, 'mainStartTicks': 40,
+                      'observedMonotonicNs': 190}
+        context = {'schemaVersion': 2,
+            'kind': 'pr315-administrator-revocation-running',
+            'triggerStartedNs': 200,
+            'triggerEventDigest': runner.fixtures.runtime.canonical_digest(event)[7:],
+            'campaignDeadlineNs': 1000, 'preRoles': rows,
+            'markerIdentity': [1, 55, 32], 'markerDigest': 'e' * 64,
+            'controllerBefore': controller,
+            'controllerAfter': dict(controller, observedMonotonicNs=240),
+            'actor': {'pid': 501, 'uid': roster['observerUid'], 'startTicks': 45},
+            'requestDigest': 'd' * 64,
+            'responseDigest': hashlib.sha256(
+                b'{"error":"restricted-workload-request-failed"}\n').hexdigest(),
+            'requestStartedNs': 220, 'responseObservedNs': 230,
+            'terminalObservedNs': 300, 'populatedCgroups': [],
+            'remainingDescendants': 0, 'retention': 'retained'}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50,
+                                             'finishedMonotonicNs': 100}}
+        source = Path(__file__).resolve().parents[3]
+        context['controllerSynchronization'] = {'schemaVersion': 1,
+            'policy': 'pr315-revocation-accepted-rpc-v1', 'caseId': 'revocation-running',
+            'kind': 'pr315-fixed-revocation-denial', 'nonceDigest': 'c' * 64,
+            'campaign': 'a' * 64, 'bootId': controller['bootId'],
+            'controllerPid': controller['mainPid'], 'controllerStartTicks': controller['mainStartTicks'],
+            'observerPid': 501, 'observerStartTicks': 45, 'markerDigest': 'e' * 64,
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/protected/restricted_workload_revocation_barrier.py'),
+            'acceptedMonotonicNs': 195, 'replyEnqueuedMonotonicNs': 229,
+            'releaseObservedMonotonicNs': 245, 'requestDigest': 'd' * 64,
+            'errorCode': 'authority-expired-or-revoked'}
+        private = {'revocationRunning': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 150),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350)}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'revocation-running', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'revocation-running'))
+            self.assertEqual('e' * 64,
+                             sidecar['targetEpoch']['revocationMarkerDigest'])
+            forged = copy.deepcopy(private)
+            forged['revocationRunning']['actor']['uid'] = 0
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'revocation-running', report, result, fixture, forged, terminal, source))
+            early = copy.deepcopy(terminal)
+            early['stopReceipts']['candidate-sender']['current'][
+                'record']['startedMonotonicNs'] = 220
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'revocation-running', report, result, fixture, private, early, source))
+            for field, value in (('controllerPid', 0), ('observerStartTicks', 0),
+                                 ('sourceDigest', 'f' * 64), ('errorCode', 'different-denial'),
+                                 ('campaign', '0' * 64), ('bootId', 'wrong-boot'),
+                                 ('requestDigest', '0' * 64), ('markerDigest', '0' * 64),
+                                 ('acceptedMonotonicNs', 225), ('policy', 'unmeasured-mode'),
+                                 ('releaseObservedMonotonicNs', 230)):
+                changed = copy.deepcopy(private)
+                changed['revocationRunning']['controllerSynchronization'][field] = value
+                self.assertIsNone(runner._lifecycle_group_attempt(
+                    'revocation-running', report, result, fixture, changed, terminal, source))
+            before_release = copy.deepcopy(terminal)
+            before_release['stopReceipts']['candidate-sender']['current']['record']['startedMonotonicNs'] = 240
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'revocation-running', report, result, fixture, private, before_release, source))
+
+    def test_setsid_group_binds_detached_child_and_preserves_siblings(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        terminal = synthetic_terminal_roster(roster)
+        actor = {'hostPid': 123, 'hostParentPid': 100, 'startTicks': 45,
+                 'pidNamespace': 'pid:[4026532603]', 'namespacePids': [123, 2],
+                 'networkNamespaceIdentity': [1, 200],
+                 'mountNamespaceIdentity': [1, 300],
+                 'userNamespaceIdentity': [1, 400],
+                 'executableDigest': 'sha256:' + 'a' * 64,
+                 'noNewPrivileges': True, 'effectiveCapabilities': 0}
+        child = dict(actor, hostPid=124, hostParentPid=1, startTicks=50,
+                     namespacePids=[124, 3], executableDigest='sha256:' + 'b' * 64)
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=210, observedMonotonicNs=220)
+        before, after = {}, {}
+        for index, row in enumerate(roster['roles'][1:]):
+            role = row['role']
+            selected = {'InvocationID': row['invocationId'],
+                        'ActiveState': 'active', 'SubState': 'running',
+                        'MainPID': str(1000 + index)}
+            before[role] = selected
+            after[role] = dict(selected)
+            terminal['stopReceipts'][role]['current']['record'].update(
+                startedMonotonicNs=250 + index,
+                observedMonotonicNs=260 + index)
+        source = Path(__file__).resolve().parents[3]
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-setsid-double-fork',
+            'caseId': 'setsid-double-fork',
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_role_probe.py'),
+            'actorUid': sender['uid'], 'actorBefore': actor,
+            'actorAfter': dict(actor), 'childEpoch': child,
+            'childSession': 2, 'parentSession': 1,
+            'roleInvocation': sender['invocationId'],
+            'roleCgroupIdentity': [1, 99],
+            'triggerMonotonicNs': 100, 'attackStartedNs': 110,
+            'attackFinishedNs': 120, 'stopStartedNs': 130,
+            'stopFinishedNs': 230, 'stopReceiptObservedNs': 220,
+            'childAbsentObservedNs': 240,
+            'otherRolesBefore': before, 'otherRolesAfter': after}
+        private = {'setsidDoubleFork': {'status': 'captured', 'record': audit},
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 90),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 350),
+                   'cleanupFinishedNs': 300}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 50,
+                                             'finishedMonotonicNs': 80}}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster, observed_ns=85)
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'setsid-double-fork', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'setsid-double-fork'))
+            self.assertEqual(child, sidecar['targetEpoch']['detachedChildEpoch'])
+            reused = copy.deepcopy(private)
+            reused['setsidDoubleFork']['record']['childSession'] = 1
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'setsid-double-fork', report, result, fixture, reused, terminal, source))
+            missing = copy.deepcopy(terminal)
+            missing['stopReceipts']['candidate-sender']['current'][
+                'record']['descendantCgroups'] = 1
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'setsid-double-fork', report, result, fixture, private, missing, source))
+
+    def test_observer_death_requires_real_240_second_loss_and_owner_receipts(self):
+        unit = 10**9
+        roster = synthetic_role_kernel_roster()
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured',
+            'record': {'state': 'terminalizing',
+                       'deadlineMonotonicNs': 1000 * unit}}
+        rows, stops = [], []
+        for index, principal in enumerate(roster['roles']):
+            role = principal['role']
+            rows.append({'role': role, 'managerInvocation': principal['invocationId'],
+                         'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                         'cgroupIdentity': [1, 99 + index], 'mainPid': 1000 + index})
+            terminal['controllerRecords'][role]['record'][
+                'stopReason'] = 'controller-reconciliation'
+            receipt = terminal['stopReceipts'][role]['current']['record']
+            receipt['startedMonotonicNs'] = 253 * unit + index
+            receipt['observedMonotonicNs'] = 254 * unit + index
+            stops.append({'role': role,
+                          'managerInvocation': principal['invocationId'],
+                          'receiptStartedNs': receipt['startedMonotonicNs'],
+                          'receiptObservedNs': receipt['observedMonotonicNs']})
+        actor = {'pid': 501, 'uid': roster['observerUid'], 'startTicks': 45}
+        event = {'kind': 'observer-death', 'roles': rows,
+                 'observerPid': actor['pid'], 'observerStartTicks': actor['startTicks'],
+                 'campaignDeadlineNs': 1000 * unit, 'policySeconds': 240}
+        controller = {'invocationId': 'f' * 32, 'cgroupIdentity': [1, 30],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'mainPid': 100, 'mainStartTicks': 40,
+            'observedMonotonicNs': 9 * unit}
+        context = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-observer-death',
+            'triggerStartedNs': 12 * unit,
+            'triggerEventDigest': runner.fixtures.runtime.canonical_digest(event)[7:],
+            'campaignDeadlineNs': 1000 * unit, 'preRoles': rows,
+            'controllerBefore': controller,
+            'controllerActiveAfterRequest': dict(controller,
+                                                observedMonotonicNs=14 * unit),
+            'controllerAfter': {'invocationId': controller['invocationId'],
+                'activeState': 'failed', 'subState': 'failed', 'mainPid': '0',
+                'observedMonotonicNs': 252 * unit},
+            'policySeconds': 240, 'policyThresholdNs': 251 * unit,
+            'stopObservations': stops, 'terminalObservedNs': 260 * unit,
+            'populatedCgroups': [], 'remainingDescendants': 0,
+            'retention': 'retained', 'actor': actor,
+            'requestDigest': 'd' * 64, 'responseDigest': 'e' * 64,
+            'requestStartedNs': 10 * unit, 'responseObservedNs': 11 * unit,
+            'killStartedNs': 12 * unit, 'killFinishedNs': 13 * unit,
+            'pidfdUsed': True}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(),
+                  'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1 * unit,
+                                             'finishedMonotonicNs': 5 * unit}}
+        source = Path(__file__).resolve().parents[3]
+        private = {'observerDeath': context,
+                   'lifecycleActorBefore': synthetic_lifecycle_actor(source, 8 * unit),
+                   'lifecycleActorAfter': synthetic_lifecycle_actor(source, 270 * unit)}
+        fixture = {'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            result['roleDaemonEpochs'] = synthetic_daemon_epochs(roster)
+            identity, selected, sidecar = runner._lifecycle_group_attempt(
+                'observer-death', report, result, fixture, private, terminal, source)
+            self.assertEqual('passed', next(row['status'] for row in
+                runner.acceptance.verify_attempts(identity, [selected])['cases']
+                if row['caseId'] == 'observer-death'))
+            self.assertEqual(251 * unit,
+                             sidecar['targetEpoch']['observerPolicyThresholdNs'])
+            premature = copy.deepcopy(private)
+            premature['observerDeath']['controllerAfter'][
+                'observedMonotonicNs'] = 250 * unit
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'observer-death', report, result, fixture, premature, terminal, source))
+            early = copy.deepcopy(terminal)
+            early['stopReceipts']['candidate-sender']['current'][
+                'record']['startedMonotonicNs'] = 250 * unit
+            self.assertIsNone(runner._lifecycle_group_attempt(
+                'observer-death', report, result, fixture, private, early, source))
+
+    def test_predeclared_groups_partition_exact_historical_inventory(self):
+        groups = runner.groups()
+        self.assertEqual(21, len(groups))
+        self.assertEqual([len(cases) for _, cases in runner.campaign.GROUPS],
+                         [len(names) for _, names in groups])
+        names = [name for _, group in groups for name in group]
+        self.assertEqual(45, len(set(names)))
+        self.assertEqual(set(runner.acceptance.CASES), set(names))
+        import pr315_case_v10 as case_v10
+        supported = (set(case_v10.POSITIVE) | {'output-symlink'}
+                     | set(case_v10.GENERIC) | set(case_v10.SPECIAL_LIFECYCLE))
+        self.assertEqual(45, len(supported))
+        self.assertEqual(set(),
+                         set(names) - supported)
+
+    def test_partial_group_cannot_claim_other_cases_or_installed_acceptance(self):
+        statuses = {'installed-ready': 'passed', 'resolver-authority': 'passed',
+                    'cancellation': 'passed'}
+        selected = runner.selected_public_result('authority', 'implementation-incomplete',
+                                                positive=True, statuses=statuses)
+        self.assertEqual('partial-execution', selected['status'])
+        self.assertFalse(selected['installedPositiveExecuted'])
+        self.assertFalse(selected['installedWorkloadAcceptanceSatisfied'])
+        passed = {row['caseId'] for row in selected['cases'] if row['status'] == 'passed'}
+        self.assertEqual({'resolver-authority'}, passed)
+        positive = runner.selected_public_result('positive', 'implementation-incomplete',
+                                                positive=True, statuses=statuses)
+        self.assertTrue(positive['installedPositiveExecuted'])
+        self.assertEqual({'installed-ready'}, {row['caseId'] for row in positive['cases']
+                                               if row['status'] == 'passed'})
+        with self.assertRaisesRegex(ValueError, 'group-selection-invalid'):
+            runner.selected_cases('arbitrary-new-group')
+        self.assertEqual('guest-operation-failed', runner.selected_terminal_status(
+            'output-symlink', {'status': 'guest-operation-failed'}, False))
+        failed = runner.selected_public_result('output-symlink',
+            'guest-operation-failed', statuses={'output-symlink': 'inconclusive'})
+        self.assertEqual('guest-operation-failed', failed['status'])
+        self.assertFalse(failed['installedWorkloadAcceptanceSatisfied'])
+        marker = {'schemaVersion': 1, 'kind': 'pr315-workload-probe-start',
+                  'caseId': 'output-symlink', 'startedMonotonicNs': 123}
+        self.assertFalse(runner.selected_probe_started('output-symlink', {'before': {}}))
+        self.assertTrue(runner.selected_probe_started('output-symlink', {'probeStart': marker}))
+        self.assertFalse(runner.selected_probe_started('output-fifo', {'probeStart': marker}))
+        self.assertFalse(runner.selected_probe_started('output-symlink',
+            {'probeStart': {**marker, 'startedMonotonicNs': True}}))
+
+    def test_retired_authority_handoff_requires_four_real_stops_and_hides_handle(self):
+        roster = synthetic_role_kernel_roster()
+        host = synthetic_host_identity()
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'role-readiness-measurement',
+            'status': 'guest-report-retained', 'guestExitCode': 0,
+            'guestStopped': True, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'role-readiness-diagnostic',
+            'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+            'topologyRoles': 4, 'signedAppWorkers': 0,
+            'profile': runner.acceptance.PROFILE,
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                       'finishedMonotonicNs': 20},
+            'workloadAcceptance': 'not-executed-role-readiness-measurement',
+            'protectedExecutionEnabled': False}
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['controllerRecords']['campaign'] = {'status': 'captured',
+            'record': {'generation': 'c' * 64, 'bootId': boot}}
+        raw = {'schemaVersion': 1, 'kind': 'pr315-retired-authority-input',
+            'sourceCommit': host['helperSourceCommit'],
+            'campaignGeneration': 'c' * 64, 'bootId': boot,
+            'senderHandle': 'e' * 64,
+            'senderUid': roster['roles'][0]['uid'],
+            'senderInvocation': roster['roles'][0]['invocationId'],
+            'senderProcessEpoch': roster['roles'][0]['processEpoch'],
+            'stopReceiptDigests': {row['role']: hashlib.sha256(json.dumps(
+                terminal['stopReceipts'][row['role']]['current']['record'],
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                for row in roster['roles']}}
+        selected = runner.retired_authority_provenance(
+            report, result, terminal, raw)
+        self.assertIsNotNone(selected)
+        self.assertTrue(selected['guestStopped'])
+        self.assertNotIn(raw['senderHandle'], json.dumps(selected))
+        changed = copy.deepcopy(raw)
+        changed['stopReceiptDigests']['previous'] = '0' * 64
+        self.assertIsNone(runner.retired_authority_provenance(
+            report, result, terminal, changed))
+        changed = {**raw, 'senderInvocation': 'f' * 32}
+        self.assertIsNone(runner.retired_authority_provenance(
+            report, result, terminal, changed))
+        changed = {**raw, 'senderHandle': 'not-a-handle'}
+        self.assertIsNone(runner.retired_authority_provenance(
+            report, result, terminal, changed))
+
+    def test_retired_authority_input_requires_mac_signature_and_exact_raw_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            fingerprint = runner.campaign_seal.prepare_key(root)
+            host = synthetic_host_identity()
+            identity = {key: host[key] for key in (
+                'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+                'testKitDigest', 'profileDigest', 'bootClosureDigest',
+                'preparedImageDigest', 'fixtureManifestDigest')}
+            identity['productSelectionDigest'] = host['productDigest']
+            identity['admittedAppDigest'] = 'a' * 64
+            plan = runner.campaign_seal.plan(identity, '1' * 64,
+                runner.host_admission.POLICY, '2' * 64,
+                '3' * 64, fingerprint)
+            retained = {'schemaVersion': 1,
+                'kind': 'pr315-retired-authority-input',
+                'sourceCommit': host['helperSourceCommit'],
+                'campaignGeneration': '4' * 64,
+                'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+                'senderHandle': '5' * 64,
+                'senderUid': 983, 'senderInvocation': '6' * 32,
+                'senderProcessEpoch': 100,
+                'stopReceiptDigests': {role: '7' * 64
+                    for role in runner.acceptance.ROLES}}
+            provenance = {'schemaVersion': 1,
+                'kind': 'pr315-retired-authority-host-provenance',
+                'sourceCommit': retained['sourceCommit'],
+                'bootId': retained['bootId'],
+                'campaignGeneration': retained['campaignGeneration'],
+                'senderHandleDigest': hashlib.sha256(
+                    retained['senderHandle'].encode()).hexdigest(),
+                'inputDigest': hashlib.sha256(json.dumps(retained,
+                    sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+                'guestStopped': True}
+            handoff = runner.campaign_seal.authority_handoff(plan,
+                'suite-201-preparation', provenance, '8' * 64, '9' * 64)
+            envelope = runner.campaign_seal.sign_authority_handoff(
+                root, plan, handoff)
+            public = (root / (runner.campaign_seal.KEY_NAME + '.pub')).read_bytes()
+            self.assertEqual(handoff, runner.verified_retired_authority_input(
+                plan, envelope, public, retained))
+            changed = {**retained, 'senderHandle': 'a' * 64}
+            with self.assertRaisesRegex(ValueError, 'input-untrusted'):
+                runner.verified_retired_authority_input(
+                    plan, envelope, public, changed)
+
+    def test_stale_handle_requires_retired_signed_input_and_three_real_epochs(self):
+        source = Path(__file__).resolve().parents[3]
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        old_boot = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+        current_target = {'state': 'running', 'generation': 'c' * 64,
+            'managerInvocation': sender['invocationId'], 'bootId': boot,
+            'cgroupIdentity': [1, 99], 'stateDigest': 'd' * 64}
+        old_input = {'senderHandle': 'e' * 64}
+        old_digest = hashlib.sha256(json.dumps(old_input, sort_keys=True,
+            separators=(',', ':')).encode()).hexdigest()
+        handoff = {'sourceCommit': host['helperSourceCommit'],
+            'retiredBootId': old_boot,
+            'senderHandleDigest': hashlib.sha256(
+                old_input['senderHandle'].encode()).hexdigest(),
+            'privateInputDigest': old_digest}
+        controller = {'pid': 500, 'uid': 0, 'startTicks': 45,
+            'bootId': boot, 'invocationId': 'f' * 32,
+            'cgroupIdentity': [1, 50], 'observedMonotonicNs': 10}
+        actor = {'kind': 'installed-observer-process', 'pid': 600,
+            'uid': roster['observerUid'], 'startTicks': 55,
+            'bootId': boot,
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr314_workload_driver.py'),
+            'namespaces': {name: index + 1 for index, name in
+                enumerate(('pid', 'net', 'mnt', 'user'))},
+            'observedMonotonicNs': 30}
+        request = hashlib.sha256(json.dumps({'method': 'observe',
+            'handle': old_input['senderHandle']},
+            separators=(',', ':')).encode() + b'\n').hexdigest()
+        denied = hashlib.sha256(
+            b'{"error":"restricted-workload-request-failed"}\n').hexdigest()
+        replies = [{'label': label,
+            'target': None if index == 1 else current_target,
+            'exchange': {'method': 'observe',
+                'requestDigest': request if index == 1 else '1' * 64,
+                'responseDigest': denied if index == 1 else '2' * 64},
+            'startedMonotonicNs': 40 + index * 20,
+            'finishedMonotonicNs': 50 + index * 20}
+            for index, label in enumerate((
+                'current-before', 'retired-denied', 'current-after'))]
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-stale-handle-denial',
+            'caseId': 'stale-handle',
+            'sourceCommit': host['helperSourceCommit'],
+            'retiredInputDigest': old_digest,
+            'retiredBootId': old_boot,
+            'retiredHandleDigest': handoff['senderHandleDigest'],
+            'successorBootId': boot,
+            'observerActor': actor,
+            'controllerBefore': controller,
+            'controllerAfter': dict(controller, observedMonotonicNs=110),
+            'targetBefore': dict(current_target, observedMonotonicNs=20),
+            'targetAfter': dict(current_target, observedMonotonicNs=100),
+            'replies': replies, 'finishedMonotonicNs': 120}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['staleHandleAudit'] = {'status': 'captured',
+            'record': audit}
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=130, observedMonotonicNs=140)
+        diagnostics = {'staleHandle': {'status': 'captured',
+            'auditDigest': hashlib.sha256(json.dumps(audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        report = {'hostVerifiedIdentity': host,
+            'retiredAuthorityInputDigest': old_digest}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit']},
+            'roleKernelRoster': roster}
+        with patch.object(runner, 'group_prepared', return_value=True):
+            selected = runner.stale_handle_attempt(report, result, terminal,
+                diagnostics, handoff, old_input, source)
+        self.assertIsNotNone(selected)
+        self.assertEqual('stale-handle', selected['caseId'])
+        self.assertEqual('installed-observer-process',
+            selected['actorEpoch']['kind'])
+        self.assert_observer_sidecar_normalizes_with_measured_roster(
+            selected, host, roster)
+        changed = copy.deepcopy(terminal)
+        changed['staleHandleAudit']['record']['replies'][1]['exchange'][
+            'responseDigest'] = '0' * 64
+        with patch.object(runner, 'group_prepared', return_value=True):
+            self.assertIsNone(runner.stale_handle_attempt(report, result,
+                changed, diagnostics, handoff, old_input, source))
+
+    def test_authority_restart_preserves_early_roster_and_rejects_old_observer(self):
+        source = Path(__file__).resolve().parents[3]
+        initial = synthetic_role_kernel_roster()
+        final = copy.deepcopy(initial)
+        first, last = initial['roles'][0], final['roles'][0]
+        last['invocationId'] = 'f' * 32
+        last['processEpoch'] = 200
+        last['cgroupDigest'] = runner.fixtures.runtime.canonical_digest({
+            'role': 'candidate-sender', 'identity': [1, 199]})[7:]
+        terminal = synthetic_terminal_roster(initial)
+        previous = copy.deepcopy(terminal['stopReceipts'][
+            'candidate-sender']['current'])
+        previous['record'].update(startedMonotonicNs=50,
+                                  observedMonotonicNs=60)
+        old_authority = copy.deepcopy(terminal['controllerRecords'][
+            'candidate-sender']['record'])
+        terminal['stopReceipts']['candidate-sender']['previous'] = previous
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            generation='e' * 64, managerInvocation='f' * 32,
+            cgroupIdentity=[1, 199], startedMonotonicNs=180,
+            observedMonotonicNs=190)
+        terminal['controllerRecords']['candidate-sender']['record'].update(
+            generation='e' * 64, managerInvocation='f' * 32,
+            cgroupIdentity=[1, 199])
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        actor = {'kind': 'installed-observer-process', 'pid': 600,
+            'uid': initial['observerUid'], 'startTicks': 10,
+            'bootId': boot, 'sourceDigest': source_digest,
+            'cgroupIdentity': [1, 50],
+            'namespaces': {'pid': 1, 'net': 2, 'mnt': 3, 'user': 4},
+            'observedMonotonicNs': 10}
+        old_target = {'managerInvocation': first['invocationId']}
+        new_target = {'managerInvocation': last['invocationId']}
+        exchange = {'method': 'observe', 'requestDigest': '1' * 64,
+                    'responseDigest': '2' * 64}
+        old_first = {'target': old_target,
+            'daemon': {'managerInvocation': first['invocationId'],
+                       'hostPid': 1000, 'startTicks': 100},
+            'exchange': exchange, 'startedMonotonicNs': 20,
+            'finishedMonotonicNs': 30}
+        new_result = {'target': new_target,
+            'daemon': {'managerInvocation': last['invocationId'],
+                       'hostPid': 2000, 'startTicks': 200},
+            'exchange': exchange, 'startedMonotonicNs': 110,
+            'finishedMonotonicNs': 120}
+        rejected = {'target': new_target,
+            'reason': 'workload-role-invocation-changed',
+            'exchange': exchange, 'startedMonotonicNs': 130,
+            'finishedMonotonicNs': 140}
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-stale-pid-uid-denial',
+            'caseId': 'stale-pid-uid',
+            'oldObserver': actor,
+            'oldObserverAfter': dict(actor, observedMonotonicNs=90),
+            'newObserver': dict(actor, pid=700, startTicks=20,
+                                observedMonotonicNs=100),
+            'oldObserverFirst': old_first,
+            'oldObserverRejected': rejected,
+            'newObserverResult': new_result,
+            'oldSenderInvocation': first['invocationId'],
+            'newSenderInvocation': last['invocationId'],
+            'oldSenderCgroup': [1, 99], 'newSenderCgroup': [1, 199],
+            'oldQuiescentAuthority': old_authority,
+            'oldStopReceipt': previous['record'],
+            'oldSenderState': 'd' * 64, 'newSenderState': 'd' * 64,
+            'stopStartedNs': 40, 'restartStartedNs': 70,
+            'newFcpControlledNs': 80,
+            'newFcpControlDigest': 'a' * 64,
+            'rosterWindow': {'startedMonotonicNs': 150,
+                             'finishedMonotonicNs': 160},
+            'finishedMonotonicNs': 170}
+        terminal['stalePidUidAudit'] = {'status': 'captured', 'record': audit}
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        host = synthetic_host_identity()
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group',
+            'status': 'guest-report-retained', 'guestExitCode': 0,
+            'guestStopped': True, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'authority',
+            'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+            'topologyRoles': 4, 'signedAppWorkers': 3,
+            'probeAppKernelProcess': {'provenance': 'controller-kernel-sample'},
+            'profile': runner.acceptance.PROFILE,
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'roleKernelRoster': initial,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                       'finishedMonotonicNs': 2},
+            'authorityFinalRoleRoster': final,
+            'authorityFinalRosterWindow': audit['rosterWindow'],
+            'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+            'protectedExecutionEnabled': False}
+        diagnostics = {'stalePidUid': {'status': 'captured',
+            'auditDigest': hashlib.sha256(json.dumps(audit, sort_keys=True,
+                separators=(',', ':')).encode()).hexdigest()}}
+        views = runner.authority_epoch_views(report, result, terminal)
+        self.assertIsNotNone(views)
+        self.assertEqual(first['invocationId'], views[0]['stopReceipts'][
+            'candidate-sender']['current']['record']['managerInvocation'])
+        self.assertEqual(last['invocationId'], views[2]['stopReceipts'][
+            'candidate-sender']['current']['record']['managerInvocation'])
+        selected = runner.stale_pid_uid_attempt(report, result, terminal,
+            diagnostics, source)
+        self.assertIsNotNone(selected)
+        self.assertEqual('stale-pid-uid', selected['caseId'])
+        self.assert_observer_sidecar_normalizes_with_measured_roster(
+            selected, host, initial)
+        changed = copy.deepcopy(terminal)
+        changed['stopReceipts']['candidate-sender']['previous']['record'][
+            'managerInvocation'] = '0' * 32
+        self.assertIsNone(runner.stale_pid_uid_attempt(report, result,
+            changed, diagnostics, source))
+
+    def test_cleanup_race_rejects_changed_manager_and_requires_reconciliation(self):
+        source = Path(__file__).resolve().parents[3]
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        terminal = synthetic_terminal_roster(roster)
+        del terminal['stopReceipts']['candidate-sender']['previous']
+        terminal['stopReceipts']['candidate-sender']['current']['record'].update(
+            startedMonotonicNs=60, observedMonotonicNs=70)
+        for role in roster['roles'][1:]:
+            terminal['stopReceipts'][role['role']]['current']['record'].update(
+                startedMonotonicNs=120, observedMonotonicNs=125)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + 'd' * 64
+        source_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        barrier_digest = runner.reference.sha256(source /
+            'tools/release-certification/protected/restricted_workload_lifecycle_barrier.py')
+        boot = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        admin = synthetic_lifecycle_actor(source, 15)
+        siblings = [{'role': row['role'],
+            'managerInvocation': row['invocationId'],
+            'bootId': boot, 'cgroupIdentity': [1, 100 + index],
+            'stateDigest': 'e' * 64,
+            'observedMonotonicNs': 25 + index,
+            'controlObservedNs': 30 + index,
+            'controlDigest': 'f' * 64}
+            for index, row in enumerate(roster['roles'][1:])]
+        manager = {'InvocationID': sender['invocationId'],
+            'ActiveState': 'active', 'SubState': 'running',
+            'MainPID': '400', 'ControlGroup':
+                '/system.slice/cryptad-workload@candidate-sender.service'}
+        receipt = terminal['stopReceipts']['candidate-sender'][
+            'current']['record']
+        audit = {'schemaVersion': 1,
+            'kind': 'pr315-administrator-cleanup-race',
+            'caseId': 'cleanup-race',
+            'administratorBefore': admin,
+            'administratorAfter': dict(admin, observedMonotonicNs=130),
+            'senderBefore': {'managerInvocation': sender['invocationId'],
+                'bootId': boot, 'cgroupIdentity': [1, 99],
+                'stateDigest': 'd' * 64, 'observedMonotonicNs': 20},
+            'managerBefore': manager,
+            'managerReplacement': dict(manager, InvocationID='f' * 32,
+                ActiveState='failed', SubState='failed', MainPID='0',
+                ControlGroup=''),
+            'replacementCgroupIdentity': None,
+            'managerReset': dict(manager, InvocationID='',
+                ActiveState='inactive', SubState='dead', MainPID='0',
+                ControlGroup=''),
+            'stopActor': {'kind': 'installed-observer-process',
+                'uid': roster['observerUid'], 'pid': 600,
+                'bootId': boot, 'sourceDigest': source_digest,
+                'observedMonotonicNs': 40},
+            'stopPhase': {'caseId': 'cleanup-race',
+                'nonceDigest': 'a' * 64,
+                'managerInvocation': sender['invocationId'],
+                'cgroupIdentity': [1, 99], 'bootId': boot,
+                'observedMonotonicNs': 50},
+            'restart': {'exitStatus': 1,
+                'startedMonotonicNs': 55,
+                'finishedMonotonicNs': 80},
+            'releasePublishedNs': 90,
+            'observerDenial': {'status': 'rejected',
+                'reason': 'workload-controller-request-rejected',
+                'exchange': {'method': 'stop',
+                    'requestDigest': '1' * 64,
+                    'responseDigest': hashlib.sha256(
+                        b'{"error":"restricted-workload-request-failed"}\n').hexdigest()},
+                'startedMonotonicNs': 45,
+                'finishedMonotonicNs': 100},
+            'reconciliationState': {'state': 'reconciliation-required',
+                'generation': 'c' * 64,
+                'managerInvocation': sender['invocationId'],
+                'bootId': boot, 'cgroupIdentity': [1, 99]},
+            'oldStopReceipt': receipt, 'finalStopReceipt': receipt,
+            'siblingsBefore': siblings,
+            'siblingsAfter': [dict(row, observedMonotonicNs=110 + index,
+                controlObservedNs=115 + index)
+                for index, row in enumerate(siblings)],
+            'finishedMonotonicNs': 140,
+            'barrierSourceDigest': barrier_digest,
+            'nonceDigest': 'a' * 64}
+        terminal['cleanupRaceAudit'] = {'status': 'captured',
+            'record': audit}
+        host = synthetic_host_identity()
+        report = {'mode': 'workload-positive',
+            'workloadPurpose': 'selected-group',
+            'status': 'guest-report-retained', 'guestExitCode': 0,
+            'guestStopped': True, 'hostVerifiedIdentity': host}
+        result = {'identity': {'sourceCommit': host['helperSourceCommit'],
+            'bundleIdentity': host['bundleIdentity']},
+            'groupPreparation': 'cleanup-race',
+            'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+            'topologyRoles': 4, 'signedAppWorkers': 0,
+            'profile': runner.acceptance.PROFILE,
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                       'finishedMonotonicNs': 2},
+            'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+            'protectedExecutionEnabled': False}
+        diagnostics = {'probeStart': {'schemaVersion': 1,
+            'kind': 'pr315-workload-probe-start',
+            'caseId': 'cleanup-race', 'startedMonotonicNs': 10},
+            'cleanupRace': {'status': 'captured',
+            'auditDigest': hashlib.sha256(json.dumps(audit,
+                sort_keys=True, separators=(',', ':')).encode()).hexdigest()}}
+        selected = runner.cleanup_race_attempt(report, result, terminal,
+            diagnostics, source)
+        self.assertIsNotNone(selected)
+        self.assertEqual('cleanup-race', selected['caseId'])
+        from pr315_case_v10 import generic_case_record
+        identity = {key: host[key] for key in (
+            'helperSourceCommit', 'helperSourceTree', 'bundleIdentity',
+            'testKitDigest', 'profileDigest', 'bootClosureDigest',
+            'preparedImageDigest', 'fixtureManifestDigest')}
+        identity.update(productSelectionDigest=host['productDigest'],
+                        admittedAppDigest='a' * 64)
+        frozen = runner.campaign_seal.plan(identity, '1' * 64,
+            runner.host_admission.POLICY, '2' * 64, '3' * 64, '4' * 64)
+        raw = {'guestReport': '5' * 64, 'volatile': '6' * 64,
+               'hostMonitor': '7' * 64}
+        normalized = generic_case_record(frozen, 'suite-214', identity,
+            None, selected, source, raw, roster=roster)
+        self.assertEqual(roster['roles'], normalized['targetEpoch']['roles'])
+        self.assertEqual('passed', normalized['status'])
+        for invalid_roles in (roster, roster['roles'][:-1],
+                              list(reversed(roster['roles']))):
+            changed_sidecar = copy.deepcopy(selected)
+            changed_sidecar['targetEpoch']['roles'] = invalid_roles
+            with self.assertRaisesRegex(ValueError, 'lifecycle-target-invalid'):
+                generic_case_record(frozen, 'suite-214', identity, None,
+                    changed_sidecar, source, raw, roster=roster)
+        changed = copy.deepcopy(terminal)
+        changed['cleanupRaceAudit']['record']['managerReplacement'][
+            'InvocationID'] = sender['invocationId']
+        self.assertIsNone(runner.cleanup_race_attempt(report, result,
+            changed, diagnostics, source))
+    def test_test_kit_entries_cannot_export_to_production(self):
+        for name in ('fixtures', 'guest', 'runner', 'evidence'):
+            self.assertFalse(installation.production_member(Path(
+                'tools/release-certification/restricted/pr315_workload_' + name + '.py')))
+
+    def test_memory_admission_accounts_for_guest_overhead_and_host_reserve(self):
+        args = SimpleNamespace(memory_budget_bytes=runner.GUEST_MEMORY + runner.HOST_OVERHEAD,
+                               min_host_memory_bytes=1024**3)
+        required = runner.GUEST_MEMORY + runner.HOST_OVERHEAD + args.min_host_memory_bytes
+        self.assertIsNone(runner.memory_reason(args, {'effectiveAvailableBytes': required}))
+        self.assertEqual('host-memory-reserve-unavailable',
+            runner.memory_reason(args, {'effectiveAvailableBytes': required - 1}))
+        args.memory_budget_bytes -= 1
+        self.assertEqual('memory-budget-insufficient',
+            runner.memory_reason(args, {'effectiveAvailableBytes': required}))
+
+    def test_positive_requires_exact_identity_owned_stop_and_successful_cleanup_result(self):
+        identity = {'bundleIdentity': 'a' * 64, 'helperSourceCommit': 'b' * 40}
+        report = {'hostVerifiedIdentity': identity, 'mode': 'workload-positive',
+                  'guestStopped': True, 'status': 'guest-report-retained', 'guestExitCode': 0}
+        result = {'identity': {'bundleIdentity': 'a' * 64, 'sourceCommit': 'b' * 40},
+            'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+            'contentRetrieval': 'observed', 'newEpoch': True, 'profile': runner.acceptance.PROFILE,
+            'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
+            'roleKernelRoster': synthetic_role_kernel_roster(),
+            'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
+        terminal = synthetic_terminal_roster(result['roleKernelRoster'])
+        self.assertTrue(runner.positive_executed(report, result, terminal))
+        for policy in (None, {}, {'revision': 'old'},
+                       dict(result['runtimePolicy'], wrapperStartupTimeoutSeconds={
+                           role: 60.0 if role == 'previous' else 30 for role in runner.acceptance.ROLES})):
+            with self.subTest(policy=policy):
+                self.assertFalse(runner.positive_executed(report, dict(result, runtimePolicy=policy), terminal))
+        for field, value in (('guestStopped', False), ('guestExitCode', 1), ('hostVerifiedIdentity', {}),
+                             ('workloadPurpose', 'startup-measurement')):
+            changed = copy.deepcopy(report)
+            changed[field] = value
+            self.assertFalse(runner.positive_executed(changed, result, terminal))
+        report['hostVerifiedIdentity'] = {}
+        result['identity'] = {}
+        self.assertFalse(runner.positive_executed(report, result, terminal))
+        report['hostVerifiedIdentity'] = identity
+        result['identity'] = {'bundleIdentity': 'a' * 64, 'sourceCommit': 'b' * 40}
+        for roster in (None, {}, dict(result['roleKernelRoster'], runnerUid=987)):
+            with self.subTest(roster=roster):
+                self.assertFalse(runner.positive_executed(report, dict(result, roleKernelRoster=roster), terminal))
+        for changed in (None, {}, dict(terminal, cleanupReportedByCaller=False),
+                        dict(terminal, sentinel=None)):
+            self.assertFalse(runner.positive_executed(report, result, changed))
+        changed = copy.deepcopy(terminal)
+        changed['stopReceipts']['relay-no-apps']['current']['record']['cgroupIdentity'] = [1, 999]
+        self.assertFalse(runner.positive_executed(report, result, changed))
+
+    def test_public_result_never_promotes_positive_aggregate_to_case_acceptance(self):
+        result = runner.public_result('implementation-incomplete', True)
+        self.assertTrue(result['installedPositiveExecuted'])
+        self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+        self.assertFalse(result['finiteNativeAcceptance'])
+        self.assertFalse(result['phaseComplete'])
+        self.assertEqual({'not-executed'}, {row['status'] for row in result['cases']})
+        pinned = {'kind': runner.campaign_seal.CAMPAIGN,
+                  'planDigest': 'a' * 64, 'campaignNonce': 'b' * 64,
+                  'hostKeyFingerprint': 'c' * 64}
+        upgraded = runner.prospective_campaign_result(result, pinned)
+        self.assertEqual(2, upgraded['schemaVersion'])
+        self.assertEqual('pr314-workload-roles-v10', upgraded['contract'])
+        self.assertFalse(upgraded['installedWorkloadAcceptanceSatisfied'])
+        self.assertEqual(1, result['schemaVersion'])
+        with self.assertRaisesRegex(ValueError, 'public-result-invalid'):
+            runner.prospective_campaign_result(
+                {**result, 'installedWorkloadAcceptanceSatisfied': True}, pinned)
+
+    def test_real_verifier_accepts_only_two_well_bound_positive_records(self):
+        roster = synthetic_role_kernel_roster()
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20}}
+        identity, attempt = runner.positive_case_attempt(report, result,
+            {'mailDigest': 'sha256:' + '5' * 64}, 30, 40)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual({'installed-ready', 'four-role-start'},
+                         {row['caseId'] for row in checked['cases'] if row['status'] == 'passed'})
+        self.assertFalse(checked['installedWorkloadAcceptanceSatisfied'])
+        invalid = copy.deepcopy(result)
+        invalid['roleKernelRosterWindow']['finishedMonotonicNs'] = 10
+        with self.assertRaisesRegex(ValueError, 'case-window-invalid'):
+            runner.positive_case_attempt(report, invalid, {'mailDigest': 'sha256:' + '5' * 64}, 30, 40)
+
+    def test_v10_positive_cases_bind_actual_separate_role_epochs(self):
+        import pr315_campaign_seal as seal
+        import pr315_case_v10 as case_v10
+        source = Path(__file__).resolve().parents[3]
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        host = synthetic_host_identity()
+        report = {'hostVerifiedIdentity': host, 'guestStopped': True}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['sentinel']['observedDigest'] = 'sha256:' + '5' * 64
+        terminal['controllerRecords']['campaign'] = {'status': 'captured',
+            'record': {'deadlineMonotonicNs': 1000}}
+        for row in roster['roles']:
+            terminal['stopReceipts'][row['role']]['current']['record'].update(
+                startedMonotonicNs=800, observedMonotonicNs=810)
+        old = dict(sender, invocationId='f' * 32, processEpoch=50,
+            cgroupDigest=runner.fixtures.runtime.canonical_digest({
+                'role': 'candidate-sender', 'identity': [1, 98]})[7:])
+        context = {'before': {'roleIdentity': old, 'stateDigest': '5' * 64,
+                             'deadlineNs': 1000, 'observedMonotonicNs': 70},
+                   'after': {'roleIdentity': sender, 'stateDigest': '5' * 64,
+                            'deadlineNs': 1000, 'observedMonotonicNs': 80}}
+        terminal['stopReceipts']['candidate-sender']['previous']['record'] = {
+            'managerInvocation': old['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 98], 'observedMonotonicNs': 150}
+        exchange, observed_exchange = synthetic_exchange_audits(roster)
+        terminal['exchangeAudits'] = exchange
+        fnp_root, fnp_observed, content, transcript = synthetic_fnp_observation(
+            roster, host['helperSourceCommit'])
+        fnp_root['before']['observedMonotonicNs'] = 210
+        fnp_root['after']['observedMonotonicNs'] = 300
+        content['startedMonotonicNs'] = 220
+        content['finishedMonotonicNs'] = 280
+        terminal['fnpCounterPair'] = {'status': 'captured', 'record': fnp_root}
+        terminal['observerFcpLogs'] = {'candidate-recipient': {
+            'status': 'captured',
+            'tailBase64': base64.b64encode(transcript.encode()).decode(),
+            'tailBytes': len(transcript.encode())}}
+        epochs = {}
+        for index, row in enumerate(roster['roles']):
+            epochs[row['role']] = {
+                'managerInvocation': row['invocationId'],
+                'hostPid': 1000 + index, 'startTicks': row['processEpoch'],
+                'namespacePids': [1000 + index, 2],
+                'networkNamespaceIdentity': [1, row['networkNamespace']],
+                'cgroupIdentity': [1, 99 + index],
+                'executableDigest': 'sha256:' + 'e' * 64}
+        before_daemon = dict(epochs['candidate-sender'],
+            managerInvocation=old['invocationId'], hostPid=900,
+            startTicks=old['processEpoch'], cgroupIdentity=[1, 98])
+        result = {'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 10,
+                                       'finishedMonotonicNs': 20},
+            'roleDaemonEpochs': epochs,
+            'restartDaemonEpochs': {
+                'before': before_daemon,
+                'after': epochs['candidate-sender']},
+            'appKernelProcess': {'role': 'candidate-sender',
+                'provider': 'bubblewrap', 'hostPid': 101, 'namespacePid': 3,
+                'processEpoch': 201, 'invocationId': sender['invocationId'],
+                'javaHostPid': 102, 'javaStartTicks': 202,
+                'provenance': 'controller-kernel-sample'},
+            'appKernelWindow': {'startedMonotonicNs': 30,
+                                'finishedMonotonicNs': 40},
+            'controlExchanges': observed_exchange,
+            'contentEvidence': content, 'fnpCounterPair': fnp_observed,
+            'restartContext': context,
+            'restartWindow': {'startedMonotonicNs': 60,
+                              'finishedMonotonicNs': 90}}
+        diagnostics = synthetic_resource_diagnostics(roster)
+        driver_digest = runner.reference.sha256(source /
+            'tools/release-certification/restricted/pr314_workload_driver.py')
+        admin = {'pid': 500, 'uid': 0, 'gid': 0, 'startTicks': 44,
+            'namespacePids': [500],
+            'namespaces': {'pid': 11, 'net': 12, 'mnt': 13, 'user': 14},
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 50], 'cgroupDigest': 'a' * 64,
+            'invocationId': 'c' * 32, 'sourceDigest': driver_digest,
+            'observedMonotonicNs': 1}
+        diagnostics['positiveAdministratorBefore'] = admin
+        diagnostics['positiveAdministratorAfter'] = dict(
+            admin, observedMonotonicNs=820)
+        diagnostics['positiveObserverEpoch'] = {
+            'kind': 'installed-observer-process', 'pid': 600,
+            'uid': roster['observerUid'], 'startTicks': 45,
+            'bootId': admin['bootId'], 'cgroupIdentity': [1, 50],
+            'cgroupDigest': 'b' * 64,
+            'namespaces': {'pid': 2, 'net': 3, 'mnt': 4, 'user': 5},
+            'sourceDigest': driver_digest, 'observedMonotonicNs': 5}
+        terminal['observerControlCheckpoint'] = {'status': 'captured',
+            'record': {'actorPid': 600, 'actorStartTicks': 45}}
+        identity, attempt = runner.positive_case_attempt(report, result,
+            {'mailDigest': 'sha256:' + '5' * 64}, 900, 910,
+            diagnostics, terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual(8, len(attempt['declaredCases']))
+        frozen = seal.plan(identity, 'a' * 64,
+            'pve-tcg-swap-admission-v1', 'b' * 64,
+            'c' * 64, 'd' * 64)
+        host_epoch = {'kind': 'host-runner-process', 'pid': 700,
+            'uid': 1000, 'startTicks': 55,
+            'bootId': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+            'sourceDigest': runner.reference.sha256(source /
+                'tools/release-certification/restricted/pr315_workload_runner.py'),
+            'observedMonotonicNs': 920}
+        raw = {'guestReport': '1' * 64, 'volatile': '2' * 64,
+               'hostMonitor': '3' * 64}
+        records = case_v10.positive_records(frozen, 'suite-202', identity,
+            attempt, report, result, terminal, diagnostics, host_epoch,
+            source, raw)
+        self.assertEqual(set(dict(runner.campaign.GROUPS)['positive']), set(records))
+        self.assertNotEqual(records['installed-ready']['operationTimeDomain'],
+                            records['four-role-start']['operationTimeDomain'])
+        self.assertEqual(900,
+            records['restart-durable-state']['targetEpoch']['beforeDaemon']['hostPid'])
+        changed = copy.deepcopy(diagnostics)
+        changed['positiveObserverEpoch']['startTicks'] = 46
+        with self.assertRaisesRegex(ValueError, 'actor-epoch-invalid'):
+            case_v10.positive_records(frozen, 'suite-202', identity,
+                attempt, report, result, terminal, changed, host_epoch,
+                source, raw)
+        changed_result = copy.deepcopy(result)
+        changed_result['roleDaemonEpochs']['candidate-sender']['hostPid'] = 0
+        with self.assertRaisesRegex(ValueError, 'role-epoch-invalid'):
+            case_v10.positive_records(frozen, 'suite-202', identity,
+                attempt, report, changed_result, terminal, diagnostics,
+                host_epoch, source, raw)
+
+    def test_app_and_resource_cases_require_actual_scoped_samples(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        result = {'roleKernelRoster': roster,
+            'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20},
+            'appKernelProcess': {'role': 'candidate-sender', 'provider': 'bubblewrap',
+                'hostPid': 101, 'namespacePid': 3, 'processEpoch': 201,
+                'invocationId': sender['invocationId'], 'javaHostPid': 102,
+                'javaStartTicks': 202, 'provenance': 'controller-kernel-sample'},
+            'appKernelWindow': {'startedMonotonicNs': 30, 'finishedMonotonicNs': 40}}
+        diagnostics = synthetic_resource_diagnostics(roster)
+        selected = {'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.positive_case_attempt(report, result, selected, 90, 100,
+                                                          diagnostics)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual({'installed-ready', 'four-role-start', 'signed-apphost-child',
+                          'kernel-resource-scope'},
+                         {row['caseId'] for row in checked['cases'] if row['status'] == 'passed'})
+        self.assertFalse(checked['installedWorkloadAcceptanceSatisfied'])
+        changed = copy.deepcopy(diagnostics)
+        changed['during']['services']['cryptad-workload@relay-no-apps.service'][
+            'lastObserved']['cgroupIdentity'] = [1, 999]
+        _, without_resources = runner.positive_case_attempt(report, result, selected, 90, 100,
+                                                             changed)
+        self.assertNotIn('kernel-resource-scope', without_resources['declaredCases'])
+        changed_result = copy.deepcopy(result)
+        changed_result['appKernelProcess']['provenance'] = 'candidate-api'
+        _, without_app = runner.positive_case_attempt(report, changed_result, selected, 90, 100,
+                                                      diagnostics)
+        self.assertNotIn('signed-apphost-child', without_app['declaredCases'])
+
+    def test_controller_exchange_commitments_require_matching_root_and_observer_bytes(self):
+        roster = synthetic_role_kernel_roster()
+        audits, observed = synthetic_exchange_audits(roster)
+        terminal = synthetic_terminal_roster(roster)
+        terminal['exchangeAudits'] = audits
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20},
+                  'controlExchanges': observed}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        selection = {'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.positive_case_attempt(report, result, selection, 90, 100,
+                                                         terminal=terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertEqual({'own-management', 'dynamic-app-bootstrap'},
+                         set(attempt['caseCommitments']))
+        changed = copy.deepcopy(result)
+        changed['controlExchanges']['dynamic-app-bootstrap']['responseDigest'] = '0' * 64
+        _, rejected = runner.positive_case_attempt(report, changed, selection, 90, 100,
+                                                   terminal=terminal)
+        self.assertNotIn('dynamic-app-bootstrap', rejected['declaredCases'])
+        changed_root = copy.deepcopy(terminal)
+        changed_root['exchangeAudits']['own-management']['record']['managerInvocation'] = 'f' * 32
+        _, rejected = runner.positive_case_attempt(report, result, selection, 90, 100,
+                                                   terminal=changed_root)
+        self.assertNotIn('own-management', rejected['declaredCases'])
+
+    def test_restart_case_requires_real_prior_group_and_same_durable_state(self):
+        roster = synthetic_role_kernel_roster()
+        sender = roster['roles'][0]
+        old = dict(sender, invocationId='f' * 32, processEpoch=50,
+            cgroupDigest=runner.fixtures.runtime.canonical_digest({
+                'role': 'candidate-sender', 'identity': [1, 98]})[7:])
+        context = {
+            'before': {'roleIdentity': old, 'stateDigest': '5' * 64,
+                       'deadlineNs': 1000, 'observedMonotonicNs': 70},
+            'after': {'roleIdentity': sender, 'stateDigest': '5' * 64,
+                      'deadlineNs': 1000, 'observedMonotonicNs': 80}}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20},
+                  'restartContext': context,
+                  'restartWindow': {'startedMonotonicNs': 60, 'finishedMonotonicNs': 90}}
+        terminal = synthetic_terminal_roster(roster)
+        terminal['controllerRecords']['campaign'] = {'status': 'captured',
+            'record': {'deadlineMonotonicNs': 1000}}
+        terminal['sentinel']['observedDigest'] = 'sha256:' + '5' * 64
+        terminal['stopReceipts']['candidate-sender']['previous']['record'] = {
+            'managerInvocation': old['invocationId'],
+            'bootId': 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+            'cgroupIdentity': [1, 98]}
+        report = {'hostVerifiedIdentity': synthetic_host_identity(), 'guestStopped': True}
+        identity, attempt = runner.positive_case_attempt(report, result,
+            {'mailDigest': 'sha256:' + '5' * 64}, 100, 110, terminal=terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertIn('restart-durable-state', attempt['declaredCases'])
+        self.assertFalse(checked['installedWorkloadAcceptanceSatisfied'])
+        changed = copy.deepcopy(terminal)
+        changed['stopReceipts']['candidate-sender']['previous']['record']['cgroupIdentity'] = [1, 97]
+        _, rejected = runner.positive_case_attempt(report, result,
+            {'mailDigest': 'sha256:' + '5' * 64}, 100, 110, terminal=changed)
+        self.assertNotIn('restart-durable-state', rejected['declaredCases'])
+
+    def test_fnp_case_requires_actual_payload_and_all_four_directional_counter_deltas(self):
+        roster = synthetic_role_kernel_roster()
+        host = synthetic_host_identity()
+        root, observed, content, transcript = synthetic_fnp_observation(roster,
+                                                                          host['helperSourceCommit'])
+        terminal = synthetic_terminal_roster(roster)
+        terminal['fnpCounterPair'] = {'status': 'captured', 'record': root}
+        terminal['observerFcpLogs'] = {'candidate-recipient': {'status': 'captured',
+            'tailBase64': base64.b64encode(transcript.encode()).decode(),
+            'tailBytes': len(transcript.encode())}}
+        result = {'roleKernelRoster': roster,
+                  'roleKernelRosterWindow': {'startedMonotonicNs': 1, 'finishedMonotonicNs': 2},
+                  'fnpCounterPair': observed, 'contentEvidence': content}
+        report = {'hostVerifiedIdentity': host, 'guestStopped': True}
+        selected = {'mailDigest': 'sha256:' + '5' * 64}
+        identity, attempt = runner.positive_case_attempt(report, result, selected, 110, 120,
+                                                          terminal=terminal)
+        checked = runner.acceptance.verify_attempts(identity, [attempt])
+        self.assertTrue(checked['recordContractValid'])
+        self.assertIn('fnp-content-retrieval', attempt['declaredCases'])
+        self.assertFalse(checked['installedWorkloadAcceptanceSatisfied'])
+        wrong_origin = copy.deepcopy(terminal)
+        wrong_origin['fnpCounterPair']['record']['kind'] = 'pr315-fnp-counter-pair'
+        _, rejected = runner.positive_case_attempt(report, result, selected, 110, 120,
+                                                   terminal=wrong_origin)
+        self.assertNotIn('fnp-content-retrieval', rejected['declaredCases'])
+        bad_route = copy.deepcopy(terminal)
+        name = runner.workload_network.FNP_COUNTERS[('relay-no-apps', 'candidate-sender')]
+        bad_route['fnpCounterPair']['record']['after']['counters'][name] = {'packets': 1, 'bytes': 100}
+        matched_bad_route = copy.deepcopy(result)
+        matched_bad_route['fnpCounterPair']['after']['snapshot']['counters'][name] = {
+            'packets': 1, 'bytes': 100}
+        _, rejected = runner.positive_case_attempt(report, matched_bad_route, selected, 110, 120,
+                                                   terminal=bad_route)
+        self.assertNotIn('fnp-content-retrieval', rejected['declaredCases'])
+        changed = copy.deepcopy(result)
+        changed['contentEvidence']['responseDigest'] = '0' * 64
+        _, rejected = runner.positive_case_attempt(report, changed, selected, 110, 120,
+                                                   terminal=terminal)
+        self.assertNotIn('fnp-content-retrieval', rejected['declaredCases'])
+
+    def test_installed_transport_path_reaches_six_cases_but_never_full_acceptance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(runner.__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root, startup_measurement=False,
+                case_group='positive',
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi',
+                fixture_manifest_digest='4' * 64, product_source_commit='d' * 40)
+            host = synthetic_host_identity()
+            report = {'mode': 'workload-positive', 'workloadPurpose': 'positive',
+                'guestStopped': True, 'status': 'guest-report-retained', 'guestExitCode': 0,
+                'hostVerifiedIdentity': host}
+            roster = synthetic_role_kernel_roster()
+            observation = {'identity': {'bundleIdentity': host['bundleIdentity'],
+                    'sourceCommit': host['helperSourceCommit']},
+                'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+                'contentRetrieval': 'observed', 'newEpoch': True, 'profile': runner.acceptance.PROFILE,
+                'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
+                'roleKernelRoster': roster,
+                'roleKernelRosterWindow': {'startedMonotonicNs': 10, 'finishedMonotonicNs': 20},
+                'appKernelProcess': {'role': 'candidate-sender', 'provider': 'bubblewrap',
+                    'hostPid': 101, 'namespacePid': 3, 'processEpoch': 201,
+                    'invocationId': roster['roles'][0]['invocationId'],
+                    'javaHostPid': 102, 'javaStartTicks': 202,
+                    'provenance': 'controller-kernel-sample'},
+                'appKernelWindow': {'startedMonotonicNs': 30, 'finishedMonotonicNs': 40},
+                'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
+            terminal = synthetic_terminal_roster(roster)
+            terminal['exchangeAudits'], observation['controlExchanges'] = synthetic_exchange_audits(roster)
+            def fake_transport(selected):
+                self.assertEqual('positive', selected.workload_group)
+                self.assertEqual('none', selected.lifecycle_scenario)
+                selected.attempt.mkdir(mode=0o700)
+                for name, value in (('attempt.private.json', report),
+                    ('pr314-workload-observation.private.json', observation),
+                    ('pr315-workload-volatile.private.json', terminal),
+                    ('pr315-workload-memory.private.json', synthetic_resource_diagnostics(roster))):
+                    runner.native_runner._save(selected.attempt / name, value)
+                return 0
+            with patch.object(runner, 'prerequisites', return_value=[]), \
+                    patch.object(runner, 'memory_snapshot', return_value={'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.native_runner, 'required_attempt_bytes', return_value=1), \
+                    patch.object(runner.native_runner, 'capacity_reason', return_value=None), \
+                    patch.object(runner.reference, 'run', side_effect=fake_transport), \
+                    patch.object(runner.reference, 'verified_attempt_identity', return_value=host), \
+                    patch.object(runner.fixtures, 'verify', return_value={'mailDigest': 'sha256:' + '5' * 64}), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(2, runner.run(args))
+            assessment = json.loads((args.output / 'assessment.json').read_text())
+            self.assertTrue(assessment['installedPositiveExecuted'])
+            self.assertFalse(assessment['installedWorkloadAcceptanceSatisfied'])
+            self.assertEqual({'installed-ready', 'four-role-start', 'signed-apphost-child',
+                              'own-management', 'dynamic-app-bootstrap', 'kernel-resource-scope'},
+                             {row['caseId'] for row in assessment['cases'] if row['status'] == 'passed'})
+            self.assertTrue((args.output / 'positive-v8-evidence.private.json').is_file())
+
+    def test_workload_reference_projection_omits_private_guest_and_source_fields(self):
+        report = runner.reference.public_report({'mode': 'workload-positive', 'executed': True,
+            'status': 'guest-report-retained', 'guestStopped': True,
+            'guestSummary': {'secret': 'private-token'}, 'productDigest': 'private-product',
+            'preparedImageDigest': 'private-image', 'helperSourceCommit': 'private-commit'})
+        self.assertNotIn('private-', json.dumps(report))
+        self.assertFalse(report['installedWorkloadAcceptanceSatisfied'])
+
+    def test_default_full_campaign_stops_before_vm_without_required_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root,
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            with patch.object(runner.os, 'geteuid', return_value=os.getuid()), \
+                    patch.object(runner.reference, 'run') as launch, redirect_stdout(io.StringIO()):
+                self.assertEqual(78, runner.run(args))
+            launch.assert_not_called()
+            result = json.loads((args.output / 'assessment.json').read_text())
+            self.assertEqual('setup-blocked', result['status'])
+            self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+            self.assertFalse((args.output / 'attempt-01').exists())
+            args.output = root / 'probe'
+            args.probe = True
+            with patch.object(runner.os, 'geteuid', return_value=os.getuid()), \
+                    patch.object(runner.reference, 'run') as launch, redirect_stdout(io.StringIO()):
+                self.assertEqual(78, runner.run(args))
+            launch.assert_not_called()
+            self.assertEqual('setup-blocked',
+                json.loads((args.output / 'assessment.json').read_text())['status'])
+
+    def test_role_boundary_group_claims_only_its_five_started_cases(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root, case_group='role-boundary',
+                fixture_manifest_digest='4' * 64, product_source_commit='d' * 40,
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            host = synthetic_host_identity()
+            roster = synthetic_role_kernel_roster()
+            terminal = synthetic_terminal_roster(roster)
+            del terminal['stopReceipts']['candidate-sender']['previous']
+            observation = {'identity': {'sourceCommit': host['helperSourceCommit'],
+                'bundleIdentity': host['bundleIdentity']},
+                'groupPreparation': 'role-boundary',
+                'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+                'topologyRoles': 4, 'signedAppWorkers': 0,
+                'profile': runner.acceptance.PROFILE,
+                'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+                'roleKernelRoster': roster,
+                'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                           'finishedMonotonicNs': 5},
+                'workloadAcceptance': 'incomplete-hostile-contract-not-executed',
+                'protectedExecutionEnabled': False}
+            selected = []
+
+            def fake_transport(attempt):
+                selected.append(attempt)
+                attempt.attempt.mkdir(mode=0o700)
+                for name, value in (('attempt.private.json', {
+                        'mode': 'workload-positive', 'workloadPurpose': 'selected-group',
+                        'status': 'guest-report-retained', 'guestStopped': True,
+                        'guestExitCode': 0, 'hostVerifiedIdentity': host}),
+                    ('pr314-workload-observation.private.json', observation),
+                    ('pr315-workload-volatile.private.json', terminal),
+                    ('pr315-workload-memory.private.json', {'probeStart': {
+                        'schemaVersion': 1, 'kind': 'pr315-workload-probe-start',
+                        'caseId': 'role-boundary', 'startedMonotonicNs': 10}})):
+                    runner.native_runner._save(attempt.attempt / name, value)
+                return 0
+
+            with patch.object(runner, 'prerequisites', return_value=[]), \
+                    patch.object(runner, 'memory_snapshot', return_value={
+                        'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.native_runner, 'required_attempt_bytes', return_value=1), \
+                    patch.object(runner.native_runner, 'capacity_reason', return_value=None), \
+                    patch.object(runner.reference, 'run', side_effect=fake_transport), \
+                    patch.object(runner.reference, 'verified_attempt_identity',
+                                 return_value=host), \
+                    patch.object(runner.fixtures, 'verify', return_value={
+                        'schemaVersion': 4, 'mailDigest': 'sha256:' + '5' * 64}), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(2, runner.run(args))
+            self.assertEqual('role-boundary', selected[0].workload_group)
+            self.assertEqual('none', selected[0].lifecycle_scenario)
+            report = json.loads((args.output / 'assessment.json').read_text())
+            self.assertFalse(report['installedPositiveExecuted'])
+            self.assertFalse(report['installedWorkloadAcceptanceSatisfied'])
+            inconclusive = {row['caseId'] for row in report['cases']
+                            if row['status'] == 'inconclusive'}
+            self.assertEqual(set(dict(runner.campaign.GROUPS)['role-boundary']), inconclusive)
+            self.assertEqual(40, sum(row['status'] == 'not-executed'
+                                     for row in report['cases']))
+
+    def test_missing_inputs_return_78_without_reference_allocation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            source = Path(__file__).resolve().parents[3]
+            args = SimpleNamespace(source=source, output=root / 'suite', storage_root=root,
+                case_group='positive',
+                prepared_fixtures=root / 'absent-fixtures', qemu_root=root / 'absent-qemu',
+                prepared_image=root / 'absent-image', seed=root / 'absent-seed',
+                ssh_key=root / 'absent-key', known_hosts=root / 'absent-pin',
+                storage_budget_bytes=40 * 1024**3, min_free_bytes=8 * 1024**3,
+                memory_budget_bytes=7 * 1024**3, min_host_memory_bytes=1024**3,
+                profile='tcg-multi')
+            with patch.object(runner.os, 'geteuid', return_value=os.getuid()), \
+                    patch.object(runner, 'memory_snapshot', return_value={'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.reference, 'run') as launch, redirect_stdout(io.StringIO()):
+                self.assertEqual(78, runner.run(args))
+            launch.assert_not_called()
+            value = json.loads((args.output / 'assessment.json').read_text())
+            self.assertEqual('setup-blocked', value['status'])
+            self.assertEqual(45, len(value['cases']))
+            self.assertFalse((args.output / 'attempt-01').exists())
+
+
+class StartupPurposeTests(unittest.TestCase):
+    def test_role_readiness_diagnostic_starts_no_case_or_positive_credit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(runner.__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root,
+                role_readiness_measurement=True, startup_measurement=False,
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            selections = []
+            roster = synthetic_role_kernel_roster()
+            terminal = synthetic_terminal_roster(roster)
+            del terminal['stopReceipts']['candidate-sender']['previous']
+
+            def fake_transport(selected):
+                selections.append(selected)
+                selected.attempt.mkdir(mode=0o700)
+                runner.native_runner._save(selected.attempt / 'attempt.private.json', {
+                    'mode': 'workload-positive',
+                    'workloadPurpose': 'role-readiness-measurement',
+                    'status': 'guest-report-retained', 'guestStopped': True,
+                    'guestExitCode': 0,
+                    'hostVerifiedIdentity': synthetic_host_identity()})
+                runner.native_runner._save(selected.attempt /
+                    'pr314-workload-observation.private.json', {
+                        'groupPreparation': 'role-readiness-diagnostic',
+                        'identity': {'sourceCommit': 'b' * 40, 'bundleIdentity': 'a' * 64},
+                        'contentRetrieval': 'not-executed-group', 'newEpoch': False,
+                        'topologyRoles': 4, 'signedAppWorkers': 0,
+                        'profile': runner.acceptance.PROFILE,
+                        'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+                        'roleKernelRoster': roster,
+                        'roleKernelRosterWindow': {'startedMonotonicNs': 1,
+                                                   'finishedMonotonicNs': 5},
+                        'workloadAcceptance': 'not-executed-role-readiness-measurement',
+                        'protectedExecutionEnabled': False})
+                runner.native_runner._save(selected.attempt /
+                    'pr315-workload-volatile.private.json', terminal)
+                return 0
+
+            with patch.object(runner, 'prerequisites', return_value=[]), \
+                    patch.object(runner, 'memory_snapshot', return_value={
+                        'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.native_runner, 'required_attempt_bytes', return_value=1), \
+                    patch.object(runner.native_runner, 'capacity_reason', return_value=None), \
+                    patch.object(runner.reference, 'run', side_effect=fake_transport), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(2, runner.run(args))
+            self.assertEqual('role-readiness-diagnostic', selections[0].workload_group)
+            self.assertEqual('none', selections[0].lifecycle_scenario)
+            result = json.loads((args.output / 'assessment.json').read_text())
+            self.assertEqual('role-readiness-measurement-executed', result['status'])
+            self.assertFalse(result['installedPositiveExecuted'])
+            self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+            self.assertEqual({'not-executed'}, {row['status'] for row in result['cases']})
+
+    def test_host_startup_selection_rejects_forged_successful_guest_aggregate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o700)
+            args = SimpleNamespace(source=Path(runner.__file__).resolve().parents[3],
+                output=root / 'suite', storage_root=root, startup_measurement=True,
+                prepared_fixtures=root / 'fixtures', qemu_root=root / 'qemu',
+                prepared_image=root / 'image', seed=root / 'seed', ssh_key=root / 'key',
+                known_hosts=root / 'pin', storage_budget_bytes=40 * 1024**3,
+                min_free_bytes=8 * 1024**3, memory_budget_bytes=7 * 1024**3,
+                min_host_memory_bytes=1024**3, profile='tcg-multi')
+            report = {'mode': 'workload-positive', 'workloadPurpose': 'positive',
+                'guestStopped': True, 'status': 'guest-report-retained', 'guestExitCode': 0,
+                'hostVerifiedIdentity': {'bundleIdentity': 'a' * 64, 'helperSourceCommit': 'b' * 40}}
+            forged = {'identity': {'bundleIdentity': 'a' * 64, 'sourceCommit': 'b' * 40},
+                'runtimePolicy': runner.fixtures.preparation.launcher_policy(),
+                'contentRetrieval': 'observed', 'newEpoch': True, 'profile': runner.acceptance.PROFILE,
+                'topologyRoles': 4, 'signedAppWorkers': 2, 'protectedExecutionEnabled': False,
+                'roleKernelRoster': synthetic_role_kernel_roster(),
+                'workloadAcceptance': 'incomplete-hostile-contract-not-executed'}
+            terminal = synthetic_terminal_roster(forged['roleKernelRoster'])
+            self.assertTrue(runner.positive_executed(report, forged, terminal))
+            selections = []
+            def fake_transport(selected):
+                selections.append(selected)
+                selected.attempt.mkdir(mode=0o700)
+                for name, value in (('attempt.private.json', report),
+                    ('pr314-workload-observation.private.json', forged),
+                    ('pr315-workload-volatile.private.json', terminal)):
+                    runner.native_runner._save(selected.attempt / name, value)
+                return 0
+            with patch.object(runner, 'prerequisites', return_value=[]), \
+                    patch.object(runner, 'memory_snapshot', return_value={'effectiveAvailableBytes': 9 * 1024**3}), \
+                    patch.object(runner.native_runner, 'required_attempt_bytes', return_value=1), \
+                    patch.object(runner.native_runner, 'capacity_reason', return_value=None), \
+                    patch.object(runner.reference, 'run', side_effect=fake_transport), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(2, runner.run(args))
+            self.assertTrue(selections[0].startup_measurement)
+            value = json.loads((args.output / 'assessment.json').read_text())
+            self.assertFalse(value['installedPositiveExecuted'])
+            self.assertFalse(value['installedWorkloadAcceptanceSatisfied'])
+            self.assertEqual({'not-executed'}, {row['status'] for row in value['cases']})
+
+
+if __name__ == '__main__':
+    unittest.main()

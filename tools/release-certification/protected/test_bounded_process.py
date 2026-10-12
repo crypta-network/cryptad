@@ -76,6 +76,21 @@ class BoundedProcessTest(unittest.TestCase):
                 environment={"PATH": "/usr/bin:/bin"}, timeout=0.3, diagnostic_sink=sink)
         self.assertEqual([b"private"], observations)
 
+    def test_start_observer_sees_actual_child_and_failure_reaps_it(self):
+        observed = []
+        def witness(pid):
+            self.assertGreater(pid, 1)
+            os.kill(pid, 0)
+            observed.append(pid)
+            raise ValueError('fixed-test-observer-refused')
+        with self.assertRaisesRegex(ValueError, 'fixed-test-observer-refused'):
+            run([sys.executable, '-c', 'import time; time.sleep(60)'],
+                environment={'PATH': '/usr/bin:/bin'}, timeout=2,
+                start_observer=witness)
+        self.assertEqual(1, len(observed))
+        with self.assertRaises(ProcessLookupError):
+            os.kill(observed[0], 0)
+
     def test_sink_failure_is_closed_and_cannot_prevent_owned_process_cleanup(self):
         reaped = []
         def sink(stdout, stderr):

@@ -60,7 +60,7 @@ def _directory(path):
             os.close(descriptor)
 
 
-def _file(parent, name, maximum, deadline, *, content=False):
+def _file(parent, name, maximum, deadline, *, content=False, pinned_hook=None):
     if not hasattr(os, 'O_PATH'):
         raise SnapshotError('workload-snapshot-linux-required')
     # O_PATH pins a leaf without invoking a device's open method. Reopening our own pinned
@@ -73,6 +73,8 @@ def _file(parent, name, maximum, deadline, *, content=False):
         if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                 or not 0 <= before.st_size <= maximum):
             raise SnapshotError('workload-snapshot-file-invalid')
+        if pinned_hook is not None:
+            pinned_hook()
         descriptor = os.open('/proc/self/fd/' + str(pinned), os.O_RDONLY | os.O_NONBLOCK)
         _unchanged(before, os.fstat(descriptor))
         checksum = hashlib.sha256()
@@ -101,14 +103,16 @@ def _file(parent, name, maximum, deadline, *, content=False):
         os.close(pinned)
 
 
-def read_file(root, name, *, maximum=65536, timeout=5):
+def read_file(root, name, *, maximum=65536, timeout=5, pinned_hook=None):
     """Read one fixed leaf from its separately selected parent; reject special/multi-link files."""
     if (not isinstance(name, str) or name in {'', '.', '..'} or '/' in name or '\\' in name
             or type(maximum) is not int or not 0 <= maximum <= 16 * 1024 * 1024
-            or not 0 < timeout <= 30):
+            or not 0 < timeout <= 30
+            or (pinned_hook is not None and not callable(pinned_hook))):
         raise SnapshotError('workload-snapshot-selection-invalid')
     with _directory(root) as parent:
-        value, _, _identity_read = _file(parent, name, maximum, time.monotonic() + timeout, content=True)
+        value, _, _identity_read = _file(parent, name, maximum,
+            time.monotonic() + timeout, content=True, pinned_hook=pinned_hook)
     return value
 
 
