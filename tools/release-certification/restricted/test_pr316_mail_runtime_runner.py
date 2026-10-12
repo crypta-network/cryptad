@@ -203,6 +203,16 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             'tools/release-certification/restricted/pr316_mail_runtime_runner.py',
             installation.TEST_SEAMS)
 
+    def test_pressure_watcher_covers_the_complete_launch_lifecycle(self):
+        self.assertEqual(5490, runner.WATCHER_REQUIRED_SECONDS)
+        self.assertGreaterEqual(
+            runner.pressure_watch.MAX_SECONDS, runner.WATCHER_REQUIRED_SECONDS)
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.object(runner.pressure_watch, 'MAX_SECONDS',
+                             runner.WATCHER_REQUIRED_SECONDS - 1):
+            self.assertIn('pve-host-monitor-window-insufficient',
+                          runner.prerequisites(args(Path(temporary))))
+
     def test_cli_exposes_no_historical_selection_or_authority_options(self):
         options = {option for action in runner.parser()._actions
                    for option in action.option_strings}

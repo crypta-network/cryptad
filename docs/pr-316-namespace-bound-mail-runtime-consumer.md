@@ -126,11 +126,14 @@ the copied image, runtime, source, products, fixtures, archive and overlay, its 
 only the unmaterialized part of the whole-attempt estimate after subtracting the measured prepared
 attempt. That remainder can never fall below the bounded guest-write and terminal-report reserves,
 and unrelated task-root growth remains fully charged by the PVE snapshot. A fixture, final-inventory
-or capacity
-failure therefore occurs before the watcher is requested. If QEMU does not appear within 30 seconds
-after readiness, the watcher closes as `stopped-before-launch`. Before launch, the runner also
-requires at least five seconds of that window to remain and rejects any already-published finished
-receipt. It authenticates watcher termination before returning a post-ready failure. Reusing the
+or capacity failure therefore occurs before the watcher is requested. If QEMU does not appear
+within 30 seconds after readiness, the watcher closes as `stopped-before-launch`. Before launch,
+the runner also requires at least five seconds of that window to remain and rejects any
+already-published finished receipt. The watcher remains active for up to 5,700 seconds, covering the
+4,200-second Mail command,
+the separate boot and source-transfer windows, bounded evidence collection, shutdown and scheduling
+margin. The runner fails closed if that watcher bound becomes shorter than its complete fixed
+lifecycle. It authenticates watcher termination before returning a post-ready failure. Reusing the
 initial host-admission or `pre` inventory receipt cannot authorize allocation, and starting the
 watcher before the second marker is unsupported.
 

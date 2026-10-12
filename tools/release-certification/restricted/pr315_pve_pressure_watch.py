@@ -24,7 +24,9 @@ from pr315_pve_host_admission import TASK_ROOT, _pressure
 CT_ROOT = Path('/work/pr315-task')
 GIB = 1024 ** 3
 SAMPLE_SECONDS = 2
-MAX_SECONDS = 4500
+# Cover the longest fixed PR-316 lifecycle: prelaunch, boot, input transfer,
+# the 4,200-second guest command, bounded evidence collection and shutdown.
+MAX_SECONDS = 5700
 PRELAUNCH_SECONDS = 30
 LAUNCH_HEADROOM_SECONDS = 5
 LIMITS = {'physical': 5, 'swap': 2, 'memoryPressure': 15, 'ioPressure': 15}

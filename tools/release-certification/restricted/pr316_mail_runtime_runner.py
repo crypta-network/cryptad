@@ -34,6 +34,11 @@ import pr316_pve_vm_inventory as pve_inventory
 PROFILE = 'tcg-multi'
 PORT = 23113
 TIMEOUT_SECONDS = 4200
+# The reference path permits 180 seconds each for boot and source transfer. Its
+# explicit post-command collection/shutdown timeouts total 795 seconds; retain
+# 900 seconds so process startup and bounded polling cannot consume the margin.
+WATCHER_REQUIRED_SECONDS = (
+    pressure_watch.PRELAUNCH_SECONDS + 180 + 180 + TIMEOUT_SECONDS + 900)
 GUEST_MEMORY = 5632 * 1024**2
 HOST_OVERHEAD = 512 * 1024**2
 MAX_PRIVATE_RECORD = 8 * 1024**2
@@ -132,6 +137,8 @@ def prerequisites(args):
             reasons.append(attribute.replace('_', '-') + '-unavailable')
     if args.known_hosts.is_file() and not known_hosts_matches_fixed_port(args.known_hosts):
         reasons.append('known-hosts-port-pin-invalid')
+    if pressure_watch.MAX_SECONDS < WATCHER_REQUIRED_SECONDS:
+        reasons.append('pve-host-monitor-window-insufficient')
     return reasons
 
 

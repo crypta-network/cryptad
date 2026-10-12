@@ -10,6 +10,9 @@ import pr315_pve_pressure_watch as watch
 
 
 class PressureWatchTest(unittest.TestCase):
+    def test_watch_deadline_includes_the_pr316_launch_lifecycle(self):
+        self.assertEqual(5700, watch.MAX_SECONDS)
+
     def test_prelaunch_grace_closes_only_an_unseen_qemu(self):
         self.assertFalse(watch.prelaunch_expired(10, False, 39.999))
         self.assertTrue(watch.prelaunch_expired(10, False, 40))
