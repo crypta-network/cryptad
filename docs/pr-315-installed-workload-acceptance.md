@@ -134,6 +134,39 @@ the installation result does not grant CI or review approval. Independent
 security review, merge, release and production authorization remain separate.
 PR-313, finite native acceptance and Phase 12 retain their independent status.
 
+## Subsequent storage cleanup concurrency correction
+
+Review identified a dependency race in the accepted helper's host copy release:
+the task lease serialized this campaign's own writers, but did not exclude other
+PVE storage operations between the dependency scan and unlink. Inode rechecks
+alone cannot detect a newly created overlay elsewhere.
+
+The corrected helper keeps the task lease across the full operation and invokes
+the deletion worker under PVE's actual storage configuration lock. The worker
+also holds the same local `pve-storage-<id>` locks used by PVE for every configured
+image storage. Under those locks it repeats the external backing/data-file scan,
+QEMU and open-user checks, and file/directory/configuration epoch validation
+before the first unlink. A new dependent, changed inventory count or changed
+epoch preserves every selected copy.
+
+The worker verifies its root-owned code, exact Perl lock-holder parent, safe
+environment and inherited task lease. Parent death kills the worker. Its
+50-second critical section fits inside PVE's configuration lease lifetime;
+failure is reaped before unlocking and cannot emit a successful release receipt.
+The enclosing 1,200-second host inventory/apply bounds remain in force. Shared
+and nonlocal image-storage profiles fail closed and retain copies rather than
+substituting a local mutex for distributed exclusion. Unmanaged image writers
+must follow the task lease; these PVE locks do not constrain arbitrary root
+commands that bypass the storage API.
+
+Regression checks cover a competing process at the storage lock, a dependent
+created after the initial scan, same-inode content changes, configuration changes,
+busy or linked lock files, and unverified workers. The real PVE read-only probe
+verified the configuration/store locks, lock-holder identity and task lease
+without disk operations. This correction is subsequent source work; the 45/45
+result above remains bound to `2aaf4af7aaad`, and is not transferred to the new
+helper or used as installed evidence for its changed cleanup path.
+
 ## Historical suite323 rerun and directory alias inventory
 
 The historical frozen helper `5936f4f3ada22d1e46050c9e11879258ec014468`
