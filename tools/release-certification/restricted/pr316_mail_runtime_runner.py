@@ -522,7 +522,7 @@ def _attempt_projection(args, attempt, report, fixture, source_commit,
             or observed['identity'].get('bundleIdentity') != identity['bundleIdentity']):
         raise ValueError('pr316-observer-host-identity-mismatch')
     private = evidence.validate_private_observation(_private_json(
-        attempt / evidence.PRIVATE_FILENAME, 65536))
+        attempt / evidence.PRIVATE_FILENAME, evidence.MAX_PRIVATE_BYTES))
     host_selection_digest = _mail_selection(_private_json(
         attempt / 'pr316-selection.private.json', 131072), fixture,
         args.prepared_fixtures)

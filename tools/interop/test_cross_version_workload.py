@@ -976,6 +976,22 @@ class ObserverPolicyTests(unittest.TestCase):
                                     'canary-surface-failed'):
             workload._scan_mail_canaries(handles, ('plain-canary', 'reply-canary'))
 
+    def test_mail_private_writer_accepts_full_window_evidence_bound(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            value = {'retryEvidence': 'x' * 65536}
+
+            workload._save_mail_private(root, value)
+
+            retained = root / workload.MAIL_PRIVATE_FILE
+            self.assertGreater(retained.stat().st_size, 65536)
+            self.assertLessEqual(retained.stat().st_size,
+                                 workload.MAIL_PRIVATE_MAX_BYTES)
+        with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(
+                workload.runtime.RuntimeFailure, 'mail-private-evidence-size'):
+            workload._save_mail_private(Path(temporary), {
+                'retryEvidence': 'x' * workload.MAIL_PRIVATE_MAX_BYTES})
+
     def test_mail_lane_is_distinct_fail_closed_projection_with_terminal_cleanup(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)
         adapter.plan = {'profile': 'fixture',

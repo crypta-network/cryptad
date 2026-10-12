@@ -20,7 +20,8 @@ CONTRACT = 'pr316-installed-mail-runtime-v1'
 PRIVATE_KIND = 'pr316-private-mail-causal-observation'
 PUBLIC_KIND = 'pr316-installed-mail-runtime'
 PRIVATE_FILENAME = 'pr316-mail-flow.private.json'
-MAX_PRIVATE_BYTES = 65536
+MAX_PRIVATE_BYTES = 512 * 1024
+MAX_COMMANDS = 1024
 SYNTHETIC_TEXTS = (
     'PUBLIC SYNTHETIC CRYPTA MAIL PROTOTYPE DEMONSTRATION',
     'PUBLIC SYNTHETIC CRYPTA MAIL PROTOTYPE REPLY')
@@ -424,7 +425,7 @@ def validate_private_observation(value):
     if directions['senderToRecipient']['reference'] == directions['recipientToSender']['reference']:
         raise ValueError('pr316-direction-reference-reused')
     commands = value['commands']
-    if not isinstance(commands, list) or not 16 <= len(commands) <= 128:
+    if not isinstance(commands, list) or not 16 <= len(commands) <= MAX_COMMANDS:
         raise ValueError('pr316-command-count-invalid')
     commands = [_command(row) for row in commands]
     command_times = [row['observedMonotonicNs'] for row in commands]

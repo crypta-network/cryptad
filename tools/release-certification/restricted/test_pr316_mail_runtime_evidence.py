@@ -116,6 +116,46 @@ class PrivateEvidenceTests(unittest.TestCase):
         self.assertEqual(value, evidence.decode_private(
             json.dumps(value, separators=(',', ':')).encode()))
 
+    def test_accepts_retry_evidence_for_both_full_send_windows(self):
+        value = fixture()
+        value['window'] = {key: observed * 1000
+                           for key, observed in value['window'].items()}
+        for context_value in value['contexts'].values():
+            context_value['observedMonotonicNs'] *= 1000
+        for milestone in value['milestones']:
+            milestone['observedMonotonicNs'] *= 1000
+        for row in value['commands']:
+            row['observedMonotonicNs'] *= 1000
+
+        forward_confirm, reply_confirm = value['commands'][4], value['commands'][11]
+        for row in (forward_confirm, reply_confirm):
+            row['status'] = 'queued'
+            row.pop('reference')
+        forward_retries = [command(1000 + index, 'candidate-sender',
+            'retry', 'queued', operation=FORWARD_OPERATION) for index in range(300)]
+        reply_retries = [command(2000 + index, 'candidate-recipient',
+            'retry', 'queued', operation=REPLY_OPERATION) for index in range(300)]
+        for index, row in enumerate(forward_retries, 1):
+            row['observedMonotonicNs'] = 500000 + index
+        for index, row in enumerate(reply_retries, 1):
+            row['observedMonotonicNs'] = 1400000 + index
+        forward_insert = command(3000, 'candidate-sender', 'retry', 'inserted',
+            operation=FORWARD_OPERATION, reference=FORWARD_REFERENCE)
+        forward_insert['observedMonotonicNs'] = 500500
+        reply_insert = command(3001, 'candidate-recipient', 'retry', 'inserted',
+            operation=REPLY_OPERATION, reference=REPLY_REFERENCE)
+        reply_insert['observedMonotonicNs'] = 1400500
+        commands = value['commands']
+        value['commands'] = (commands[:5] + forward_retries + [forward_insert]
+                             + commands[5:12] + reply_retries + [reply_insert]
+                             + commands[12:])
+        raw = json.dumps(value, separators=(',', ':')).encode()
+
+        self.assertEqual(618, len(value['commands']))
+        self.assertGreater(len(raw), 65536)
+        self.assertLessEqual(len(raw), evidence.MAX_PRIVATE_BYTES)
+        self.assertEqual(value, evidence.decode_private(raw))
+
     def test_rejects_every_broken_private_association(self):
         mutations = []
         changed = fixture()

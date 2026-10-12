@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import stat
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -41,6 +42,27 @@ class PveInventoryTest(unittest.TestCase):
             with patch.object(inventory.os, 'geteuid', return_value=1000), \
                     self.assertRaisesRegex(ValueError, 'root-required'):
                 inventory.snapshot(root / 'missing', root)
+
+    def test_allocated_bytes_counts_each_directory_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            device = root.stat().st_dev
+            child = root / 'child'
+            walk = [(str(root), ['child'], ['root.bin']),
+                    (str(child), [], ['leaf.bin'])]
+            blocks = {root: 1, child: 2, root / 'root.bin': 3,
+                      child / 'leaf.bin': 4}
+
+            def info(path):
+                selected = Path(path)
+                mode = stat.S_IFDIR if selected in (root, child) else stat.S_IFREG
+                return SimpleNamespace(st_dev=device, st_mode=mode,
+                                       st_blocks=blocks[selected])
+
+            with patch.object(inventory.os, 'walk', return_value=walk), \
+                    patch.object(Path, 'lstat', autospec=True,
+                                 side_effect=info):
+                self.assertEqual(10 * 512, inventory._allocated_bytes(root))
 
     def test_receipt_directory_rejects_symlink_without_chmodding_target(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -31,6 +31,7 @@ CPU_MODEL = 'qemu64'
 ACCELERATOR = 'tcg,thread=multi'
 PROFILES = {'tcg-multi': 'tcg,thread=multi', 'tcg-single': 'tcg,thread=single'}
 MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
+MAIL_PRIVATE_MAX_BYTES = 512 * 1024
 GUEST_STAGES = frozenset(('installation', 'installation-export',
     'dependency-profile-measurement', 'installation-publication', 'installed-profile-verification',
     'production-test-kit-separation', 'socket-listening', 'production-bootstrap-readiness',
@@ -594,7 +595,7 @@ print(json.dumps(records))
                 ('pr316-selection.private.json', '/root/pr314-workload-selection.json', 131072),
                 ('pr316-mail-flow.private.json',
                  '/var/lib/cryptad-cross-version/experiments/pr316-installed-mail-runtime/'
-                 'pr316-mail-flow.private.json', 65536),
+                 'pr316-mail-flow.private.json', MAIL_PRIVATE_MAX_BYTES),
                 ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
                 ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
                 ('pr315-retired-authority.private.json', '/root/pr315-retired-authority.private.json', 8192),

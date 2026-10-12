@@ -33,6 +33,7 @@ MAIL_EXPERIMENT = 'pr316-installed-mail-runtime'
 MAIL_PRIVATE_KIND = 'pr316-private-mail-causal-observation'
 MAIL_CONTRACT = 'pr316-installed-mail-runtime-v1'
 MAIL_PRIVATE_FILE = 'pr316-mail-flow.private.json'
+MAIL_PRIVATE_MAX_BYTES = 512 * 1024
 SOCKET = '/run/cryptad-workload/control.sock'
 MAX_RESPONSE = 1024 * 1024
 METHODS = {'start', 'observe', 'stop', 'connect-fcp',
@@ -879,7 +880,7 @@ def _mail_direction(commands, sending_role, receiving_role):
 def _save_mail_private(root, value):
     raw = json.dumps(value, sort_keys=True, separators=(',', ':'),
                      allow_nan=False).encode()
-    if not 0 < len(raw) <= 65536:
+    if not 0 < len(raw) <= MAIL_PRIVATE_MAX_BYTES:
         fail('mail-private-evidence-size')
     descriptor = os.open(root / MAIL_PRIVATE_FILE,
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)

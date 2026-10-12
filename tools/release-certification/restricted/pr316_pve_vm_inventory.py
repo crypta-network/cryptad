@@ -56,7 +56,7 @@ def _allocated_bytes(root):
     device = root.stat().st_dev
     total = count = 0
     for directory, directories, files in os.walk(root, followlinks=False):
-        for name in [None, *directories, *files]:
+        for name in [None, *files]:
             path = Path(directory) if name is None else Path(directory) / name
             info = path.lstat()
             count += 1
@@ -64,6 +64,10 @@ def _allocated_bytes(root):
                     or stat.S_ISLNK(info.st_mode)):
                 raise ValueError('pr316-pve-storage-inventory-invalid')
             total += info.st_blocks * 512
+        for name in directories:
+            info = (Path(directory) / name).lstat()
+            if info.st_dev != device or stat.S_ISLNK(info.st_mode):
+                raise ValueError('pr316-pve-storage-inventory-invalid')
     return total
 
 
