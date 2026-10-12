@@ -3,6 +3,7 @@ package network.crypta.platform.apphost.runtime;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
@@ -2128,6 +2129,92 @@ class LocalProcessAppHostTest {
         staleInstallDirectory.resolve(CONTENT_FILE_NAME), "stale", StandardCharsets.UTF_8);
 
     assertEquals(List.of(installation), host.listInstalled());
+  }
+
+  @Test
+  void listRuntimeStatus_whenAppsInstalledOutOfOrder_expectSortedImmutableStoppedStatuses()
+      throws IOException {
+    LocalProcessAppHost host = allowUnsignedHost();
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+
+    List<AppRuntimeStatusSnapshot> statuses = host.listRuntimeStatus();
+
+    assertEquals(
+        List.of(RUNNER_APP_ID, SAMPLE_APP_ID),
+        statuses.stream().map(AppRuntimeStatusSnapshot::appId).toList());
+    assertTrue(statuses.stream().allMatch(status -> status.state() == AppRuntimeState.STOPPED));
+    assertTrue(statuses.stream().noneMatch(AppRuntimeStatusSnapshot::running));
+    assertThrows(UnsupportedOperationException.class, statuses::clear);
+  }
+
+  @Test
+  void listRuntimeStatus_whenManifestDisappearsDuringStatusRefresh_expectCheckedIoFailure()
+      throws IOException {
+    Runnable removeNextManifest =
+        () -> {
+          try {
+            Files.deleteIfExists(layout().pathsFor(SAMPLE_APP_ID).manifestFile());
+          } catch (IOException exception) {
+            throw new AssertionError(exception);
+          }
+        };
+    LocalProcessAppHost host = hostWithStatusObservation(removeNextManifest);
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+    host.installFromDirectory(stageInstalledApp(RUNNER_APP_ID));
+
+    IOException exception = assertThrows(IOException.class, host::listRuntimeStatus);
+
+    IOException directFailure =
+        assertThrows(IOException.class, () -> host.runtimeStatus(SAMPLE_APP_ID));
+    assertEquals(directFailure.getClass(), exception.getClass());
+    assertEquals(directFailure.getMessage(), exception.getMessage());
+  }
+
+  @Test
+  void listRuntimeStatus_whenProviderThrowsUncheckedIoFailure_expectOriginalException()
+      throws IOException {
+    UncheckedIOException failure =
+        new UncheckedIOException(new IOException("provider unavailable"));
+    LocalProcessAppHost host =
+        hostWithStatusObservation(
+            () -> {
+              throw failure;
+            });
+    host.installFromDirectory(stageInstalledApp(SAMPLE_APP_ID));
+
+    UncheckedIOException exception =
+        assertThrows(UncheckedIOException.class, host::listRuntimeStatus);
+
+    assertSame(failure, exception);
+  }
+
+  private LocalProcessAppHost hostWithStatusObservation(Runnable observe) {
+    AppSandboxProvider provider =
+        new AppSandboxProvider() {
+          @Override
+          public String providerName() {
+            return BUBBLEWRAP_PROVIDER_NAME;
+          }
+
+          @Override
+          public boolean supports(AppSandboxPolicy policy) {
+            return true;
+          }
+
+          @Override
+          public AppSandboxStatus inactiveStatus(AppSandboxPolicy policy) {
+            observe.run();
+            return enforcedRestrictedProcessStatus(policy, false);
+          }
+
+          @Override
+          public AppSandboxLaunchPlan prepareLaunch(AppSandboxLaunchContext context) {
+            throw new UnsupportedOperationException("status-only test provider");
+          }
+        };
+    return allowUnsignedHost(
+        Duration.ofSeconds(1), new AppEnv(), new AppSandboxProviders(provider, null, null));
   }
 
   @Test

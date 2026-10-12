@@ -2,6 +2,7 @@ package network.crypta.platform.apphost.runtime;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SeekableByteChannel;
@@ -1427,11 +1428,27 @@ public final class LocalProcessAppHost implements AppHost {
    */
   @Override
   public synchronized List<AppRuntimeStatusSnapshot> listRuntimeStatus() throws IOException {
-    List<AppRuntimeStatusSnapshot> statuses = new ArrayList<>();
-    for (InstalledAppSnapshot installed : listInstalled()) {
-      statuses.add(runtimeStatus(installed.appId()));
+    try {
+      return listInstalled().stream().map(this::runtimeStatusForListing).toList();
+    } catch (RuntimeStatusReadException exception) {
+      throw exception.getCause();
     }
-    return List.copyOf(statuses);
+  }
+
+  private AppRuntimeStatusSnapshot runtimeStatusForListing(InstalledAppSnapshot installed) {
+    try {
+      return runtimeStatus(installed.appId());
+    } catch (IOException exception) {
+      throw new RuntimeStatusReadException(exception);
+    }
+  }
+
+  private static final class RuntimeStatusReadException extends UncheckedIOException {
+    private static final long serialVersionUID = 1L;
+
+    private RuntimeStatusReadException(IOException cause) {
+      super(cause);
+    }
   }
 
   /**
