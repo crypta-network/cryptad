@@ -680,10 +680,10 @@ class ObservedMailClient(mail_demo.Client):
         self.supervisor = supervisor
         super().__init__(*args)
 
-    def post(self, path, parameters, host=False):
+    def post(self, path, parameters, host=False, *, deadline=None):
         self.supervisor.next_operation()
         self.supervisor.remaining(1)
-        return super().post(path, parameters, host)
+        return super().post(path, parameters, host, deadline=deadline)
 
 
 class _UnfollowedRedirect(urllib.request.HTTPRedirectHandler):
@@ -703,7 +703,8 @@ class AppHandle:
         self.session_expires_at = None
         self.worker_identity = None
 
-    def request(self, method, path, parameters=None, *, principal="host", raw=False, headers_override=None):
+    def request(self, method, path, parameters=None, *, principal="host", raw=False,
+                headers_override=None, deadline=None):
         """Only fixed selected app, Mail, app-data and observation routes; no generic proxy."""
         exact = {"/app/node/", "/api/v1/apps", "/api/v1/apps/install", "/api/v1/diagnostics",
                  "/api/v1/mail/command", "/api/v1/mail/result", "/api/v1/audit", "/api/v1/queue", "/api/v1/platform/contract", "/api/v1/operator/support-bundle",
@@ -784,9 +785,12 @@ class AppHandle:
                                      "/api/v1/trust-graph/import-preview-uri"})
         response_timeout = 45 if composed_uri else 25
         try:
-            with absolute_deadline(self.supervisor.remaining(50 if composed_uri else 30)):
+            remaining = self.supervisor.remaining(50 if composed_uri else 30)
+            if deadline is not None:
+                remaining = min(remaining, deadline - time.monotonic())
+            with absolute_deadline(remaining):
                 try:
-                    response = self.opener.open(request, timeout=response_timeout)
+                    response = self.opener.open(request, timeout=min(response_timeout, remaining))
                 except urllib.error.HTTPError as error:
                     response = error
                 with response:

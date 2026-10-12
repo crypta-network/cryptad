@@ -26,6 +26,8 @@ import time
 
 sys.dont_write_bytecode = True
 
+import pr316_mail_runtime_evidence as mail_evidence
+
 INSTALLED = Path('/opt/cryptad-cross-version/current')
 TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 SELECTION = Path('/root/pr314-workload-selection.json')
@@ -46,6 +48,14 @@ READINESS_STAGES = ('start-request', 'fcp-get-node', 'daemon-epoch', 'journal-no
 LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
                        'revocation-running', 'setsid-double-fork',
                        'observer-death', 'none')
+WORKLOAD_GROUPS = (
+    'positive', 'lost-start-response', 'partial-launch', 'stuck-output',
+    'late-child', 'cleanup-race', 'resource-exhaustion', 'output-symlink',
+    'output-fifo', 'output-hardlink', 'output-flood', 'output-replacement',
+    'role-readiness-diagnostic', 'role-boundary', 'authority', 'network-app',
+    'cancellation', 'controller-restart', 'deadline', 'revocation-running',
+    'setsid-double-fork', 'observer-death')
+MAIL_EXECUTION_CLASS = mail_evidence.EXECUTION_CLASS
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective administrator observation budget after the installed startup measurement.
 # Production limits and the retained campaign deadline remain unchanged.
@@ -3663,8 +3673,12 @@ def readiness_deadline(campaign_deadline_ns, started, startup_measurement=False)
     return min(campaign_deadline_ns / 10**9, started + seconds)
 
 
+validate_mail_observation = mail_evidence.validate_guest_observation
+
+
 def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
-                      startup_measurement=False, *, admin_channel=None, workload_group=None):
+                      startup_measurement=False, *, admin_channel=None, workload_group=None,
+                      execution_class=None):
     """Observe controller readiness, then run the selected finite installed path."""
     controller_ready(readiness_deadline(campaign_deadline, startup_begin, startup_measurement))
     if startup_measurement:
@@ -3690,7 +3704,10 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if workload_group in ('lost-start-response', 'partial-launch',
+        if execution_class == MAIL_EXECUTION_CLASS:
+            result = adapter.run_mail_lane(leave_running_for_administrator=True,
+                                           on_start_failure=diagnostic)
+        elif workload_group in ('lost-start-response', 'partial-launch',
                               'stuck-output', 'late-child', 'cleanup-race',
                               'resource-exhaustion',
                               'output-symlink', 'output-fifo', 'output-hardlink',
@@ -4191,20 +4208,17 @@ def retain_volatile(workload, value):
     _write_volatile_bytes(VOLATILE, raw)
 
 
-def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
-            workload_group=None, retired_authority_preparation=False):
-    if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
-        raise ValueError('workload-lifecycle-scenario-invalid')
-    if workload_group not in (None, 'positive', 'lost-start-response',
-                             'partial-launch', 'stuck-output', 'late-child',
-                             'cleanup-race',
-                             'resource-exhaustion',
-                             'output-symlink', 'output-fifo',
-                             'output-hardlink', 'output-flood', 'output-replacement',
-                             'role-readiness-diagnostic', 'role-boundary',
-                             'authority', 'network-app', 'cancellation',
-                             'controller-restart', 'deadline', 'revocation-running',
-                             'setsid-double-fork', 'observer-death') or (
+def _validate_execution_mode(*, startup_measurement, lifecycle_scenario,
+                             workload_group, retired_authority_preparation,
+                             execution_class):
+    if execution_class not in (None, MAIL_EXECUTION_CLASS):
+        raise ValueError('workload-execution-class-invalid')
+    if execution_class is not None:
+        if (startup_measurement or lifecycle_scenario != 'none'
+                or workload_group is not None or retired_authority_preparation):
+            raise ValueError('workload-execution-class-invalid')
+        return
+    if workload_group not in (None, *WORKLOAD_GROUPS) or (
             startup_measurement and workload_group or
             retired_authority_preparation and
             (workload_group != 'role-readiness-diagnostic'
@@ -4220,6 +4234,17 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             and lifecycle_scenario != 'none' or
             workload_group is None and lifecycle_scenario == 'none'):
         raise ValueError('workload-group-lifecycle-invalid')
+
+
+def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
+            workload_group=None, retired_authority_preparation=False,
+            execution_class=None):
+    if lifecycle_scenario not in LIFECYCLE_SCENARIOS:
+        raise ValueError('workload-lifecycle-scenario-invalid')
+    _validate_execution_mode(startup_measurement=startup_measurement,
+        lifecycle_scenario=lifecycle_scenario, workload_group=workload_group,
+        retired_authority_preparation=retired_authority_preparation,
+        execution_class=execution_class)
     if prerequisites():
         raise ValueError('workload-reference-prerequisites-unavailable')
     sys.path.insert(0, str(INSTALLED / 'tools/release-certification/restricted'))
@@ -4247,6 +4272,16 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
     selected = workload.read(SELECTION)
     if set(selected) != {'plan', 'private', 'authorization'}:
         raise ValueError('workload-test-selection-invalid')
+    selected_class = selected['authorization'].get('executionClass')
+    if (execution_class is None and any(key in selected['authorization']
+                                       for key in ('executionClass', 'selectionDigest'))
+            or execution_class is not None and selected_class != execution_class):
+        raise ValueError('workload-test-execution-class-mismatch')
+    if execution_class == MAIL_EXECUTION_CLASS:
+        expected_selection_digest = mail_evidence.authorization_selection_digest(
+            selected['authorization'])
+        if selected['authorization'].get('selectionDigest') != expected_selection_digest:
+            raise ValueError('workload-test-selection-digest-mismatch')
     observer = pwd.getpwnam('cryptad-soak')
     root = Path(selected['private']['root'])
     if (root.parent != Path('/var/lib/cryptad-cross-version/experiments') or root.exists()
@@ -4254,7 +4289,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         raise ValueError('workload-observer-root-not-new')
     workload_installation.install()
     resolver_digest = (prepare_resolver_canary()
-                       if not startup_measurement and workload_group in (None, 'authority')
+                       if execution_class is None and not startup_measurement
+                       and workload_group in (None, 'authority')
                        else None)
     provider_setup = (prepare_provider_canary()
                       if not startup_measurement and workload_group == 'network-app'
@@ -4292,7 +4328,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 'authority' if retired_authority_preparation else workload_group,
                 workload, lambda: _administrator_collector_epoch('preparation'),
                 campaign_deadline, retired=retired_authority_preparation)
-        if not startup_measurement and workload_group in (None, 'positive'):
+        if (execution_class is None and not startup_measurement
+                and workload_group in (None, 'positive')):
             diagnostics['positiveAdministratorBefore'] = (
                 _administrator_collector_epoch('positive'))
         if workload_group == 'lost-start-response':
@@ -4335,7 +4372,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 result = observer_sequence(selected, root, handoff, campaign_deadline,
                                            startup_begin, startup_measurement,
                                            admin_channel=admin_child,
-                                           workload_group=workload_group)
+                                           workload_group=workload_group,
+                                           execution_class=execution_class)
                 child.sendall(json.dumps(result, separators=(',', ':')).encode())
                 child.close()
                 admin_child.close()
@@ -4350,7 +4388,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 os._exit(1)
         child.close()
         admin_child.close()
-        if not startup_measurement and workload_group in (None, 'positive'):
+        if (execution_class is None and not startup_measurement
+                and workload_group in (None, 'positive')):
             diagnostics['positiveObserverEpoch'] = _positive_observer_epoch(
                 pid, observer.pw_uid, campaign_deadline)
         if not startup_measurement and workload_group == 'authority':
@@ -4404,7 +4443,11 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         result = json.loads(raw)
         hostile_secret = _verify_hostile_origin_handoff(
             result, workload_group, sampler, diagnostics)
-        if (not startup_measurement and workload_group in (None, 'positive')
+        if execution_class == MAIL_EXECUTION_CLASS:
+            validate_mail_observation(
+                result, selected['authorization']['selectionDigest'])
+        if (execution_class is None and not startup_measurement
+                and workload_group in (None, 'positive')
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
             raise ValueError('workload-positive-observation-incomplete')
         if (workload_group in ('lost-start-response', 'partial-launch',
@@ -4421,13 +4464,17 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                  or result.get('contentRetrieval') != 'not-executed-group'
                  or result.get('newEpoch') is not False)):
             raise ValueError('workload-group-preparation-incomplete')
-        result.update(identity=identity, runtimePolicy=launcher_policy(),
-                      finiteNativeAcceptance='not-executed-by-this-driver',
-                      campaignDeadlineMonotonicNs=campaign_deadline,
-                      workloadAcceptance=('not-executed-startup-measurement' if startup_measurement
-                          else 'not-executed-role-readiness-measurement'
-                          if workload_group == 'role-readiness-diagnostic'
-                          else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
+        if execution_class == MAIL_EXECUTION_CLASS:
+            result = mail_evidence.attach_guest_context(
+                result, identity, launcher_policy(), campaign_deadline)
+        else:
+            result.update(identity=identity, runtimePolicy=launcher_policy(),
+                          finiteNativeAcceptance='not-executed-by-this-driver',
+                          campaignDeadlineMonotonicNs=campaign_deadline,
+                          workloadAcceptance=('not-executed-startup-measurement' if startup_measurement
+                              else 'not-executed-role-readiness-measurement'
+                              if workload_group == 'role-readiness-diagnostic'
+                              else 'incomplete-hostile-contract-not-executed'), protectedExecutionEnabled=False)
         if not startup_measurement and workload_group == 'lost-start-response':
             try:
                 diagnostics['lostStartResponse'] = complete_lost_start_before_cleanup(
@@ -4437,7 +4484,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['lostStartResponse'] = {'status': 'unavailable-or-unsafe',
                     'exceptionType': type(error).__name__[:128]}
                 raise ValueError('workload-lost-start-verification-failed') from None
-        if not startup_measurement and workload_group is None:
+        if execution_class is None and not startup_measurement and workload_group is None:
             try:
                 diagnostics['runnerControl'] = probe_runner_control(workload, handoff, result)
             except (OSError, ValueError, KeyError, TypeError, IndexError,
@@ -4812,7 +4859,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                     except (OSError, ValueError, KeyError, TypeError, AttributeError):
                         diagnostics['preparationFailureCapture'] = {
                             'status': 'unavailable-or-unsafe'}
-                if not startup_measurement and workload_group in (None, 'positive'):
+                if (execution_class is None and not startup_measurement
+                        and workload_group in (None, 'positive')):
                     diagnostics['positiveAdministratorAfter'] = (
                         _administrator_collector_epoch('positive'))
                 if cancellation is not None:
@@ -4858,6 +4906,11 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                         and volatile['sentinel']['status'] != 'matched'):
                     raise ValueError('workload-retained-sentinel-not-established')
     # No terminal result can exist before owned controller/role/network cleanup succeeds.
+    if execution_class == MAIL_EXECUTION_CLASS:
+        if diagnostics['cleanup'] != 'completed':
+            raise ValueError('workload-mail-cleanup-incomplete')
+        result['installedMailFlowObserved'] = True
+        result['cleanupState'] = 'completed'
     if retired_authority_preparation:
         if (diagnostics['cleanup'] != 'completed'
                 or result.get('groupPreparation') != 'role-readiness-diagnostic'
@@ -4892,12 +4945,16 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             'senderProcessEpoch': sender['processEpoch'],
             'stopReceiptDigests': receipts}, create=True)
     workload.write(REPORT, result, create=True)
-    return {'status': ('startup-measurement-executed' if startup_measurement else
+    return {'status': ('mail-runtime-sequence-executed'
+                       if execution_class == MAIL_EXECUTION_CLASS else
+                       'startup-measurement-executed' if startup_measurement else
                        'role-readiness-measurement-executed'
                        if workload_group == 'role-readiness-diagnostic' else
                        'group-sequence-executed' if workload_group not in (None, 'positive') else
                        'positive-sequence-executed'),
-            'workloadAcceptance': ('not-executed' if workload_group == 'role-readiness-diagnostic'
+            'workloadAcceptance': ('incomplete'
+                                   if execution_class == MAIL_EXECUTION_CLASS else
+                                   'not-executed' if workload_group == 'role-readiness-diagnostic'
                                    else 'incomplete'),
             'protectedExecutionEnabled': False}
 
@@ -4907,20 +4964,8 @@ def main():
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
-                                                    'partial-launch', 'stuck-output', 'late-child',
-                                                    'cleanup-race',
-                                                    'resource-exhaustion',
-                                                    'output-symlink', 'output-fifo',
-                                                    'output-hardlink', 'output-flood',
-                                                    'output-replacement',
-                                                    'role-readiness-diagnostic',
-                                                    'role-boundary', 'authority',
-                                                    'network-app', 'cancellation',
-                                                    'controller-restart', 'deadline',
-                                                    'revocation-running',
-                                                    'setsid-double-fork',
-                                                    'observer-death'))
+    parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,))
+    parser.add_argument('--workload-group', choices=WORKLOAD_GROUPS)
     parser.add_argument('--retired-authority-preparation', action='store_true')
     args = parser.parse_args()
     reasons = prerequisites()
@@ -4933,7 +4978,8 @@ def main():
     print(json.dumps(execute(lifecycle_scenario=args.lifecycle_scenario,
                              workload_group=args.workload_group,
                              retired_authority_preparation=
-                                 args.retired_authority_preparation), sort_keys=True))
+                                 args.retired_authority_preparation,
+                             execution_class=args.execution_class), sort_keys=True))
     return 0
 
 

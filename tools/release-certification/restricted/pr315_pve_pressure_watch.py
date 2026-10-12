@@ -24,7 +24,11 @@ from pr315_pve_host_admission import TASK_ROOT, _pressure
 CT_ROOT = Path('/work/pr315-task')
 GIB = 1024 ** 3
 SAMPLE_SECONDS = 2
-MAX_SECONDS = 4500
+# Cover the longest fixed PR-316 lifecycle: prelaunch, boot, input transfer,
+# the 4,200-second guest command, bounded evidence collection and shutdown.
+MAX_SECONDS = 5700
+PRELAUNCH_SECONDS = 30
+LAUNCH_HEADROOM_SECONDS = 5
 LIMITS = {'physical': 5, 'swap': 2, 'memoryPressure': 15, 'ioPressure': 15}
 
 
@@ -60,6 +64,11 @@ def step(counters: dict, observation: dict) -> tuple[dict, str | None]:
     updated = {name: counters[name] + 1 if conditions[name] else 0 for name in LIMITS}
     action = next((name for name in LIMITS if updated[name] >= LIMITS[name]), None)
     return updated, action
+
+
+def prelaunch_expired(started: float, seen: bool, observed: float) -> bool:
+    """Close an authenticated watcher that never observes its expected QEMU launch."""
+    return seen is False and observed - started >= PRELAUNCH_SECONDS
 
 
 def _start_ticks(pid: int) -> int:
@@ -209,6 +218,9 @@ def watch(suite: str, source_commit: str) -> int:
                     break
             elif seen and absent_since is None:
                 absent_since = time.monotonic()
+            if prelaunch_expired(started, seen, time.monotonic()):
+                action = 'stopped-before-launch'
+                break
             try:
                 observed = sample()
             except (OSError, ValueError):
@@ -302,6 +314,24 @@ def wait_ready(suite: str, source_commit: str) -> dict:
             if remaining <= 0:
                 raise ValueError('pr315-pressure-watch-ready-unavailable') from None
             time.sleep(min(.05, remaining))
+
+
+def verify_launch_ready(suite: str, source_commit: str) -> dict:
+    """Require a fresh active watcher with headroom for the immediate QEMU launch."""
+    ready = verify_ready(suite, source_commit)
+    age = time.monotonic_ns() - ready['observedMonotonicNs']
+    if (age < 0 or age >
+            (PRELAUNCH_SECONDS - LAUNCH_HEADROOM_SECONDS) * 1_000_000_000):
+        raise ValueError('pr315-pressure-watch-launch-ready-expired')
+    try:
+        _ct_record(Path('/work/pr315-task/host-monitor') /
+                   (suite + '.finished.json'), suite,
+                   'pr315-pve-watch-finished')
+    except FileNotFoundError:
+        return ready
+    except (OSError, ValueError):
+        raise ValueError('pr315-pressure-watch-launch-ready-invalid') from None
+    raise ValueError('pr315-pressure-watch-launch-already-finished')
 
 
 def verify_finished(suite: str, source_commit: str, ready: dict) -> dict:

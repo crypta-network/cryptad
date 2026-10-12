@@ -20,6 +20,13 @@ class PveHostAdmissionTest(unittest.TestCase):
             'ctSwapCurrentBytes': 10 * admission.GIB,
         }
 
+    def test_launch_receipt_name_is_distinct_and_phase_is_closed(self):
+        self.assertEqual('suite-1.json', admission.receipt_name('suite-1'))
+        self.assertEqual('suite-1-launch.json',
+                         admission.receipt_name('suite-1', 'launch'))
+        with self.assertRaisesRegex(ValueError, 'phase-invalid'):
+            admission.receipt_name('suite-1', 'other')
+
     def test_swap_covers_shortfall_after_physical_reserve_at_exact_reserves(self):
         self.assertIsNone(admission.admission_reason(self.observed))
         for key, expected in (

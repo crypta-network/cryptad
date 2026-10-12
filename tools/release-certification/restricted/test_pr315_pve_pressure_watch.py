@@ -10,6 +10,14 @@ import pr315_pve_pressure_watch as watch
 
 
 class PressureWatchTest(unittest.TestCase):
+    def test_watch_deadline_includes_the_pr316_launch_lifecycle(self):
+        self.assertEqual(5700, watch.MAX_SECONDS)
+
+    def test_prelaunch_grace_closes_only_an_unseen_qemu(self):
+        self.assertFalse(watch.prelaunch_expired(10, False, 39.999))
+        self.assertTrue(watch.prelaunch_expired(10, False, 40))
+        self.assertFalse(watch.prelaunch_expired(10, True, 1000))
+
     def test_receipt_is_complete_and_readable_before_publication(self):
         with tempfile.TemporaryDirectory() as directory:
             receipt = Path(directory) / 'suite-111.finished.json'
@@ -66,6 +74,28 @@ class PressureWatchTest(unittest.TestCase):
                 patch.object(watch.time, 'monotonic', side_effect=[0, 5]):
             with self.assertRaisesRegex(ValueError, 'ready-unavailable'):
                 watch.wait_ready('suite-111', 'a' * 40)
+
+    def test_launch_ready_requires_headroom_and_no_finished_receipt(self):
+        ready = {'observedMonotonicNs': 100}
+        maximum_age = (watch.PRELAUNCH_SECONDS -
+                       watch.LAUNCH_HEADROOM_SECONDS) * 1_000_000_000
+        with patch.object(watch, 'verify_ready', return_value=ready), \
+                patch.object(watch.time, 'monotonic_ns',
+                             return_value=100 + maximum_age), \
+                patch.object(watch, '_ct_record',
+                             side_effect=FileNotFoundError()):
+            self.assertEqual(ready, watch.verify_launch_ready(
+                'suite-111', 'a' * 40))
+        with patch.object(watch, 'verify_ready', return_value=ready), \
+                patch.object(watch.time, 'monotonic_ns',
+                             return_value=101 + maximum_age), \
+                self.assertRaisesRegex(ValueError, 'launch-ready-expired'):
+            watch.verify_launch_ready('suite-111', 'a' * 40)
+        with patch.object(watch, 'verify_ready', return_value=ready), \
+                patch.object(watch.time, 'monotonic_ns', return_value=100), \
+                patch.object(watch, '_ct_record', return_value={}), \
+                self.assertRaisesRegex(ValueError, 'launch-already-finished'):
+            watch.verify_launch_ready('suite-111', 'a' * 40)
 
     def test_prelaunch_stop_requires_matching_ready_and_no_qemu(self):
         source = 'a' * 40

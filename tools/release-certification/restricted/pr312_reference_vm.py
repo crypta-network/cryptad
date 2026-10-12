@@ -30,6 +30,8 @@ PRODUCTS = ('build/cryptad-dist', 'platform-devtools/build/install/crypta-app',
 CPU_MODEL = 'qemu64'
 ACCELERATOR = 'tcg,thread=multi'
 PROFILES = {'tcg-multi': 'tcg,thread=multi', 'tcg-single': 'tcg,thread=single'}
+MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
+MAIL_PRIVATE_MAX_BYTES = 512 * 1024
 GUEST_STAGES = frozenset(('installation', 'installation-export',
     'dependency-profile-measurement', 'installation-publication', 'installed-profile-verification',
     'production-test-kit-separation', 'socket-listening', 'production-bootstrap-readiness',
@@ -322,8 +324,11 @@ def workload_guest_command(args):
     """One fixed administrator-kit invocation; no arbitrary command or shell selection."""
     scenario = getattr(args, 'lifecycle_scenario', 'cancellation')
     workload_group = getattr(args, 'workload_group', None)
+    execution_class = getattr(args, 'execution_class', None)
+    mail_execution = execution_class == MAIL_EXECUTION_CLASS
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
             or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
+            or execution_class not in (None, MAIL_EXECUTION_CLASS)
             or scenario not in ('cancellation', 'controller-restart', 'deadline',
                                 'revocation-running', 'setsid-double-fork',
                                 'observer-death', 'none')
@@ -339,15 +344,18 @@ def workload_guest_command(args):
                                       'controller-restart', 'deadline',
                                       'revocation-running', 'setsid-double-fork',
                                       'observer-death')
-            or (workload_group in ('cancellation', 'controller-restart', 'deadline',
+            or mail_execution and (scenario != 'none' or workload_group is not None
+                or getattr(args, 'startup_measurement', False)
+                or getattr(args, 'retired_authority_preparation', False))
+            or not mail_execution and (workload_group in ('cancellation', 'controller-restart', 'deadline',
                                    'revocation-running', 'setsid-double-fork',
                                    'observer-death')
                 and scenario != workload_group)
-            or (workload_group not in (None, 'cancellation', 'controller-restart',
+            or not mail_execution and (workload_group not in (None, 'cancellation', 'controller-restart',
                                       'deadline', 'revocation-running',
                                       'setsid-double-fork', 'observer-death')
                 and scenario != 'none')
-            or (workload_group is None and scenario == 'none')
+            or not mail_execution and (workload_group is None and scenario == 'none')
             or (workload_group is not None and getattr(args, 'startup_measurement', False))
             or (getattr(args, 'retired_authority_preparation', False)
                 and workload_group != 'role-readiness-diagnostic')):
@@ -357,6 +365,7 @@ def workload_guest_command(args):
             + args.fixture_manifest_digest + ' --product-source-commit '
             + args.product_source_commit
             + ' --lifecycle-scenario ' + scenario
+            + (' --execution-class ' + execution_class if execution_class is not None else '')
             + (' --workload-group ' + workload_group if workload_group is not None else '')
             + (' --retired-authority-preparation'
                if getattr(args, 'retired_authority_preparation', False) else '')
@@ -364,14 +373,19 @@ def workload_guest_command(args):
             + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
 
 
-def run(args):
+def run(args, *, before_guest_launch=None):
     global ACCELERATOR
+    if before_guest_launch is not None and not callable(before_guest_launch):
+        raise ValueError('reference-prelaunch-callback-invalid')
     selected_profile = getattr(args, 'profile', 'tcg-multi')
     if selected_profile not in PROFILES:
         raise ValueError('reference-profile-invalid')
     ACCELERATOR = PROFILES[selected_profile]
     if getattr(os, 'geteuid', lambda: 0)() == 0:
         raise ValueError('reference-unprivileged-host-required')
+    if getattr(args, 'mode', None) == 'workload-positive':
+        # Reject mixed PR-315/PR-316 selections before allocating an attempt or guest disk.
+        workload_guest_command(args)
     attempt = args.attempt.absolute()
     if any(character in str(attempt) for character in (',', '\n', '\r', '\x00')):
         raise ValueError('reference-output-path-invalid')
@@ -382,7 +396,9 @@ def run(args):
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
     if args.mode == 'workload-positive':
-        report['workloadPurpose'] = ('startup-measurement' if getattr(args, 'startup_measurement', False)
+        report['workloadPurpose'] = ('mail-runtime' if getattr(args, 'execution_class', None) ==
+                                     MAIL_EXECUTION_CLASS
+                                     else 'startup-measurement' if getattr(args, 'startup_measurement', False)
                                      else 'role-readiness-measurement'
                                      if getattr(args, 'workload_group', None) == 'role-readiness-diagnostic'
                                      else 'selected-group'
@@ -478,6 +494,8 @@ def run(args):
         arguments = qemu_arguments(root, attempt, prepared, seed, args.port)
         arguments[0] = str(qemu)
         boot.record_private_inputs(attempt, emulatorArguments=arguments)
+        if before_guest_launch is not None:
+            before_guest_launch()
         process = subprocess.Popen(boot.invocation(arguments, env),
                                    env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
         report.update(executed=True, guestStopped=False, stage='guest-boot')
@@ -535,7 +553,9 @@ def run(args):
                        + (' --prepared-fixtures /root/cryptad/build/pr313-inputs --fixture-manifest-digest '
                           + args.fixture_manifest_digest if args.prepared_fixtures is not None else '')
                        + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
-        report['stage'] = 'installed-' + args.mode
+        report['stage'] = ('installed-pr316-mail-runtime'
+                           if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
+                           else 'installed-' + args.mode)
         result = subprocess.run([*ssh, 'bash -s'], input=script.encode(), stdout=log, stderr=log,
                                 timeout=args.timeout, env=boot.ENVIRONMENT)
         report['guestExitCode'] = result.returncode
@@ -576,6 +596,10 @@ print(json.dumps(records))
                 ('fixture-commands.private.json', '/root/pr313-fixture-commands.private.json', 262144),
                 ('pr313-observation.private.json', '/root/pr313-observation.private.json', 65536),
                 ('pr314-workload-observation.private.json', '/root/pr314-workload-observation.private.json', 65536),
+                ('pr316-selection.private.json', '/root/pr314-workload-selection.json', 131072),
+                ('pr316-mail-flow.private.json',
+                 '/var/lib/cryptad-cross-version/experiments/pr316-installed-mail-runtime/'
+                 'pr316-mail-flow.private.json', MAIL_PRIVATE_MAX_BYTES),
                 ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
                 ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
                 ('pr315-retired-authority.private.json', '/root/pr315-retired-authority.private.json', 8192),

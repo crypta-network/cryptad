@@ -126,6 +126,25 @@ class ReferenceDriverTest(unittest.TestCase):
             product_source_commit='b' * 40, lifecycle_scenario='; unselected-command')
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
             driver.workload_guest_command(args)
+
+    def test_fixed_mail_execution_command_is_distinct_from_pr315_groups(self):
+        args = SimpleNamespace(fixture_manifest_digest='a' * 64,
+            product_source_commit='b' * 40, lifecycle_scenario='none',
+            workload_group=None, startup_measurement=False,
+            retired_authority_preparation=False,
+            execution_class=driver.MAIL_EXECUTION_CLASS)
+        command = driver.workload_guest_command(args)
+        self.assertIn('--execution-class ' + driver.MAIL_EXECUTION_CLASS, command)
+        self.assertNotIn('--workload-group', command)
+        for change in ({'workload_group': 'positive'},
+                       {'lifecycle_scenario': 'cancellation'},
+                       {'startup_measurement': True},
+                       {'retired_authority_preparation': True},
+                       {'execution_class': 'unknown'}):
+            with self.subTest(change=change), self.assertRaisesRegex(
+                    ValueError, 'command-identity-invalid'):
+                driver.workload_guest_command(SimpleNamespace(**{
+                    **vars(args), **change}))
         args = SimpleNamespace(fixture_manifest_digest='a' * 64,
             product_source_commit='b' * 40, workload_group='output-socket')
         with self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
@@ -180,6 +199,19 @@ class ReferenceDriverTest(unittest.TestCase):
         mkdir.assert_not_called()
         command.assert_not_called()
         guest.assert_not_called()
+
+    def test_invalid_mail_selection_is_rejected_before_attempt_or_guest_disk(self):
+        args = SimpleNamespace(profile='tcg-multi', mode='workload-positive',
+            fixture_manifest_digest='a' * 64, product_source_commit='b' * 40,
+            execution_class=driver.MAIL_EXECUTION_CLASS,
+            lifecycle_scenario='cancellation', workload_group=None,
+            startup_measurement=False, retired_authority_preparation=False,
+            attempt=Path('/tmp/pr316-invalid-selection-never-created'))
+        with patch.object(driver.os, 'geteuid', return_value=501), \
+                patch.object(driver.Path, 'mkdir') as mkdir, \
+                self.assertRaisesRegex(ValueError, 'command-identity-invalid'):
+            driver.run(args)
+        mkdir.assert_not_called()
 
     def test_attempt_option_delimiters_are_rejected_before_files_or_helpers(self):
         for suffix in (',file=/other', '\ninvalid', '\rinvalid', '\x00invalid'):

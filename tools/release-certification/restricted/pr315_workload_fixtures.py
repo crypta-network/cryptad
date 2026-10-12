@@ -40,6 +40,8 @@ FIXED_GUEST_ROOT = Path('/root/cryptad/build/pr315-inputs')
 MAX_BYTES = 2 * 1024**3
 MAX_FILES = 32768
 CLASSIFICATION = 'synthetic-source-build-not-original-authority'
+MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
+MAIL_EXPERIMENT = 'pr316-installed-mail-runtime'
 IMPLEMENTATION_DOMAIN = b'pr315-daemon-class-implementation-v1\0'
 GENERATED_VERSION = 'network/crypta/node/Version.class'
 MAX_DAEMON_BYTES = 512 * 1024**2
@@ -459,15 +461,18 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
     return value
 
 
-def materialize_selection(root, source, expected_manifest_digest=None, product_source_commit=None):
-    """Bind only the fixed copied guest inputs to the currently installed helper closure."""
+def _materialize_selection(root, source, expected_manifest_digest, product_source_commit,
+                           *, execution_class=None):
+    """Bind one fixed copied-guest selection to the installed helper closure."""
     root = Path(root)
     if root != FIXED_GUEST_ROOT or os.geteuid() != 0:
         raise ValueError('workload-fixture-fixed-guest-root-required')
     if expected_manifest_digest is None or product_source_commit is None:
         raise ValueError('workload-fixture-expected-binding-required')
+    if execution_class not in (None, MAIL_EXECUTION_CLASS):
+        raise ValueError('workload-fixture-execution-class-invalid')
     selected = verify(root, expected_manifest_digest, source, product_source_commit)
-    experiment = 'pr315-installed-workload'
+    experiment = MAIL_EXPERIMENT if execution_class == MAIL_EXECUTION_CLASS else 'pr315-installed-workload'
     private = {'root': '/var/lib/cryptad-cross-version/experiments/' + experiment, 'nodes': {}}
     nodes = []
     for role in ROLES:
@@ -475,7 +480,8 @@ def materialize_selection(root, source, expected_manifest_digest=None, product_s
         product = selected['products'][product_name]
         apps = [{'appId': 'mail-prototype', 'bundlePath': str(root / 'mail.zip'),
                  'bundleDigest': selected['mailDigest']}] if role.startswith('candidate-') else []
-        if role == 'candidate-sender' and selected.get('schemaVersion', 3) == 4:
+        if (execution_class is None and role == 'candidate-sender'
+                and selected.get('schemaVersion', 3) == 4):
             apps.append({'appId': 'pr315-probe', 'bundlePath': str(root / 'probe.zip'),
                          'bundleDigest': selected['probeDigest']})
         private['nodes'][role] = {'archivePath': str(root / (product_name + '.tar.gz')),
@@ -494,9 +500,29 @@ def materialize_selection(root, source, expected_manifest_digest=None, product_s
                    'maxEvents': 10000}, 'requiredScenarios': sorted(evidence.SCENARIOS),
         'producer': runtime.runner_identity(), 'nodes': nodes}
     evidence.validate_plan(plan)
-    return {'plan': plan, 'private': private, 'authorization': {'syntheticContent': True,
+    authorization = {'syntheticContent': True,
         'experimentId': experiment, 'root': private['root'], 'planDigest': runtime.canonical_digest(plan),
-        'maxSeconds': selected['maxSeconds'], 'maxOperations': selected['maxOperations']}}
+        'maxSeconds': selected['maxSeconds'], 'maxOperations': selected['maxOperations']}
+    if execution_class is not None:
+        authorization['executionClass'] = execution_class
+        authorization['selectionDigest'] = runtime.canonical_digest({
+            'executionClass': execution_class,
+            'planDigest': authorization['planDigest']})
+    return {'plan': plan, 'private': private, 'authorization': authorization}
+
+
+def materialize_selection(root, source, expected_manifest_digest=None, product_source_commit=None):
+    """Bind the historical PR-315 copied-guest selection without changing its schema."""
+    return _materialize_selection(root, source, expected_manifest_digest,
+                                  product_source_commit)
+
+
+def materialize_mail_selection(root, source, expected_manifest_digest=None,
+                               product_source_commit=None):
+    """Bind the separate PR-316 Mail execution class before guest mutation."""
+    return _materialize_selection(root, source, expected_manifest_digest,
+                                  product_source_commit,
+                                  execution_class=MAIL_EXECUTION_CLASS)
 
 
 def main():

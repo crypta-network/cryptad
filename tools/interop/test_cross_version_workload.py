@@ -863,10 +863,240 @@ class ObserverPolicyTests(unittest.TestCase):
             with self.subTest(target=target), self.assertRaises(workload.runtime.RuntimeFailure):
                 opener.open(workload.runtime.urllib.request.Request(target))
 
-    def test_historical_mail_client_is_not_a_fallback(self):
-        supervisor = types.SimpleNamespace(private={'nodes': {'candidate-sender': {'httpPort': 19402}}})
-        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'consumer-adapter-unsupported'):
-            workload.InstalledAppHandle(supervisor, 'candidate-sender').mail_client()
+    def test_installed_mail_client_uses_verified_handle_context(self):
+        supervisor = types.SimpleNamespace(
+            private={'nodes': {'candidate-sender': {'httpPort': 19402}}},
+            nodes={'candidate-sender': dict(EPOCH)})
+        app = workload.InstalledAppHandle(supervisor, 'candidate-sender')
+        worker = {'hostPid': 123, 'startTicks': 456}
+        context = {**EPOCH, 'appId': 'mail-prototype', 'worker': worker,
+                   'origin': 'http://127.0.0.1:23457', 'session': 'session',
+                   'sessionExpiresAt': 123456}
+        def refresh():
+            app.origin, app.session, app.session_expires_at = (
+                'http://127.0.0.1:23457', 'session', 123456)
+            return app
+        with mock.patch.object(app, 'observe_worker', return_value=worker) as observed, \
+                mock.patch.object(app, 'refresh_session', side_effect=refresh) as refreshed, \
+                mock.patch.object(app, 'mail_context', return_value=context):
+            client = app.mail_client()
+        self.assertIsInstance(client, workload.InstalledMailClient)
+        self.assertIs(app, client.handle)
+        self.assertIsInstance(client.transport, workload._InstalledRoleMailTransport)
+        observed.assert_called_once_with()
+        refreshed.assert_called_once_with()
+
+    def test_identical_installed_mail_urls_stay_bound_to_distinct_roles(self):
+        calls = []
+
+        class Response:
+            status = 200
+            headers = {}
+
+            def __init__(self, role):
+                self.role = role
+
+            def __enter__(self):
+                calls.append(self.role)
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self, _limit):
+                return b'{"mail":{"requestId":"fixture"}}'
+
+        supervisor = types.SimpleNamespace(
+            nodes={role: dict(EPOCH) for role in ('candidate-sender', 'candidate-recipient')},
+            remaining=lambda limit: limit, next_operation=mock.Mock())
+        for role in ('candidate-sender', 'candidate-recipient'):
+            handle = types.SimpleNamespace(
+                supervisor=supervisor, role=role,
+                api='http://127.0.0.1:19402/api/v1',
+                origin='http://127.0.0.1:19402', session='session',
+                session_expires_at=1,
+                opener=types.SimpleNamespace(open=lambda *_args, role=role, **_kwargs: Response(role)))
+            context = {**EPOCH, 'worker': {}, 'appId': 'mail-prototype',
+                       'origin': 'http://127.0.0.1:19402', 'session': 'session',
+                       'sessionExpiresAt': 1}
+            raw = workload._InstalledRoleMailTransport(handle, context).request(
+                '/mail/command', b'command=status', {}, time.monotonic() + 5)
+            self.assertIn(b'requestId', raw)
+        self.assertEqual(['candidate-sender', 'candidate-recipient'], calls)
+
+    def test_installed_mail_transport_rejects_paths_status_and_epoch_drift(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.status = 302
+        response.headers = {}
+        response.read.return_value = b'{"mail":{"requestId":"looks-valid"}}'
+        handle = types.SimpleNamespace(
+            supervisor=types.SimpleNamespace(
+                nodes={'candidate-sender': dict(EPOCH)}, remaining=lambda limit: limit,
+                next_operation=mock.Mock()),
+            role='candidate-sender', api='http://127.0.0.1:19402/api/v1',
+            origin='http://127.0.0.1:19402', session='session', session_expires_at=1,
+            opener=types.SimpleNamespace(open=mock.Mock(return_value=response)))
+        context = {**EPOCH, 'worker': {}, 'appId': 'mail-prototype',
+                   'origin': 'http://127.0.0.1:19402', 'session': 'session',
+                   'sessionExpiresAt': 1}
+        transport = workload._InstalledRoleMailTransport(handle, context)
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'path-not-approved'):
+            transport.request('/queue', b'', {}, time.monotonic() + 5)
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'http-status'):
+            transport.request('/mail/command', b'', {}, time.monotonic() + 5)
+        response.status = 200
+        response.headers = {'Content-Length': '999'}
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'response-framing'):
+            transport.request('/mail/result', b'', {}, time.monotonic() + 5)
+        handle.supervisor.nodes['candidate-sender']['generation'] = 'changed'
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'context-changed'):
+            transport.request('/mail/result', b'', {}, time.monotonic() + 5)
+
+    def test_fixed_socket_http_connection_forbids_implicit_reconnect(self):
+        connection = workload._FixedSocketHttpConnection('127.0.0.1', 19402)
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure, 'reconnect-forbidden'), \
+                mock.patch.object(workload.socket, 'create_connection') as direct:
+            connection.connect()
+        direct.assert_not_called()
+
+    def test_mail_canary_scan_covers_both_roles_and_fixed_collected_surfaces(self):
+        handles = {}
+        for role in ('candidate-sender', 'candidate-recipient'):
+            handles[(role, 'mail-prototype')] = types.SimpleNamespace(
+                request=mock.Mock(return_value=(200, b'{"safe":true}')))
+        observed = workload._scan_mail_canaries(handles, ('plain-canary', 'reply-canary'))
+        self.assertEqual(10, len(observed))
+        self.assertTrue(all(observed.values()))
+        self.assertTrue(all(handle.request.call_count == 5
+                            for handle in handles.values()))
+        handles[('candidate-recipient', 'mail-prototype')].request.return_value = (
+            200, b'plain-canary')
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                    'canary-surface-failed'):
+            workload._scan_mail_canaries(handles, ('plain-canary', 'reply-canary'))
+
+    def test_mail_private_writer_accepts_full_window_evidence_bound(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            value = {'retryEvidence': 'x' * 65536}
+
+            workload._save_mail_private(root, value)
+
+            retained = root / workload.MAIL_PRIVATE_FILE
+            self.assertGreater(retained.stat().st_size, 65536)
+            self.assertLessEqual(retained.stat().st_size,
+                                 workload.MAIL_PRIVATE_MAX_BYTES)
+        with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(
+                workload.runtime.RuntimeFailure, 'mail-private-evidence-size'):
+            workload._save_mail_private(Path(temporary), {
+                'retryEvidence': 'x' * workload.MAIL_PRIVATE_MAX_BYTES})
+
+    def test_mail_lane_is_distinct_fail_closed_projection_with_terminal_cleanup(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.plan = {'profile': 'fixture',
+                        'experimentId': workload.MAIL_EXPERIMENT}
+        adapter.private = {'root':
+            '/var/lib/cryptad-cross-version/experiments/' + workload.MAIL_EXPERIMENT,
+            'nodes': {role: {'apps': ([{'appId': 'mail-prototype'}]
+                                      if role.startswith('candidate-') else [])}
+                      for role in workload.runtime.ROLES}}
+        plan_digest = workload.runtime.canonical_digest(adapter.plan)
+        selection_digest = workload.runtime.canonical_digest({
+            'executionClass': workload.MAIL_EXECUTION_CLASS,
+            'planDigest': plan_digest})
+        adapter.authorization = {
+            'executionClass': workload.MAIL_EXECUTION_CLASS,
+            'planDigest': plan_digest, 'selectionDigest': selection_digest}
+        adapter.root = Path('/private/offline-fixture')
+        adapter.nodes = {role: dict(EPOCH) for role in workload.runtime.ROLES}
+        adapter.deadline = time.monotonic() + 1200
+        adapter.start = mock.Mock()
+        adapter.connect = mock.Mock()
+        adapter.capture_probe_target_roster = mock.Mock()
+        adapter.provision_apps = mock.Mock()
+        adapter.restart = mock.Mock()
+        adapter.wait_restarted_role_peer = mock.Mock()
+        adapter.cleanup = mock.Mock(return_value='complete')
+        adapter.remaining = mock.Mock(side_effect=lambda limit=180: limit)
+        alice, bob = mock.Mock(), mock.Mock()
+        bob.context = {'worker': {'hostPid': 123}}
+        bob.command.return_value = {'status': 'duplicate'}
+        adapter.apps = {
+            ('candidate-sender', 'mail-prototype'):
+                types.SimpleNamespace(mail_client=mock.Mock(return_value=alice)),
+            ('candidate-recipient', 'mail-prototype'):
+                types.SimpleNamespace(mail_client=mock.Mock(return_value=bob))}
+
+        flow_names = (
+            'sender-inserted', 'recipient-accepted', 'recipient-read',
+            'wrong-recipient', 'duplicate-before-worker-restart')
+
+        def flow(_alice, _bob, _timeout, _restart, **options):
+            for name in flow_names:
+                options['observer']({'kind': 'mail-flow', 'name': name,
+                                     'observedMonotonicNs': time.monotonic_ns()})
+            options['before_restart']()
+            bob.context = {'worker': {'hostPid': 999}}
+            options['after_worker_rebind'](bob)
+            for name in ('worker-restart', 'duplicate-after-worker-restart'):
+                options['observer']({'kind': 'mail-flow', 'name': name,
+                                     'observedMonotonicNs': time.monotonic_ns()})
+            options['after_worker_restart'](bob, 'CHK@private-reference')
+            for name in ('recipient-inserted', 'sender-accepted', 'sender-read',
+                         'final-status'):
+                options['observer']({'kind': 'mail-flow', 'name': name,
+                                     'observedMonotonicNs': time.monotonic_ns()})
+            return {'insertFetchDecrypt': 'observed', 'wrongRecipient': 'observed',
+                    'duplicateBeforeRestart': 'observed',
+                    'duplicateAfterRestart': 'observed', 'duplicate': 'observed',
+                    'reply': 'observed', 'restart': 'observed',
+                    'independentStoresAndSignedInstalls': 'operator-attested',
+                    'securityReview': 'unobserved', 'releaseEligible': False,
+                    'overall': 'observed-demo'}
+
+        context = {'role': 'candidate-recipient'}
+        direction = {'operation': 'a' * 32, 'queueIdentifier': 'queue',
+                     'reference': 'CHK@private-reference', 'messageId': 'b' * 64,
+                     'outboxMembershipObserved': True,
+                     'inboxMembershipObserved': True}
+        with mock.patch.object(workload.runtime.mail_demo, 'run_flow', side_effect=flow), \
+                mock.patch.object(workload, '_mail_context_evidence', return_value=context), \
+                mock.patch.object(workload, '_mail_direction', return_value=direction), \
+                mock.patch.object(workload, '_scan_mail_canaries',
+                                  return_value={'surface': True}) as scanned, \
+                mock.patch.object(workload, '_save_mail_private') as saved:
+            result = adapter.run_mail_lane(leave_running_for_administrator=True)
+        self.assertEqual('pr316-installed-mail-runtime-observation', result['kind'])
+        self.assertFalse(result['installedMailFlowObserved'])
+        self.assertTrue(result['observerMailFlowObserved'])
+        self.assertEqual('administrator-required', result['cleanupState'])
+        self.assertFalse(result['installedWorkloadAcceptanceSatisfied'])
+        self.assertFalse(result['finiteNativeAcceptance'])
+        self.assertFalse(result['phaseComplete'])
+        self.assertFalse(result['historicalPr315AcceptanceTransferred'])
+        self.assertFalse(result['releaseEligible'])
+        self.assertTrue(result['privacyCanarySurfacesObserved'])
+        self.assertNotIn('CHK@private-reference', str(result))
+        self.assertEqual([mock.call(role) for role in workload.runtime.ROLES],
+                         adapter.start.call_args_list)
+        adapter.restart.assert_called_once_with('candidate-recipient')
+        adapter.wait_restarted_role_peer.assert_called_once_with('candidate-recipient')
+        bob.rebind.assert_called_once_with()
+        saved.assert_called_once()
+        self.assertEqual(2, scanned.call_count)
+        adapter.cleanup.assert_not_called()
+
+    def test_mail_lane_rejects_unbound_execution_class_before_start(self):
+        adapter = object.__new__(workload.InstalledWorkloadAdapter)
+        adapter.plan = {'profile': 'fixture'}
+        adapter.authorization = {'executionClass': workload.MAIL_EXECUTION_CLASS,
+                                 'planDigest': workload.runtime.canonical_digest(adapter.plan)}
+        adapter.start = mock.Mock()
+        with self.assertRaisesRegex(workload.runtime.RuntimeFailure,
+                                    'mail-execution-class-unbound'):
+            adapter.run_mail_lane()
+        adapter.start.assert_not_called()
 
     def test_restart_preserves_deadline_and_rejects_reused_invocation(self):
         adapter = object.__new__(workload.InstalledWorkloadAdapter)

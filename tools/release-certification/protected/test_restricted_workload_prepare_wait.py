@@ -1,5 +1,7 @@
 """Real direct-child wait regressions; no privileged or installed execution."""
 import os
+import hashlib
+import json
 from pathlib import Path
 import signal
 import tempfile
@@ -9,6 +11,40 @@ from unittest.mock import patch
 
 import restricted_workload as workload
 import restricted_workload_prepare as preparation
+
+
+class ExecutionSelectionTest(unittest.TestCase):
+    def test_legacy_selection_requires_absent_execution_class(self):
+        plan = {'experimentId': 'pr315-installed-workload'}
+        private = {'root': '/var/lib/cryptad-cross-version/experiments/pr315-installed-workload'}
+        authorization = {'experimentId': plan['experimentId'], 'root': private['root']}
+        self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+        self.assertFalse(preparation.valid_execution_selection(
+            plan, private, {**authorization, 'executionClass': None}))
+        self.assertFalse(preparation.valid_execution_selection(
+            plan, private, {**authorization, 'selectionDigest': 'sha256:' + 'a' * 64}))
+
+    def test_mail_selection_binds_class_experiment_and_root(self):
+        root = '/var/lib/cryptad-cross-version/experiments/' + preparation.MAIL_EXPERIMENT
+        plan = {'experimentId': preparation.MAIL_EXPERIMENT}
+        private = {'root': root}
+        authorization = {'executionClass': preparation.MAIL_EXECUTION_CLASS,
+                         'experimentId': preparation.MAIL_EXPERIMENT, 'root': root,
+                         'planDigest': 'sha256:' + 'a' * 64}
+        authorization['selectionDigest'] = 'sha256:' + hashlib.sha256(json.dumps({
+            'executionClass': preparation.MAIL_EXECUTION_CLASS,
+            'planDigest': authorization['planDigest']}, sort_keys=True,
+            separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+        self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+        for selected_plan, selected_private, selected_authorization in (
+                ({'experimentId': 'pr315-installed-workload'}, private, authorization),
+                (plan, {'root': root + '-other'}, authorization),
+                (plan, private, {**authorization, 'executionClass': 'unknown'}),
+                (plan, private, {**authorization, 'root': root + '-other'})):
+            with self.subTest(plan=selected_plan, private=selected_private,
+                              authorization=selected_authorization):
+                self.assertFalse(preparation.valid_execution_selection(
+                    selected_plan, selected_private, selected_authorization))
 
 
 class StorageChildWaitTest(unittest.TestCase):

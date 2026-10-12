@@ -181,6 +181,9 @@ public final class MailMailbox {
   /** Last loaded or committed protected dataset bytes used for deterministic backup. */
   private byte[] stored;
 
+  /** Whether the loaded dataset is the durable interrupted-initialization marker. */
+  private boolean initializationMarkerLoaded;
+
   /** One-use private renewal consent; never persisted across a worker launch. */
   private RenewalPlan renewal;
 
@@ -214,6 +217,8 @@ public final class MailMailbox {
   public synchronized Map<String, String> execute(String command, Map<String, String> input) {
     try {
       loadForCommand(command);
+      if (STATUS.equals(command) && initializationMarkerLoaded)
+        return Map.of(STATUS, "initialization-recovery-required");
       if ("initialize".equals(command)) return initialize();
       if (RESTORE.equals(command)) return restore(input);
       if (state.isEmpty()) throw new MailFailure("initialize-required");
@@ -265,6 +270,7 @@ public final class MailMailbox {
     state = new LinkedHashMap<>();
     digest = null;
     stored = null;
+    initializationMarkerLoaded = false;
     Map<String, Object> metadataRecord;
     try {
       metadataRecord =
@@ -278,7 +284,10 @@ public final class MailMailbox {
     }
     stored = decode(text(metadataRecord, "valueBase64"), 262144);
     digest = text(metadataRecord, "sha256");
-    if (java.util.Arrays.equals(stored, INITIALIZING)) return;
+    if (java.util.Arrays.equals(stored, INITIALIZING)) {
+      initializationMarkerLoaded = true;
+      return;
+    }
     state = openState(stored);
     validateKeys();
   }
