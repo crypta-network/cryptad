@@ -3,7 +3,138 @@
 This page records the PR-315 workload inventory, implementation history and
 installed verification for the finite four-role source-build profile.
 
-## Current-source rerun and directory alias inventory
+## Completed installed campaign: suites 324–346
+
+Frozen helper and candidate source
+`2aaf4af7aaad9bc6b6a4d5e1682a2eaafe890c4f` passed all 45 unique cases in one
+formal TCG campaign, across 21 selected groups. The final host owner rebuilt the
+verdict from authenticated original archives and verified every launched
+instance's termination, watcher completion, QEMU stop and signed host cleanup.
+Its schema 2 result is `installed-accepted`, with no rejection reasons:
+
+```text
+implementationCoverage = complete
+installedPositiveExecuted = true
+installedWorkloadAcceptanceSatisfied = true
+```
+
+This result belongs to the frozen commit above. This documentation update
+records that completed run; it does not rerun installed cases or transfer their
+acceptance to a later commit. The historical sections below preserve the observations
+and outstanding work at their named historical source identities. The completed
+campaign here and the final assessment at the end state the latest result.
+
+### Frozen identity and selected groups
+
+| Identity | Accepted campaign value |
+| --- | --- |
+| Source tree | `0e30df3ba7ac73aedd514553693393eca47bf1f2` |
+| Campaign plan digest | `9fafa7298ded6ae3cdf85fb40e3b771adae79a5f1fd31f2560518238bcb2da3f` |
+| Witness and campaign formats | `pr314-workload-roles-v10`, campaign v2, public schema 2 |
+| Candidate JAR SHA-256 | `914028a66f220539dcd026702298e1436d5b8055f0d9d0a3922deafca0e89a97` |
+| Predecessor | Explicit startup-fix source `9a8c8b905bc1a74c48f376e7132bcca0fe81193f` |
+| Formal execution | CT102 native x86, `tcg-multi/qemu64`, 4 vCPUs, 5,632-MiB guest |
+| Toolchain and launcher | Pinned QEMU 10.0.13, JDK 25.0.4.1, launcher v39 |
+| Applications | Normal signed Mail and the measured signed probe fixture |
+
+| Selected group | Passing suite | Unique cases |
+| --- | --- | ---: |
+| Positive | 324 | 8 |
+| Role/file boundary | 325 | 5 |
+| Authority | 327 | 9 |
+| Network/AppHost | 328 | 6 |
+| Output symlink | 329 | 1 |
+| Output FIFO | 330 | 1 |
+| Output hardlink | 331 | 1 |
+| Output replacement | 333 | 1 |
+| Output flood | 334 | 1 |
+| Resource exhaustion | 335 | 1 |
+| Lost start response | 336 | 1 |
+| Observer death | 337 | 1 |
+| Controller restart | 338 | 1 |
+| Late child | 339 | 1 |
+| Setsid/double fork | 340 | 1 |
+| Deadline | 341 | 1 |
+| Revocation while running | 342 | 1 |
+| Cancellation | 343 | 1 |
+| Partial launch | 344 | 1 |
+| Stuck output | 345 | 1 |
+| Cleanup race | 346 | 1 |
+| **Total** | **21 selected groups** | **45** |
+
+The signed history contains 23 launched guests. Suite326 created, validated and
+retired the old authority for suite327; it is preparation with zero case credit.
+Suite332 failed initial previous-role FCP readiness before the output-replacement
+probe. Its administrator preparation witness, actual launched-role termination,
+complete failure archive and signed preparation cleanup were verified. It
+remains `setup-failed` with zero case credit; suite333 supplied the passing
+replacement result. No historical campaign or independently keyed development
+result was imported.
+
+### Scheduling amendment and cleanup recovery
+
+After the first 31 cases passed, the operator explicitly authorized retaining
+them and increasing the host I/O full PSI scheduling ceiling from 5% to 10%,
+beginning with suite332. A separate campaign-key signature seals the prospective
+`pr315-operator-io-launch-margin-v2` amendment, whose digest is
+`c6a3f620fde82aefd155c20d34894b318efbf50f176b91308881345d42a38fa9`.
+The original plan, source, products, fixtures, case contracts and prior receipts
+were unchanged. Three samples 30 seconds apart and memory scheduling PSI at
+most 2% remained required. Formal admission already required I/O PSI at most
+10% and memory PSI at most 5%; runtime pressure stop rules, resource limits and
+all operation deadlines remained unchanged. The campaign records both
+scheduling margins.
+
+Host inventory timeouts during suites332/333 delayed cleanup. Their original
+timeout records were retained; cleanup resumed against the original bytes and
+the existing 1,200-second inventory/apply bounds, without another guest or probe.
+The final owner accepted all group cleanup signatures after this recovery.
+Neither cleanup recovery nor the completed campaign establishes a root cause
+for the historical TCG C1/JVM failures or FCP readiness timeouts.
+
+### Source gates, preservation and replay
+
+Current-source native restricted checks ran 710 tests; the affected native root
+cleanup checks ran 12 without skips. Formatting and the candidate product build
+completed. Four certification self-tests passed 2,395, 2, 50 and 20 checks.
+The unchanged Java/build/resource source reused the explicitly identified native
+gate from `73e42195c827e830c9450a01121789189ee0d999`: 17,419 Java tests,
+zero failures/errors, ten explained skips and 1,413 XML reports. No new full
+Java run is claimed. Product comparison verified 4,156 unchanged classes; the
+remaining class difference was the generated Git revision in `Version.class`.
+
+Protected checks ran 556 tests in each required principal; interop ran 69 plus
+nine root transport checks. All 119 native condition-skip occurrences had
+actual complementary execution, with no remaining applicable native checks.
+The unchanged protected, interop and static-analysis results retain their
+`73e42195c827` gate origin. Existing analyzer findings remain recorded in the
+private gate reports; these checks are not an independent security review.
+
+Task-end cleanup independently verified all 23 attempts and three preserved
+temporary archives. Selected PVE tools, CT102 transfer files and execution
+snapshots were released only after preservation, byte verification and fresh
+stop, ownership, open-file and disk-dependency checks. The final signed cleanup
+receipt confirms no remaining task processes. Fixed inputs, historical failure
+masters and the current campaign's complete Mac staging, including disks,
+remain retained. Older archives remain on encrypted G1 under the authorized
+384-GiB batch budget and 64-GiB filesystem reserve.
+
+The private campaign retains the signed startup, attempt history, per-case raw
+observations, archive inventories, group cleanup receipts and final task-end
+seal. Its redacted delivery contains `README.md` (all 45 case-to-suite mappings),
+`assessment.json` and `frozen-identity.json`. Replay uses the frozen source with
+`pr315_campaign_owner.recovered_campaign_verdict`, pinning the original plan
+digest and public-key fingerprint. The operator scheduling amendment and final
+task-end seal are also verified separately; replay allocates no VM. Keys,
+handles, credentials and raw diagnostics remain private.
+
+[PR #1417](https://github.com/crypta-network/cryptad/pull/1417) was opened for the
+accepted commit. Normal branch publication automatically started repository CI;
+the installation result does not grant CI or review approval. Independent
+security review, merge, release and production authorization remain separate.
+PR-313, finite native acceptance and Phase 12 retain their independent status.
+
+## Historical suite323 rerun and directory alias inventory
 
 The historical frozen helper `5936f4f3ada22d1e46050c9e11879258ec014468`
 completed all 45 cases in one formal TCG campaign: 21 selected groups and
@@ -11,7 +142,7 @@ completed all 45 cases in one formal TCG campaign: 21 selected groups and
 complete original observations, receipts, inputs and disk bytes remain private.
 That result does not transfer to subsequent tracked source changes.
 
-The current-source rerun froze helper and candidate `73e42195c827`, predecessor
+The preceding rerun froze helper and candidate `73e42195c827`, predecessor
 `9a8c8b905bc1`, normal signed Mail, the pinned QEMU/JDK and launcher v39.
 Suite323 completed and sealed all eight positive case records. The guest
 stopped with exit zero, but the host copy-release inventory failed before
@@ -34,8 +165,9 @@ process or exact archive checks.
 Regression checks cover the reproduced documentation alias with a retained
 overlay, an external data-file dependency in another configured root, an
 out-of-scope target, an unwalked target and a link replaced during the scan.
-Native root checks and a newly frozen full 45-case campaign remain required
-after this source change. The preceding campaign, signatures and missing-cleanup
+At that cutoff, native root checks and a newly frozen full 45-case campaign were
+still required. The completed `2aaf4af7aaad` campaign above supplied them. The
+preceding campaign, signatures and missing-cleanup
 status are preserved as history; none of its case results are imported.
 
 Before the rerun, three complete older contexts were preserved on encrypted G1:
@@ -4568,8 +4700,10 @@ In the following tables, “positive path” identifies production actions reach
 `pr314_workload_driver.py` and `InstalledWorkloadAdapter.run_positive()`. The third
 column names the evidence required for each row; suite 70 passed those eight rows.
 The denial and lifecycle tables retain each fixed actor/target contract.
-All 45 have prospective source emitters and host validators; most still lack
-current-source installed results. Synthetic verifier tests are not emitters.
+All 45 have source emitters, host validators and passing installed results in
+the frozen `2aaf4af7aaad` campaign above. Earlier suite references in these
+tables record the individual probes' history; they do not supply its case
+credit. Synthetic verifier tests are not emitters.
 
 | Positive ID | Existing path | Required evidence (passed in suite 70) |
 | --- | --- | --- |
@@ -4597,7 +4731,7 @@ role/AppHost boundary.
 | --- | --- | --- |
 | `observer-private-read` | candidate | Existing observer canary; measured role process read and root/host audit passed in suite 78 |
 | `observer-private-write` | candidate | Same active canary; measured role write attempt, unchanged bytes and independent root/host audit passed in suite 81 |
-| `resolver-authority` | candidate | Prospective fixed role read against active installed resolver's root canary, with root/host process, file and stop checks; no installed result yet |
+| `resolver-authority` | candidate | Fixed role read against active installed resolver's root canary, with root/host process, file and stop checks; passed in suite327 |
 | `provider-authority` | app | Synthetic credential and registration consumed by installed Worker; signed AppHost child attempts the exact credential path between two successful root controls |
 | `sibling-data` | candidate | Existing recipient sentinel; sender process attempts access |
 | `sibling-fcp` | candidate | Suite 108 sender SYN, active recipient `NodeHello` controls and own named nft DROP delta passed TCG |
@@ -4613,7 +4747,7 @@ role/AppHost boundary.
 | `namespace-mount-escape` | app | Outer role boundary; bounded nested namespace/mount escape attempt |
 | `cgroup-migration` | candidate | Existing fixed cgroup target; actual migration attempt and unchanged ownership |
 | `resource-exhaustion` | app | Signed AppHost finite pressure, independent child ownership/exit, cgroup limit events and sibling FCP progress |
-| `output-symlink` | candidate | Prospective isolated role-created symlink to active canary, actual bounded descriptor collector, root/host epoch and stop checks; no installed result yet |
+| `output-symlink` | candidate | Isolated role-created symlink to active canary, actual bounded descriptor collector, root/host epoch and stop checks; passed in suite329 |
 | `output-fifo` | candidate | Descriptor-based collector; role-created FIFO and bounded rejection |
 | `output-hardlink` | candidate | Descriptor-based collector; actual multiply linked file |
 | `output-replacement` | candidate | Descriptor-based collector; coordinated replacement during pinned read |
@@ -4625,8 +4759,9 @@ role/AppHost boundary.
 The lifecycle rows below retain their fixed triggers and terminal evidence.
 `controller-restart` passed on `7db8122b` suite 108; `cancellation` passed on
 `04a09267` suite 106. These are separate helper identities. The other nine
-lifecycle IDs lack a source-bound TCG pass, and the eventual final source
-requires all eleven again. Triggers must follow observed
+lifecycle IDs still lacked a source-bound TCG pass at that historical cutoff.
+All eleven passed under the frozen `2aaf4af7aaad` identity in suites336–346.
+Triggers must follow observed
 service/controller transitions; arbitrary sleeps and mocked manager callbacks do not establish
 installed behavior.
 
@@ -5223,11 +5358,20 @@ claim. This proves initialization order; installed reliability and historical
 C1 failures still need actual evidence. New source/product identities, final
 gates and all 45 cases in one frozen campaign remain required.
 
+## Final assessment for the accepted frozen commit
+
+The following verdict belongs to
+`2aaf4af7aaad9bc6b6a4d5e1682a2eaafe890c4f` and its completed suites324–346
+campaign. It records that acceptance in this documentation revision; it does
+not grant acceptance to later source, product, fixture or policy identities.
+Earlier incomplete assessments remain historical observations for their named
+commits.
+
 | Assessment dimension | Audit verdict |
 | --- | --- |
-| `implementationCoverage` | Prospective source registry reports `complete` for the fixed 45 emitters, v10 validators and reachable host coordinator/cleanup path. This is a code-path statement pending final-source gate review and installed execution; it grants no case pass |
-| `installedPositiveExecuted` | False for the next prospective helper source. Historical `69db1fe0df`, `c8e183c2f1`, and `1bc8c81018` campaigns each completed 13/45 including all eight positives; the two separate `c3d41a7337` campaigns each completed eight positives. The terminal `c0eb6925b1` campaign completed zero cases after suite 152's host pressure kill. None transfers to a new source identity |
-| `installedWorkloadAcceptanceSatisfied` | False; no frozen final-source 21-group, 45-case TCG campaign passed. Independent development results through suite 215 remain bound to their original helpers and keys. Under `231ac935bd`, suite 216 completed retired preparation and suite 217 passed eight authority cases but left runner-control inconclusive; that campaign is terminally failed. The prospective evidence-reader fix requires a new helper identity, new retired preparation and fresh installed execution. Independent development keys, historical formal campaigns and KVM diagnostics cannot increase final campaign credit |
+| `implementationCoverage` | `complete`; all 45 emitters, v10 validators and the reachable host coordinator/cleanup path were exercised and accepted for the frozen commit |
+| `installedPositiveExecuted` | True; suite324 passed all eight positives with verified original evidence and signed cleanup |
+| `installedWorkloadAcceptanceSatisfied` | True; the frozen campaign passed 45 unique cases across 21 selected groups, with all 23 launched attempts, original archives, watcher/QEMU stop observations, group cleanup signatures and final task-end cleanup verified. Suite326 supplies retired preparation only; suite332 remains a zero-credit preparation failure. The signed prospective scheduling amendment retains the first 31 passes under the operator's explicit instruction |
 | `finiteNativeAcceptance` | Separate incomplete 65-case PR-313 contract; retain its historical 17-case positive observation |
 | `protectedExecutionEnabled` | False; original authority and approved deployment gates are not supplied |
 | `phaseComplete` | False; preserve all 49 Phase 12 assertions and historical 47 unresolved assessment |
