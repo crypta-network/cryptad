@@ -71,6 +71,24 @@ def _allocated_bytes(root):
     return total
 
 
+def _task_qemu_command(arguments):
+    """Recognize direct or fixed copied-loader QEMU invocations under the task roots."""
+    if not arguments:
+        return False
+    if 'qemu-system-' in Path(arguments[0]).name:
+        qemu_index = 0
+    elif (len(arguments) > 4
+            and Path(arguments[0]).name.startswith('ld-linux-')
+            and arguments[1:3] == ['--inhibit-cache', '--library-path']
+            and Path(arguments[0]).parent == Path(arguments[3])
+            and 'qemu-system-' in Path(arguments[4]).name):
+        qemu_index = 4
+    else:
+        return False
+    return any(any(root in value for root in QEMU_ROOTS)
+               for value in arguments[qemu_index:])
+
+
 def snapshot(proc=Path('/proc'), root=TASK_ROOT):
     """Measure task QEMU processes and actual allocated task storage as PVE root."""
     if os.geteuid() != 0 or not proc.is_dir():
@@ -83,10 +101,7 @@ def snapshot(proc=Path('/proc'), root=TASK_ROOT):
             raw = (entry / 'cmdline').read_bytes()
             arguments = [value.decode('utf-8', 'strict')
                          for value in raw.split(b'\0') if value]
-            if not arguments or 'qemu-system-' not in Path(arguments[0]).name:
-                continue
-            if not any(any(root_value in value for root_value in QEMU_ROOTS)
-                       for value in arguments[1:]):
+            if not _task_qemu_command(arguments):
                 continue
             ticks = int((entry / 'stat').read_text().rsplit(')', 1)[1].split()[19])
             active.append({'pid': int(entry.name), 'startTicks': ticks})

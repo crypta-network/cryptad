@@ -29,9 +29,21 @@ class PveInventoryTest(unittest.TestCase):
             (process / 'cmdline').write_bytes(
                 b'/usr/bin/qemu-system-x86_64\0-drive\0file=/work/pr315-task/suite-1/disk.qcow2\0')
             (process / 'stat').write_text('123 (qemu) S ' + ' '.join(['0'] * 18 + ['42']))
+            loader_process = proc / '124'
+            loader_process.mkdir()
+            task = b'/work/pr315-task/suite-1/attempt-01'
+            library = task + b'/boot-runtime/usr/lib/x86_64-linux-gnu'
+            (loader_process / 'cmdline').write_bytes(b'\0'.join((
+                library + b'/ld-linux-x86-64.so.2', b'--inhibit-cache',
+                b'--library-path', library,
+                task + b'/tools/qemu-system-x86_64', b'-drive',
+                b'file=' + task + b'/guest.qcow2,if=virtio,format=qcow2', b'')))
+            (loader_process / 'stat').write_text(
+                '124 (ld-linux) S ' + ' '.join(['0'] * 18 + ['43']))
             with patch.object(inventory.os, 'geteuid', return_value=0):
                 value = inventory.snapshot(proc, root)
-            self.assertEqual([{'pid': 123, 'startTicks': 42}],
+            self.assertEqual([{'pid': 123, 'startTicks': 42},
+                              {'pid': 124, 'startTicks': 43}],
                              value['activeTaskQemu'])
             self.assertGreater(value['allocatedTaskBytes'], 0)
             self.assertGreater(value['availableTaskBytes'], 0)
@@ -42,6 +54,12 @@ class PveInventoryTest(unittest.TestCase):
             with patch.object(inventory.os, 'geteuid', return_value=1000), \
                     self.assertRaisesRegex(ValueError, 'root-required'):
                 inventory.snapshot(root / 'missing', root)
+
+    def test_task_qemu_command_rejects_nonfixed_loader_shape(self):
+        task = '/work/pr315-task/suite-1/attempt-01'
+        self.assertFalse(inventory._task_qemu_command([
+            '/bin/sh', task + '/tools/qemu-system-x86_64',
+            'file=' + task + '/guest.qcow2']))
 
     def test_allocated_bytes_counts_each_directory_once(self):
         with tempfile.TemporaryDirectory() as temporary:
