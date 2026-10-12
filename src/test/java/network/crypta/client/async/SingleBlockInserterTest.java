@@ -23,6 +23,8 @@ import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -460,6 +462,36 @@ class SingleBlockInserterTest {
     verify(bucket, times(1)).onResume(ctx);
     verify(cb, times(1)).onResume(ctx);
     verify(spy, times(1)).schedule(ctx);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void innerOnResume_whenPersistentKeyWasEncoded_respectsNotificationSuppression(
+      boolean dontSendEncoded) throws Exception {
+    ClientContext context = newMinimalClientContext(insertCtx);
+    SingleBlockInserter inserter =
+        spy(
+            new SingleBlockInserter(
+                new BlockInsertPayload(
+                    bucket, FreenetURI.EMPTY_CHK_URI, (short) -1, false, 0, (byte) 0, null),
+                new BlockInsertParams(parent, insertCtx, cb, 1, new Object(), false, context),
+                new BlockInsertOptions(true, false, false, 0),
+                dontSendEncoded));
+    ClientKey key = mock(ClientKey.class);
+    ClientKeyBlock block = mock(ClientKeyBlock.class);
+    when(block.getClientKey()).thenReturn(key);
+    doReturn(block).when(inserter).innerEncode(any(RandomSource.class));
+    doNothing().when(inserter).schedule(context);
+    inserter.getBlock(context);
+    Mockito.clearInvocations(cb);
+
+    inserter.innerOnResume(context);
+
+    verify(cb).onResume(context);
+    verify(bucket).onResume(context);
+    verify(inserter).schedule(context);
+    verify(cb, times(dontSendEncoded ? 0 : 1)).onEncode(key, inserter, context);
+    assertEquals(key, inserter.getKeyNoEncode());
   }
 
   @Test

@@ -51,6 +51,14 @@ class AppProcessStarterTest {
   }
 
   @Test
+  @SuppressWarnings("java:S100")
+  void start_whenCommandContainsNull_propagatesRuntimeFailure() {
+    ProcessBuilder builder = new ProcessBuilder("cryptad-unused-command", (String) null);
+
+    assertThrows(NullPointerException.class, () -> AppProcessStarter.start(builder));
+  }
+
+  @Test
   void start_whenCallerThreadExits_keepsParentProtectedSandboxAlive() throws Exception {
     var availability = new BubblewrapAvailability(new AppEnv(), "/usr/bin/bwrap").probe();
     assumeTrue(availability.available(), availability.unavailableReason());

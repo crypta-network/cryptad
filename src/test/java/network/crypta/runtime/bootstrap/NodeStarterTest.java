@@ -1,7 +1,10 @@
 package network.crypta.runtime.bootstrap;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
@@ -13,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.config.ConfigMigrator;
 import network.crypta.config.PersistentConfig;
 import network.crypta.config.SubConfig;
 import network.crypta.crypt.CryptoRandoms;
@@ -23,6 +27,7 @@ import network.crypta.node.DNSRequester;
 import network.crypta.node.Node;
 import network.crypta.node.NodeInitException;
 import network.crypta.node.PeerManager;
+import network.crypta.node.ProgramDirectory;
 import network.crypta.node.subsystem.NodeNetworkSubsystem;
 import network.crypta.runtime.core.SSL;
 import network.crypta.support.ProcessPriority;
@@ -32,12 +37,16 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 import org.tanukisoftware.wrapper.WrapperManager;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -369,6 +378,90 @@ class NodeStarterTest {
   }
 
   @Test
+  void warmGlobalSecureRandom_whenDebugEnabled_logsAlgorithmAndProvider() throws Exception {
+    ch.qos.logback.classic.Logger logger =
+        (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(NodeStarter.class);
+    ch.qos.logback.classic.Level originalLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.setContext(logger.getLoggerContext());
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+    SecureRandom random = new SecureRandom();
+    var method = NodeStarter.class.getDeclaredMethod("warmGlobalSecureRandom");
+    method.setAccessible(true);
+
+    try (MockedStatic<CryptoRandoms> cryptoRandoms = Mockito.mockStatic(CryptoRandoms.class)) {
+      cryptoRandoms.when(CryptoRandoms::shared).thenReturn(random);
+
+      method.invoke(null);
+
+      assertEquals(1, appender.list.size());
+      ILoggingEvent event = appender.list.getFirst();
+      assertEquals(ch.qos.logback.classic.Level.DEBUG, event.getLevel());
+      assertTrue(event.getFormattedMessage().contains(random.getAlgorithm()));
+      assertTrue(event.getFormattedMessage().contains(random.getProvider().getName()));
+      cryptoRandoms.verify(CryptoRandoms::shared, times(1));
+    } finally {
+      logger.detachAppender(appender);
+      appender.stop();
+      logger.setLevel(originalLevel);
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void installSeednodes_whenResourceIsAvailable_preservesExistingListOrCopiesDefault(
+      boolean alreadyInstalled, @TempDir Path tempDir) throws Exception {
+    Path seedFile = tempDir.resolve("node-dir/seednodes.fref");
+    byte[] expected;
+    if (alreadyInstalled) {
+      Files.createDirectories(seedFile.getParent());
+      expected = "operator-owned-seed-list".getBytes(StandardCharsets.UTF_8);
+      Files.write(seedFile, expected);
+    } else {
+      try (InputStream resource =
+          NodeStarter.class.getResourceAsStream("/seednodes/seednodes.fref")) {
+        assertNotNull(resource);
+        expected = resource.readAllBytes();
+      }
+    }
+    Node node = mock(Node.class);
+    ProgramDirectory directory = mock(ProgramDirectory.class);
+    doReturn(directory).when(node).nodeDir();
+    doReturn(seedFile.toFile()).when(directory).file("seednodes.fref");
+    var method = NodeStarter.class.getDeclaredMethod("installSeednodesIfMissing", Node.class);
+    method.setAccessible(true);
+
+    method.invoke(null, node);
+
+    assertArrayEquals(expected, Files.readAllBytes(seedFile));
+  }
+
+  @Test
+  void start_whenConfigPathIsDirectory_returnsConfigurationFailure(@TempDir Path tempDir)
+      throws Exception {
+    NodeStarter listener = newNodeStarterViaReflection();
+    Files.createDirectories(tempDir.resolve("config/cryptad.ini"));
+    String[] args = startupArgs(tempDir.toFile());
+
+    try (MockedStatic<WrapperManager> wrapper = Mockito.mockStatic(WrapperManager.class);
+        MockedStatic<ProcessPriority> priority = Mockito.mockStatic(ProcessPriority.class);
+        MockedStatic<JceLoader> providers = Mockito.mockStatic(JceLoader.class);
+        MockedStatic<ConfigMigrator> migration = Mockito.mockStatic(ConfigMigrator.class)) {
+      Integer exitCode = listener.start(args);
+
+      assertEquals(-1, exitCode);
+      wrapper.verify(() -> WrapperManager.signalStarting(500000), times(1));
+      wrapper.verify(() -> WrapperManager.stop(Mockito.anyInt()), times(0));
+      priority.verify(ProcessPriority::enterBackgroundMode, times(1));
+      providers.verify(JceLoader::dumpLoaded, times(1));
+      migration.verify(
+          () -> ConfigMigrator.migrateIfNeeded(Mockito.any(), Mockito.any()), times(1));
+    }
+  }
+
+  @Test
   void getMemoryLimitMB_whenUnlimitedBytes_returnsMinusTwo() {
     try (MockedStatic<NodeStarter> mocked =
         Mockito.mockStatic(NodeStarter.class, CALLS_REAL_METHODS)) {
@@ -528,9 +621,10 @@ class NodeStarterTest {
     }
   }
 
-  @Test
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
   void loadConfig_whenConfigOverridesRunDir_emitsFinalLauncherRunDirCompatibilityLine(
-      @TempDir Path tempDir) throws Exception {
+      boolean serviceMode, @TempDir Path tempDir) throws Exception {
     Path configDir = tempDir.resolve("config");
     Path dataDir = tempDir.resolve("data");
     Path cacheDir = tempDir.resolve("cache");
@@ -561,7 +655,7 @@ class NodeStarterTest {
               "cacheDir", cacheDir.toString(),
               "runDir", cliRunDir.toString(),
               "logsDir", logsDir.toString()),
-          false,
+          serviceMode,
           new network.crypta.fs.AppEnv(Map.of()));
     } finally {
       System.setOut(originalOut);
