@@ -985,6 +985,28 @@ class MailPrivacyTest(unittest.TestCase):
             client.post("/mail/command", {"command": "status"})
         client.opener.open.assert_not_called()
 
+    def test_inherited_mail_command_forwards_the_absolute_deadline(self):
+        supervisor = self.supervisor()
+        client = runtime.ObservedMailClient(
+            supervisor, "http://127.0.0.1:8888/api/v1",
+            "http://127.0.0.1:9999", "session")
+        result = runtime.base64.b64encode(b'{"status":"ready"}').decode("ascii")
+        client.transport = Mock()
+        client.transport.request.side_effect = [
+            b'{"mail":{"requestId":"request-1"}}',
+            json.dumps({"mail": {"status": "complete",
+                                  "payloadBase64": result}}).encode("utf-8"),
+        ]
+        deadline = runtime.time.monotonic() + 5
+
+        self.assertEqual({"status": "ready"},
+                         client.command("status", deadline=deadline))
+
+        self.assertEqual(2, supervisor.next_operation.call_count)
+        self.assertEqual(
+            [deadline, deadline],
+            [call.args[3] for call in client.transport.request.call_args_list])
+
     def test_canary_in_base64_failure_surface_fails_without_exporting_body(self):
         supervisor = self.supervisor()
         with self.assertRaisesRegex(runtime.RuntimeFailure, "private-canary-exposure") as error:

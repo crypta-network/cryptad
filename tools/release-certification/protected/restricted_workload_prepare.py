@@ -22,6 +22,29 @@ from restricted_workload_launcher import launcher_policy, verify_wrapper_options
 from restricted_native_launcher import tree_identity
 
 
+MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
+MAIL_EXPERIMENT = 'pr316-installed-mail-runtime'
+
+
+def valid_execution_selection(plan, private, authorization):
+    """Recognize only the legacy selection or the fixed PR-316 Mail execution class."""
+    execution_class = authorization.get('executionClass')
+    if execution_class is None:
+        return ('executionClass' not in authorization
+                and 'selectionDigest' not in authorization)
+    selected_digest = 'sha256:' + hashlib.sha256(json.dumps({
+        'executionClass': execution_class,
+        'planDigest': authorization.get('planDigest')}, sort_keys=True,
+        separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+    return (execution_class == MAIL_EXECUTION_CLASS
+            and plan.get('experimentId') == MAIL_EXPERIMENT
+            and private.get('root') ==
+                '/var/lib/cryptad-cross-version/experiments/' + MAIL_EXPERIMENT
+            and authorization.get('experimentId') == MAIL_EXPERIMENT
+            and authorization.get('root') == private.get('root')
+            and authorization.get('selectionDigest') == selected_digest)
+
+
 def _wait_storage_child(child, campaign_deadline_ns):
     """Bound initialization and reap only its still-owned direct fork child.
 
@@ -115,8 +138,10 @@ def prepare(plan, private, authorization):
             or type(authorization.get('maxSeconds')) is not int
             or not 30 <= authorization['maxSeconds'] <= workload.MAX_SECONDS
             or type(authorization.get('maxOperations')) is not int
-            or not 1 <= authorization['maxOperations'] <= 10000):
+            or not 1 <= authorization['maxOperations'] <= 10000
+            or not valid_execution_selection(plan, private, authorization)):
         workload.reject('profile-selection-unsupported')
+    execution_class = authorization.get('executionClass')
     for index, role in enumerate(workload.ROLES):
         selected = plan['nodes'][index]
         row = private['nodes'][role]
@@ -126,11 +151,17 @@ def prepare(plan, private, authorization):
                                 'apps', 'trustedKeysPath', 'trustedKeysDigest'}
                 or (row['fnpPort'], row['fcpPort'], row['httpPort']) != (FNP_PORT, FCP_PORT, HTTP_PORT)
                 or not isinstance(row.get('apps'), list)
-                or role == 'candidate-sender' and app_ids not in
+                or execution_class == MAIL_EXECUTION_CLASS and app_ids != {
+                    'candidate-sender': ['mail-prototype'],
+                    'candidate-recipient': ['mail-prototype'],
+                    'previous': [], 'relay-no-apps': []}[role]
+                or execution_class is None and role == 'candidate-sender' and app_ids not in
                     (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
-                or role == 'candidate-recipient' and app_ids != ['mail-prototype']
-                or role == 'relay-no-apps' and app_ids != []
-                or role == 'previous' and app_ids not in ([], ['mail-prototype'])
+                or execution_class is None and role == 'candidate-recipient' and
+                    app_ids != ['mail-prototype']
+                or execution_class is None and role == 'relay-no-apps' and app_ids != []
+                or execution_class is None and role == 'previous' and
+                    app_ids not in ([], ['mail-prototype'])
                 or sorted(app.get('bundleDigest', '') for app in row['apps']) != sorted(selected.get('appDigests', []))):
             workload.reject('profile-app-selection-unsupported')
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

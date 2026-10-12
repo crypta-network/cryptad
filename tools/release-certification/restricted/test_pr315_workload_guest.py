@@ -189,6 +189,41 @@ class GuestImportTest(unittest.TestCase):
 
 
 class StartupTransportTests(unittest.TestCase):
+    def test_mail_execution_class_is_forwarded_without_a_pr315_group(self):
+        from contextlib import nullcontext
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        integration = SimpleNamespace(load_installation=Mock(), provision=Mock(), ENV={'LANG': 'C'})
+        fixtures = SimpleNamespace(verify=Mock())
+        driver = SimpleNamespace(prerequisites=lambda: [
+            'fixed-installed-source-required', 'separate-measured-test-kit-required'])
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch.dict(sys.modules, {'disposable_integration': integration,
+                    'pr315_workload_fixtures': fixtures,
+                    'pr314_workload_driver': driver}), \
+                patch.object(guest.tempfile, 'TemporaryDirectory',
+                             return_value=nullcontext(temporary)), \
+                patch.object(guest.subprocess, 'run',
+                             return_value=SimpleNamespace(returncode=0)) as run:
+            self.assertEqual((None, 0), guest.execute('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', execution_class=guest.MAIL_EXECUTION_CLASS))
+        command = run.call_args.args[0]
+        self.assertIn('--execution-class', command)
+        self.assertEqual(guest.MAIL_EXECUTION_CLASS,
+                         command[command.index('--execution-class') + 1])
+        self.assertNotIn('--workload-group', command)
+
+    def test_mail_execution_class_rejects_every_legacy_mode(self):
+        cases = ({'lifecycle_scenario': 'cancellation'},
+                 {'lifecycle_scenario': 'none', 'workload_group': 'positive'},
+                 {'lifecycle_scenario': 'none', 'startup_measurement': True},
+                 {'lifecycle_scenario': 'none', 'retired_authority_preparation': True})
+        for arguments in cases:
+            with self.subTest(arguments=arguments), self.assertRaisesRegex(
+                    ValueError, 'execution-class-invalid'):
+                guest.execute('a' * 64, 'b' * 40,
+                    execution_class=guest.MAIL_EXECUTION_CLASS, **arguments)
+
     def test_guest_reexec_preserves_startup_flag_and_exact_fixture_bindings(self):
         from contextlib import nullcontext
         from types import SimpleNamespace
@@ -426,10 +461,38 @@ class StartupTransportTests(unittest.TestCase):
         driver.execute.assert_called_once_with(startup_measurement=True,
                                                lifecycle_scenario='cancellation',
                                                workload_group=None,
-                                               retired_authority_preparation=False)
+                                               retired_authority_preparation=False,
+                                               execution_class=None)
         fixtures.materialize_selection.assert_called_once_with(guest.FIXTURES, guest.SOURCE, 'a' * 64, 'b' * 40)
         workload.write.assert_called_once_with(driver.SELECTION, selection, create=True)
         self.assertFalse(result['installedPositiveExecuted'])
+        self.assertEqual(0, code)
+
+    def test_installed_mail_guest_uses_distinct_bound_materializer(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        selection = {'fixed': 'pr316-private-selection'}
+        fixtures = SimpleNamespace(verify=Mock(), materialize_selection=Mock(),
+            materialize_mail_selection=Mock(return_value=selection))
+        driver = SimpleNamespace(SELECTION=Path('/root/pr314-workload-selection.json'),
+            execute=Mock(return_value={'status': 'mail-runtime-sequence-executed'}))
+        workload = SimpleNamespace(write=Mock())
+        with patch.dict(sys.modules, {'pr315_workload_fixtures': fixtures,
+                'pr314_workload_driver': driver, 'restricted_workload': workload}), \
+                patch.object(guest.sys, 'path', list(sys.path)), \
+                patch.object(guest, 'KIT', Path(guest.__file__).resolve().parent):
+            result, code = guest.installed('a' * 64, 'b' * 40,
+                lifecycle_scenario='none', execution_class=guest.MAIL_EXECUTION_CLASS)
+        fixtures.materialize_selection.assert_not_called()
+        fixtures.materialize_mail_selection.assert_called_once_with(
+            guest.FIXTURES, guest.SOURCE, 'a' * 64, 'b' * 40)
+        workload.write.assert_called_once_with(driver.SELECTION, selection, create=True)
+        driver.execute.assert_called_once_with(startup_measurement=False,
+            lifecycle_scenario='none', workload_group=None,
+            retired_authority_preparation=False,
+            execution_class=guest.MAIL_EXECUTION_CLASS)
+        self.assertEqual('pr316-mail-driver', guest.STAGE)
+        self.assertEqual('mail-runtime-sequence-executed', result['status'])
         self.assertEqual(0, code)
 
 

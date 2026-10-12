@@ -167,6 +167,24 @@ class MailInitializationTest {
     assertEquals(3, backend.vault.listIdentities().size());
   }
 
+  @Test
+  void interruptedSetupIsVisibleWithoutResumingOrMutatingIt() throws Exception {
+    var backend = backend(root);
+    assertEquals(
+        "store-unavailable",
+        new MailMailbox(new Faults(backend, 2, true), clock)
+            .execute("initialize", Map.of())
+            .get("status"));
+    byte[] marker = backend.storedBytes();
+    var identities = backend.vault.listIdentities();
+
+    assertEquals(
+        "initialization-recovery-required",
+        new MailMailbox(backend, clock).execute("status", Map.of()).get("status"));
+    assertArrayEquals(marker, backend.storedBytes());
+    assertEquals(identities, backend.vault.listIdentities());
+  }
+
   private MailTestBackend backend(Path installation) throws Exception {
     return new MailTestBackend(
         installation.resolve("vault"), installation.resolve("data"), new LinkedHashMap<>());

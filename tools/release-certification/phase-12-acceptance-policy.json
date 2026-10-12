@@ -3212,7 +3212,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify current-worker contact-renewal preparation/confirmation under current vault/CAS authority; renewal neither rotates nor regrants material.",
-            "digest": "sha256:9195e94e642356666cb70ad9854f8101b41c4c65ba6d668a7c5bf06f4806acaa",
+            "digest": "sha256:8af3f61b7e5f59ef7e479ca486ad6a85da3b27d70fcd9be8833808cfb6d06496",
             "path": "apps/mail-prototype/src/main/java/network/crypta/apps/mail/MailMailbox.java"
           }
         ],
@@ -3273,7 +3273,7 @@
         "sourceEvidence": [
           {
             "assertion": "Complete recipient/storage rotation, account replacement, historical-purpose authority, degraded restore-resume and host minimum-reader barriers; restore remains paused until safe resume is proven.",
-            "digest": "sha256:9195e94e642356666cb70ad9854f8101b41c4c65ba6d668a7c5bf06f4806acaa",
+            "digest": "sha256:8af3f61b7e5f59ef7e479ca486ad6a85da3b27d70fcd9be8833808cfb6d06496",
             "path": "apps/mail-prototype/src/main/java/network/crypta/apps/mail/MailMailbox.java"
           }
         ],

@@ -28,6 +28,11 @@ import uuid
 import cross_version_runtime as runtime
 
 PROFILE = 'debian13-systemd257-workload-v1'
+MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
+MAIL_EXPERIMENT = 'pr316-installed-mail-runtime'
+MAIL_PRIVATE_KIND = 'pr316-private-mail-causal-observation'
+MAIL_CONTRACT = 'pr316-installed-mail-runtime-v1'
+MAIL_PRIVATE_FILE = 'pr316-mail-flow.private.json'
 SOCKET = '/run/cryptad-workload/control.sock'
 MAX_RESPONSE = 1024 * 1024
 METHODS = {'start', 'observe', 'stop', 'connect-fcp',
@@ -148,8 +153,10 @@ def _object(pairs):
 
 class WorkloadClient:
     """Only fixed methods and opaque handles cross the installed root-owned socket."""
-    def request(self, method, handle):
-        if method not in METHODS or not isinstance(handle, str) or not re.fullmatch('[a-f0-9]{64}', handle):
+    def request(self, method, handle, *, timeout=30):
+        if (method not in METHODS or not isinstance(handle, str)
+                or not re.fullmatch('[a-f0-9]{64}', handle)
+                or not isinstance(timeout, (int, float)) or not 0 < timeout <= 30):
             fail('request-invalid')
         self.last_exchange = None
         descriptors = []
@@ -157,7 +164,7 @@ class WorkloadClient:
         started = time.monotonic_ns()
         phase = 'connect'
         try:
-            channel.settimeout(30)
+            channel.settimeout(timeout)
             channel.connect(SOCKET)
             phase = 'peer-check'
             _, uid, _ = struct.unpack('3i', channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
@@ -175,7 +182,9 @@ class WorkloadClient:
                     if level != socket.SOL_SOCKET or kind != socket.SCM_RIGHTS:
                         fail('controller-ancillary-invalid')
                     fds = array.array('i')
-                    fds.frombytes(value[:len(value) - len(value) % fds.itemsize])
+                    if len(value) % fds.itemsize:
+                        fail('controller-ancillary-invalid')
+                    fds.frombytes(value)
                     descriptors.extend(fds)
                 if flags & (socket.MSG_TRUNC | socket.MSG_CTRUNC):
                     fail('controller-response-truncated')
@@ -207,7 +216,7 @@ class WorkloadClient:
                     if connected.family != socket.AF_INET or connected.type != socket.SOCK_STREAM:
                         fail('controller-connection-invalid')
                     connected.getpeername()
-                    connected.settimeout(25)
+                    connected.settimeout(min(25, timeout))
                     return value, connected
                 except BaseException:
                     connected.close()
@@ -305,8 +314,9 @@ class ConnectedFcpClient(runtime.BoundedFcpClient):
 
 
 class _Response:
-    def __init__(self, response, connection):
+    def __init__(self, response, connection, verify):
         self.response, self.connection = response, connection
+        self.verify = verify
         self.status, self.headers = response.status, response.headers
 
     def read(self, size):
@@ -315,11 +325,20 @@ class _Response:
     def __enter__(self):
         return self
 
-    def __exit__(self, *_):
+    def __exit__(self, error_type, *_):
         try:
             self.response.close()
         finally:
             self.connection.close()
+        if error_type is None:
+            self.verify()
+
+
+class _FixedSocketHttpConnection(http.client.HTTPConnection):
+    """HTTPConnection that can use only its explicitly supplied connected socket."""
+
+    def connect(self):
+        fail('http-reconnect-forbidden')
 
 
 class _RoleHttp:
@@ -332,16 +351,125 @@ class _RoleHttp:
         if (selected.scheme != 'http' or selected.hostname != '127.0.0.1' or selected.port != 19402
                 or selected.username or selected.password or selected.fragment):
             fail('http-target-not-approved')
-        connected = self.supervisor.connection(self.role, 'http')
-        connection = http.client.HTTPConnection('127.0.0.1', 19402, timeout=timeout)
+        connected = self.supervisor.connection(self.role, 'http', timeout)
+        remaining = min(timeout, self.supervisor.remaining(timeout))
+        if connected.getpeername() != ('127.0.0.1', 19402):
+            connected.close()
+            fail('http-peer-not-approved')
+        connected.settimeout(remaining)
+        connection = _FixedSocketHttpConnection('127.0.0.1', 19402, timeout=remaining)
         connection.sock = connected
         try:
             connection.request(request.get_method(), selected.path + ('?' + selected.query if selected.query else ''),
                                body=request.data, headers=dict(request.header_items()))
-            return _Response(connection.getresponse(), connection)
+            return _Response(connection.getresponse(), connection,
+                             lambda: self.supervisor.observe(self.role))
         except BaseException:
             connection.close()
             raise
+
+
+class _InstalledRoleMailTransport:
+    """Fixed Mail POST transport over the controller-bound role connection."""
+
+    def __init__(self, handle, context):
+        self.handle, self.context = handle, context
+
+    def request(self, path, encoded, headers, deadline):
+        if path not in {'/mail/command', '/mail/result'}:
+            fail('mail-path-not-approved')
+        supervisor, role = self.handle.supervisor, self.handle.role
+        current = supervisor.nodes.get(role)
+        if (not isinstance(current, dict)
+                or any(current.get(key) != self.context[key] for key in EPOCH)
+                or self.handle.origin != self.context['origin']
+                or self.handle.session != self.context['session']
+                or self.handle.session_expires_at != self.context['sessionExpiresAt']):
+            fail('mail-role-context-changed')
+        remaining = min(deadline - time.monotonic(), supervisor.remaining(25))
+        if remaining <= 0:
+            fail('mail-request-deadline')
+        supervisor.next_operation()
+        request = urllib.request.Request(
+            self.handle.api + path, data=encoded, headers=headers, method='POST')
+        try:
+            with runtime.mail_demo._absolute_deadline(remaining):
+                with self.handle.opener.open(request, timeout=remaining) as response:
+                    raw = response.read(MAX_RESPONSE + 1)
+                    if response.status != 200:
+                        fail('mail-http-status')
+                    if len(raw) > MAX_RESPONSE:
+                        fail('mail-response-budget')
+                    declared = response.headers.get('Content-Length')
+                    if (declared is not None
+                            and (not declared.isdecimal() or int(declared) != len(raw))):
+                        fail('mail-response-framing')
+                    return raw
+        except runtime.RuntimeFailure:
+            raise
+        except (OSError, ValueError, http.client.HTTPException):
+            fail('mail-http-failed')
+
+
+class InstalledMailClient(runtime.mail_demo.Client):
+    """Mail protocol client bound to one verified installed role and worker context."""
+
+    def __init__(self, handle, context, observer=None):
+        self.handle, self.context = handle, context
+        super().__init__(handle.api, handle.origin, handle.session,
+                         transport=_InstalledRoleMailTransport(handle, context),
+                         observer=observer, role=handle.role)
+
+    def _verify_worker(self, deadline):
+        if deadline <= time.monotonic():
+            raise runtime.mail_demo.DemoFailure()
+        if self.handle.observe_worker(deadline) != self.context['worker']:
+            fail('mail-worker-context-changed')
+
+    def command(self, command, payload=None, *, deadline=None):
+        deadline = min(deadline or time.monotonic() + 28, time.monotonic() + 28)
+        self._verify_worker(deadline)
+        try:
+            result = super().command(command, payload, deadline=deadline)
+        except runtime.RuntimeFailure as error:
+            if command not in {'status', 'export-contact', 'read'}:
+                raise runtime.mail_demo.UncertainOutcome() from error
+            raise runtime.mail_demo.DemoFailure() from None
+        try:
+            self._verify_worker(deadline)
+        except (runtime.RuntimeFailure, runtime.mail_demo.DemoFailure) as error:
+            if command not in {'status', 'export-contact', 'read'}:
+                raise runtime.mail_demo.UncertainOutcome() from error
+            raise runtime.mail_demo.DemoFailure() from None
+        return result
+
+    def restart(self):
+        """Restart only the Mail worker, then bind a fresh worker and browser session."""
+        before = self.context['worker']
+        self.handle.origin = self.handle.session = self.handle.session_expires_at = None
+        for action in ('stop', 'start'):
+            status, _ = self.handle.request(
+                'POST', '/api/v1/apps/mail-prototype/' + action)
+            if status != 200:
+                fail('mail-worker-restart-failed')
+        worker = self.handle.observe_worker()
+        if worker == before:
+            fail('mail-worker-epoch-unchanged')
+        self.handle.refresh_session()
+        self.context = self.handle.mail_context(worker)
+        self.origin, self.session = self.handle.origin, self.handle.session
+        self.transport = _InstalledRoleMailTransport(self.handle, self.context)
+        if self.command('status').get('status') != 'ready':
+            fail('mail-worker-restart-not-ready')
+
+    def rebind(self):
+        """Adopt context that the adapter freshly verified after a role restart."""
+        context = self.handle.mail_context()
+        if all(context[key] == self.context[key] for key in EPOCH):
+            fail('mail-role-epoch-unchanged')
+        self.context = context
+        self.origin, self.session = self.handle.origin, self.handle.session
+        self.transport = _InstalledRoleMailTransport(self.handle, context)
 
 
 class InstalledAppHandle(runtime.AppHandle):
@@ -382,8 +510,9 @@ class InstalledAppHandle(runtime.AppHandle):
             fail('bootstrap-response-invalid')
         return value
 
-    def observe_worker(self):
-        status, value = self.request('GET', '/api/v1/apps/mail-prototype/runtime')
+    def observe_worker(self, deadline=None):
+        status, value = self.request(
+            'GET', '/api/v1/apps/mail-prototype/runtime', deadline=deadline)
         reported = value.get('runtime', {})
         if (status != 200 or reported.get('running') is not True
                 or reported.get('sandbox', {}).get('provider') != 'bubblewrap'
@@ -394,9 +523,20 @@ class InstalledAppHandle(runtime.AppHandle):
                                           self.supervisor.expected_jdk_digests[self.role])
         return self.worker_identity
 
-    def mail_client(self):
-        # The historical Mail Client opens direct host-loopback sockets. Never fall back.
-        fail('mail-consumer-adapter-unsupported')
+    def mail_context(self, worker=None):
+        selected = self.supervisor.nodes.get(self.role)
+        if (not isinstance(selected, dict) or not self.origin or not self.session
+                or self.session_expires_at is None):
+            fail('mail-context-unavailable')
+        return {**{key: selected[key] for key in EPOCH},
+                'appId': self.app_id, 'worker': worker or self.worker_identity,
+                'origin': self.origin, 'session': self.session,
+                'sessionExpiresAt': self.session_expires_at}
+
+    def mail_client(self, observer=None):
+        worker = self.observe_worker()
+        self.refresh_session()
+        return InstalledMailClient(self, self.mail_context(worker), observer)
 
 
 class InstalledProbeAppHandle(runtime.AppHandle):
@@ -672,6 +812,107 @@ def kernel_roster(samples, expected_jdk_digests):
     return {'observerUid': os.geteuid(), 'runnerUid': runner_uid, 'roles': rows}
 
 
+def _mail_digest_text(value):
+    if not isinstance(value, str) or not value:
+        fail('mail-private-context-invalid')
+    return 'sha256:' + hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+
+def _mail_context_evidence(client):
+    """Commit one verified role/daemon/worker/browser context without bearer values."""
+    context = client.context
+    supervisor, role = client.handle.supervisor, client.handle.role
+    daemon = supervisor.daemon_epochs.get(role)
+    if (not isinstance(context, dict) or not isinstance(context.get('worker'), dict)
+            or not isinstance(daemon, dict)):
+        fail('mail-private-context-invalid')
+    return {
+        'role': role,
+        'roleEpochDigest': runtime.canonical_digest(
+            {key: context[key] for key in EPOCH}),
+        'daemonEpochDigest': runtime.canonical_digest(daemon),
+        'workerEpochDigest': runtime.canonical_digest(context['worker']),
+        'managerInvocation': context['managerInvocation'],
+        'originDigest': _mail_digest_text(context['origin']),
+        'sessionDigest': _mail_digest_text(context['session']),
+        'sessionExpiryDigest': runtime.canonical_digest(
+            context['sessionExpiresAt']),
+        'observedMonotonicNs': time.monotonic_ns(),
+    }
+
+
+def _mail_direction(commands, sending_role, receiving_role):
+    inserted = [row for row in commands
+                if row['role'] == sending_role
+                and row['command'] in {'confirm-send', 'retry'}
+                and row['status'] == 'inserted'
+                and isinstance(row.get('operation'), str)
+                and isinstance(row.get('reference'), str)]
+    accepted = [row for row in commands
+                if row['role'] == receiving_role
+                and row['command'] == 'import-reference'
+                and row['status'] == 'accepted'
+                and isinstance(row.get('messageId'), str)]
+    if len(inserted) != 1 or len(accepted) != 1 \
+            or inserted[0]['reference'] != accepted[0].get('reference'):
+        fail('mail-private-direction-invalid')
+    final_sender = [row for row in commands
+                    if row['role'] == sending_role and row['command'] == 'status'
+                    and row['status'] == 'ready' and 'operations' in row]
+    final_recipient = [row for row in commands
+                       if row['role'] == receiving_role and row['command'] == 'status'
+                       and row['status'] == 'ready' and 'messageIds' in row]
+    if not final_sender or not final_recipient:
+        fail('mail-private-final-status-invalid')
+    operation, reference = inserted[0]['operation'], inserted[0]['reference']
+    message_id = accepted[0]['messageId']
+    return {
+        'operation': operation,
+        'queueIdentifier': 'app-document-mail-prototype-' + operation,
+        'reference': reference,
+        'messageId': message_id,
+        'outboxMembershipObserved': operation in final_sender[-1]['operations'],
+        'inboxMembershipObserved': message_id in final_recipient[-1]['messageIds'],
+    }
+
+
+def _save_mail_private(root, value):
+    raw = json.dumps(value, sort_keys=True, separators=(',', ':'),
+                     allow_nan=False).encode()
+    if not 0 < len(raw) <= 65536:
+        fail('mail-private-evidence-size')
+    descriptor = os.open(root / MAIL_PRIVATE_FILE,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_nlink != 1 or info.st_mode & 0o077
+                or os.write(descriptor, raw) != len(raw)):
+            fail('mail-private-evidence-write')
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _scan_mail_canaries(handles, canaries):
+    """Require fixed collected Mail surfaces to exclude plaintext and its Base64 form."""
+    surfaces = {
+        'appLogs': '/api/v1/apps/mail-prototype/logs',
+        'appAudit': '/api/v1/apps/mail-prototype/audit',
+        'support': '/api/v1/operator/support-bundle',
+        'queue': '/api/v1/queue',
+        'diagnostics': '/api/v1/diagnostics'}
+    observed = {}
+    for role in ('candidate-sender', 'candidate-recipient'):
+        handle = handles[(role, 'mail-prototype')]
+        for name, path in surfaces.items():
+            status, raw = handle.request('GET', path, raw=True)
+            if status != 200 or runtime.mail_demo.canary_exposed(raw, canaries):
+                fail('mail-private-canary-surface-failed')
+            observed[role + ':' + name] = True
+    return observed
+
+
 class InstalledWorkloadAdapter:
     """Finite observer orchestration over a root-prepared, immutable source-build selection.
 
@@ -779,12 +1020,13 @@ class InstalledWorkloadAdapter:
             fail('role-daemon-epoch-changed')
         return value
 
-    def connection(self, role, endpoint):
+    def connection(self, role, endpoint, maximum=25):
         if endpoint not in {'fcp', 'http'}:
             fail('endpoint-not-approved')
-        self.remaining()
+        remaining = self.remaining(maximum)
         self.observe(role)
-        value, connected = self.control.request('connect-' + endpoint, self.handles[role])
+        value, connected = self.control.request(
+            'connect-' + endpoint, self.handles[role], timeout=remaining)
         observed = getattr(self.control, 'last_exchange', None)
         if (role == 'candidate-sender' and endpoint == 'fcp'
                 and isinstance(observed, dict) and observed.get('method') == 'connect-fcp'):
@@ -868,13 +1110,19 @@ class InstalledWorkloadAdapter:
 
     def wait_restarted_sender_peer(self):
         """Require both ends of the sender's existing relay link after its JVM restart."""
+        self.wait_restarted_role_peer('candidate-sender')
+
+    def wait_restarted_role_peer(self, role):
+        """Require both ends of one role's existing relay link after its JVM restart."""
+        if role not in runtime.ROLES[:-1]:
+            fail('restart-peer-role-invalid')
         with (runtime.absolute_deadline(self.remaining(180)),
-              self.client('candidate-sender') as sender,
+              self.client(role) as selected,
               self.client('relay-no-apps') as relay):
-            sender_ref = self.nodes['candidate-sender']['reference']
+            selected_ref = self.nodes[role]['reference']
             relay_ref = self.nodes['relay-no-apps']['reference']
-            runtime.interop.wait_for_peer_connection(sender, relay,
-                sender_ref['identity'], relay_ref['identity'], 150)
+            runtime.interop.wait_for_peer_connection(selected, relay,
+                selected_ref['identity'], relay_ref['identity'], 150)
 
     def capture_probe_target_roster(self):
         """Persist a pre-app active-target premise before any probe child runs."""
@@ -1419,3 +1667,169 @@ class InstalledWorkloadAdapter:
         finally:
             if (not completed or not leave_running_for_administrator) and self.cleanup() != 'complete':
                 fail('terminal-reconciliation-required')
+
+    def run_mail_lane(self, *, leave_running_for_administrator=False,
+                      on_start_failure=None):
+        """Execute the bound PR-316 Mail class without granting historical case credit."""
+        plan_digest = runtime.canonical_digest(self.plan)
+        selection_digest = runtime.canonical_digest({
+            'executionClass': MAIL_EXECUTION_CLASS, 'planDigest': plan_digest})
+        expected_apps = {
+            'candidate-sender': ['mail-prototype'],
+            'candidate-recipient': ['mail-prototype'],
+            'previous': [], 'relay-no-apps': []}
+        if (self.authorization.get('executionClass') != MAIL_EXECUTION_CLASS
+                or self.plan.get('experimentId') != MAIL_EXPERIMENT
+                or self.private.get('root') !=
+                    '/var/lib/cryptad-cross-version/experiments/' + MAIL_EXPERIMENT
+                or any([app.get('appId') for app in
+                        self.private['nodes'][role].get('apps', [])] != expected_apps[role]
+                       for role in runtime.ROLES)
+                or self.authorization.get('planDigest') != plan_digest
+                or self.authorization.get('selectionDigest') != selection_digest
+                or on_start_failure is not None and not callable(on_start_failure)):
+            fail('mail-execution-class-unbound')
+        completed = False
+        result = None
+        started = time.monotonic_ns()
+        commands, milestones, contexts = [], [], {}
+
+        def command_observer(event):
+            if (not isinstance(event, dict) or event.get('kind') != 'mail-command'
+                    or event.get('role') not in {
+                        'candidate-sender', 'candidate-recipient'}):
+                fail('mail-private-command-invalid')
+            commands.append(dict(event))
+
+        def flow_observer(event):
+            if (not isinstance(event, dict) or set(event) != {
+                    'kind', 'name', 'observedMonotonicNs'}
+                    or event['kind'] != 'mail-flow'
+                    or not isinstance(event['name'], str)
+                    or type(event['observedMonotonicNs']) is not int):
+                fail('mail-private-milestone-invalid')
+            milestones.append({'name': event['name'],
+                               'observedMonotonicNs': event['observedMonotonicNs']})
+        try:
+            for role in runtime.ROLES:
+                self.start(role)
+            self.connect()
+            self.capture_probe_target_roster()
+            self.provision_apps()
+            alice_handle = self.apps[('candidate-sender', 'mail-prototype')]
+            bob_handle = self.apps[('candidate-recipient', 'mail-prototype')]
+            alice = alice_handle.mail_client(command_observer)
+            bob = bob_handle.mail_client(command_observer)
+            canaries = (runtime.mail_demo.BODY, runtime.mail_demo.REPLY)
+            privacy_surfaces = {}
+            contexts['senderInitial'] = _mail_context_evidence(alice)
+            contexts['recipientInitial'] = _mail_context_evidence(bob)
+            initial_worker = dict(bob.context['worker'])
+            role_restart = {'observed': False, 'workerRestart': False}
+
+            def bind_restarted_worker(client):
+                if client.context['worker'] == initial_worker:
+                    fail('mail-worker-restart-unobserved')
+                role_restart['workerRestart'] = True
+                contexts['recipientAfterWorkerRestart'] = _mail_context_evidence(client)
+
+            def restart_role(client, reference):
+                if role_restart['workerRestart'] is not True:
+                    fail('mail-worker-restart-unobserved')
+                self.restart('candidate-recipient')
+                self.wait_restarted_role_peer('candidate-recipient')
+                client.rebind()
+                contexts['recipientAfterRoleRestart'] = _mail_context_evidence(client)
+                flow_observer({'kind': 'mail-flow', 'name': 'role-restart',
+                               'observedMonotonicNs': time.monotonic_ns()})
+                runtime.mail_demo.expect(client.command('import-reference', {
+                    'reference': reference, 'confirmed': 'yes'}), 'duplicate')
+                flow_observer({'kind': 'mail-flow',
+                               'name': 'duplicate-after-role-restart',
+                               'observedMonotonicNs': time.monotonic_ns()})
+                role_restart['observed'] = True
+
+            flow = runtime.mail_demo.run_flow(
+                alice, bob, min(600, int(self.deadline - time.monotonic())), True,
+                body=canaries[0], reply_body=canaries[1],
+                before_restart=lambda: privacy_surfaces.update(
+                    beforeWorkerRestart=_scan_mail_canaries(self.apps, canaries)),
+                after_worker_rebind=bind_restarted_worker,
+                after_worker_restart=restart_role, observer=flow_observer)
+            privacy_surfaces['final'] = _scan_mail_canaries(self.apps, canaries)
+            expected_flow = {
+                'insertFetchDecrypt': 'observed', 'wrongRecipient': 'observed',
+                'duplicateBeforeRestart': 'observed',
+                'duplicateAfterRestart': 'observed', 'duplicate': 'observed',
+                'reply': 'observed', 'restart': 'observed',
+                'independentStoresAndSignedInstalls': 'operator-attested',
+                'securityReview': 'unobserved', 'releaseEligible': False,
+                'overall': 'observed-demo'}
+            if (flow != expected_flow or role_restart != {
+                    'observed': True, 'workerRestart': True}):
+                fail('mail-flow-incomplete')
+            directions = {
+                'senderToRecipient': _mail_direction(
+                    commands, 'candidate-sender', 'candidate-recipient'),
+                'recipientToSender': _mail_direction(
+                    commands, 'candidate-recipient', 'candidate-sender')}
+            private = {
+                'schemaVersion': 1, 'kind': MAIL_PRIVATE_KIND,
+                'contract': MAIL_CONTRACT,
+                'executionClass': MAIL_EXECUTION_CLASS,
+                'selectionDigest': selection_digest,
+                'window': {'startedMonotonicNs': started,
+                           'finishedMonotonicNs': time.monotonic_ns()},
+                'contexts': contexts, 'directions': directions,
+                'commands': commands, 'milestones': milestones,
+                'privacySurfaces': privacy_surfaces,
+                'uncertainOutcome': False}
+            _save_mail_private(self.root, private)
+            result = {
+                'schemaVersion': 1,
+                'kind': 'pr316-installed-mail-runtime-observation',
+                'contract': MAIL_CONTRACT,
+                'executionClass': MAIL_EXECUTION_CLASS,
+                'selectionDigest': selection_digest,
+                'privateEvidenceDigest': runtime.canonical_digest(private),
+                'evidenceClass': 'installed-four-role-private-observer',
+                'topologyRoles': len(self.nodes),
+                'namespaceTransportImplemented': True,
+                'installedMailFlowObserved': False,
+                'observerMailFlowObserved': True,
+                'ciphertextInsertionAndRecipientFetch': 'worker-observed',
+                'wrongRecipientObserved': True,
+                'duplicateBeforeRestart': True,
+                'duplicateAfterRestart': True,
+                'workerRestart': True,
+                'roleRestart': True,
+                'replyObserved': True,
+                'privacyCanarySurfacesObserved': True,
+                'uncertainOperationState': False,
+                'cleanupState': ('administrator-required'
+                                 if leave_running_for_administrator
+                                 else 'observer-owned'),
+                'installedWorkloadAcceptanceSatisfied': False,
+                'historicalPr315AcceptanceTransferred': False,
+                'finiteNativeAcceptance': False,
+                'originalProtectedAuthority': False,
+                'independentSecurityReview': False,
+                'releaseEligible': False,
+                'phaseComplete': False}
+            completed = True
+        except Exception:
+            if getattr(self, 'active_start_role', None) is not None \
+                    and on_start_failure is not None:
+                try:
+                    on_start_failure(self.active_start_role,
+                                     getattr(self, 'active_start_stage', 'unavailable'))
+                except (OSError, ValueError, runtime.RuntimeFailure):
+                    pass
+            raise
+        finally:
+            if (not completed or not leave_running_for_administrator) \
+                    and self.cleanup() != 'complete':
+                fail('terminal-reconciliation-required')
+        if not completed or result is None:
+            fail('mail-flow-incomplete')
+        return result

@@ -24,12 +24,18 @@ NATIVE_ROOT = Path('/var/lib/cryptad-restricted-native')
 LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
                        'revocation-running', 'setsid-double-fork',
                        'observer-death', 'none')
+MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
 
 
-def execute(manifest_digest, product_commit, *, startup_measurement=False,
-            lifecycle_scenario='cancellation', workload_group=None,
-            retired_authority_preparation=False):
-    global STAGE
+def _validate_mode(*, startup_measurement, lifecycle_scenario, workload_group,
+                   retired_authority_preparation, execution_class):
+    if execution_class not in (None, MAIL_EXECUTION_CLASS):
+        raise ValueError('workload-guest-execution-class-invalid')
+    if execution_class is not None:
+        if (startup_measurement or lifecycle_scenario != 'none'
+                or workload_group is not None or retired_authority_preparation):
+            raise ValueError('workload-guest-execution-class-invalid')
+        return
     if (workload_group not in (None, 'positive', 'lost-start-response',
                               'partial-launch', 'stuck-output', 'late-child',
                               'cleanup-race',
@@ -53,6 +59,16 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
                 and lifecycle_scenario != 'none')
             or (workload_group is None and lifecycle_scenario == 'none')):
         raise ValueError('workload-guest-group-invalid')
+
+
+def execute(manifest_digest, product_commit, *, startup_measurement=False,
+            lifecycle_scenario='cancellation', workload_group=None,
+            retired_authority_preparation=False, execution_class=None):
+    global STAGE
+    _validate_mode(startup_measurement=startup_measurement,
+        lifecycle_scenario=lifecycle_scenario, workload_group=workload_group,
+        retired_authority_preparation=retired_authority_preparation,
+        execution_class=execution_class)
     import disposable_integration as integration
     # The workload driver performs the same fixed guest prerequisite checks again after
     # installation. Check the OS/VM boundary before any account or service mutation here.
@@ -75,6 +91,7 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
         '--installed', '--fixture-manifest-digest', manifest_digest,
         '--product-source-commit', product_commit,
         '--lifecycle-scenario', lifecycle_scenario,
+        *(['--execution-class', execution_class] if execution_class else []),
         *(['--workload-group', workload_group] if workload_group else []),
         *(['--retired-authority-preparation'] if retired_authority_preparation else []),
         *(['--startup-measurement'] if startup_measurement else [])], stdin=subprocess.DEVNULL,
@@ -84,31 +101,12 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
 
 def installed(manifest_digest, product_commit, *, startup_measurement=False,
               lifecycle_scenario='cancellation', workload_group=None,
-              retired_authority_preparation=False):
+              retired_authority_preparation=False, execution_class=None):
     global STAGE
-    if (workload_group not in (None, 'positive', 'lost-start-response',
-                              'partial-launch', 'stuck-output', 'late-child',
-                              'cleanup-race',
-                              'resource-exhaustion',
-                              'output-symlink', 'output-fifo',
-                              'output-hardlink', 'output-flood', 'output-replacement',
-                              'role-readiness-diagnostic', 'role-boundary',
-                              'authority', 'network-app', 'cancellation',
-                              'controller-restart', 'deadline', 'revocation-running',
-                              'setsid-double-fork', 'observer-death')
-            or (startup_measurement and workload_group)
-            or retired_authority_preparation and
-               workload_group != 'role-readiness-diagnostic'
-            or (workload_group in ('cancellation', 'controller-restart', 'deadline',
-                                   'revocation-running', 'setsid-double-fork',
-                                   'observer-death') and
-                lifecycle_scenario != workload_group)
-            or (workload_group not in (None, 'cancellation', 'controller-restart',
-                                       'deadline', 'revocation-running',
-                                       'setsid-double-fork', 'observer-death')
-                and lifecycle_scenario != 'none')
-            or (workload_group is None and lifecycle_scenario == 'none')):
-        raise ValueError('workload-guest-group-invalid')
+    _validate_mode(startup_measurement=startup_measurement,
+        lifecycle_scenario=lifecycle_scenario, workload_group=workload_group,
+        retired_authority_preparation=retired_authority_preparation,
+        execution_class=execution_class)
     sys.path.insert(0, str(KIT))
     for relative in ('tools/release-certification/protected', 'tools/interop'):
         sys.path.insert(0, str(Path('/opt/cryptad-cross-version/current') / relative))
@@ -118,11 +116,15 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
         raise ValueError('workload-installed-test-kit-required')
     STAGE = 'selection-materialization'
     fixtures.verify(FIXTURES, manifest_digest, SOURCE, product_commit)
-    selection = fixtures.materialize_selection(FIXTURES, SOURCE, manifest_digest, product_commit)
+    materialize = (fixtures.materialize_mail_selection
+                   if execution_class == MAIL_EXECUTION_CLASS
+                   else fixtures.materialize_selection)
+    selection = materialize(FIXTURES, SOURCE, manifest_digest, product_commit)
     sys.path.insert(0, '/opt/cryptad-cross-version/current/tools/release-certification/protected')
     import restricted_workload as workload
     workload.write(driver.SELECTION, selection, create=True)
-    STAGE = ('startup-measurement' if startup_measurement else
+    STAGE = ('pr316-mail-driver' if execution_class == MAIL_EXECUTION_CLASS else
+             'startup-measurement' if startup_measurement else
              'role-readiness-measurement' if workload_group == 'role-readiness-diagnostic' else
              'selected-group-driver' if workload_group not in (None, 'positive')
              else 'positive-driver')
@@ -130,7 +132,8 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
                           lifecycle_scenario=lifecycle_scenario,
                           workload_group=workload_group,
                           retired_authority_preparation=
-                              retired_authority_preparation), 0
+                              retired_authority_preparation,
+                          execution_class=execution_class), 0
 
 
 def _bounded_text(value, maximum):
@@ -271,6 +274,7 @@ def main():
     parser.add_argument('--retired-authority-preparation', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
+    parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,))
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
                                                     'partial-launch', 'stuck-output', 'late-child',
                                                     'cleanup-race',
@@ -295,7 +299,8 @@ def main():
                              lifecycle_scenario=args.lifecycle_scenario,
                              workload_group=args.workload_group,
                              retired_authority_preparation=
-                                 args.retired_authority_preparation)
+                                 args.retired_authority_preparation,
+                             execution_class=args.execution_class)
     if result is not None:
         print(json.dumps(result, sort_keys=True))
     return code

@@ -1299,6 +1299,95 @@ class ControllerRestartObservationTest(unittest.TestCase):
 
 
 class CleanupTest(unittest.TestCase):
+    @staticmethod
+    def mail_observation():
+        return {'schemaVersion': 1,
+            'kind': 'pr316-installed-mail-runtime-observation',
+            'contract': driver.MAIL_EXECUTION_CLASS,
+            'executionClass': driver.MAIL_EXECUTION_CLASS,
+            'selectionDigest': 'sha256:' + 'a' * 64,
+            'privateEvidenceDigest': 'sha256:' + 'b' * 64,
+            'evidenceClass': 'installed-four-role-private-observer',
+            'topologyRoles': 4, 'namespaceTransportImplemented': True,
+            'installedMailFlowObserved': False, 'observerMailFlowObserved': True,
+            'ciphertextInsertionAndRecipientFetch': 'worker-observed',
+            'wrongRecipientObserved': True, 'duplicateBeforeRestart': True,
+            'duplicateAfterRestart': True, 'workerRestart': True,
+            'roleRestart': True, 'replyObserved': True,
+            'privacyCanarySurfacesObserved': True,
+            'uncertainOperationState': False,
+            'cleanupState': 'administrator-required',
+            'installedWorkloadAcceptanceSatisfied': False,
+            'historicalPr315AcceptanceTransferred': False,
+            'finiteNativeAcceptance': False, 'originalProtectedAuthority': False,
+            'independentSecurityReview': False, 'releaseEligible': False,
+            'phaseComplete': False}
+
+    def test_mail_observer_result_has_a_closed_pre_cleanup_schema(self):
+        value = self.mail_observation()
+        self.assertIsNone(driver.validate_mail_observation(value))
+        for changed in ({**value, 'privateToken': 'secret'},
+                        {**value, 'installedMailFlowObserved': True},
+                        {**value, 'cleanupState': 'completed'}):
+            with self.assertRaisesRegex(ValueError, 'mail-observation-invalid'):
+                driver.validate_mail_observation(changed)
+
+    def test_mail_execution_dispatches_only_the_distinct_adapter_lane(self):
+        result = self.mail_observation()
+        adapter = Mock()
+        adapter.run_mail_lane.return_value = result
+        installed = Mock(return_value=adapter)
+
+        class Journal:
+            def __init__(self, root, plan):
+                self.root, self.plan = root, plan
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def append(self, *_args):
+                pass
+
+            def checkpoint(self, *_args):
+                pass
+
+        selected = {'plan': {'selected': True}, 'private': {'selected': True},
+                    'authorization': {'executionClass': driver.MAIL_EXECUTION_CLASS}}
+        with patch.object(driver, 'controller_ready'), patch.dict(sys.modules, {
+                'cross_version_workload': SimpleNamespace(InstalledWorkloadAdapter=installed),
+                'cryptad_certification.cross_version_evidence':
+                    SimpleNamespace(Journal=Journal)}):
+            observed = driver.observer_sequence(selected, Path('/private'),
+                {'expectedJdkDigests': {}}, time.monotonic_ns() + 10**9,
+                time.monotonic(), admin_channel=Mock(), workload_group=None,
+                execution_class=driver.MAIL_EXECUTION_CLASS)
+        self.assertEqual(result, observed)
+        adapter.run_mail_lane.assert_called_once()
+        self.assertEqual({'leave_running_for_administrator': True}, {
+            'leave_running_for_administrator':
+                adapter.run_mail_lane.call_args.kwargs['leave_running_for_administrator']})
+        self.assertTrue(callable(adapter.run_mail_lane.call_args.kwargs['on_start_failure']))
+        adapter.run_positive.assert_not_called()
+        adapter.run_group_preparation.assert_not_called()
+
+    def test_mail_mode_is_mutually_exclusive_with_pr315_modes(self):
+        driver._validate_execution_mode(startup_measurement=False,
+            lifecycle_scenario='none', workload_group=None,
+            retired_authority_preparation=False,
+            execution_class=driver.MAIL_EXECUTION_CLASS)
+        for values in ({'startup_measurement': True},
+                       {'lifecycle_scenario': 'cancellation'},
+                       {'workload_group': 'positive'},
+                       {'retired_authority_preparation': True}):
+            selected = {'startup_measurement': False, 'lifecycle_scenario': 'none',
+                'workload_group': None, 'retired_authority_preparation': False,
+                'execution_class': driver.MAIL_EXECUTION_CLASS, **values}
+            with self.assertRaisesRegex(ValueError, 'execution-class-invalid'):
+                driver._validate_execution_mode(**selected)
+
     def test_startup_measurement_has_fixed_ceiling_and_cannot_extend_campaign(self):
         self.assertEqual(190, driver.readiness_deadline(999 * 10**9, 100))
         self.assertEqual(220, driver.readiness_deadline(999 * 10**9, 100, True))
@@ -1650,23 +1739,35 @@ class ControllerReadinessTest(unittest.TestCase):
 
 
 class TerminalPublicationTest(unittest.TestCase):
-    def exercise(self, failure):
+    def exercise(self, failure, *, mail=False):
         events = []
         repository = Path(driver.__file__).resolve().parents[3]
         relative = 'tools/release-certification/restricted/pr314_workload_driver.py'
         identity = {'sourceCommit': 'test-source'}
+        mail_authorization = {}
+        if mail:
+            plan_digest = 'sha256:' + 'a' * 64
+            mail_authorization = {'executionClass': driver.MAIL_EXECUTION_CLASS,
+                'planDigest': plan_digest,
+                'selectionDigest': 'sha256:' + hashlib.sha256(json.dumps({
+                    'executionClass': driver.MAIL_EXECUTION_CLASS,
+                    'planDigest': plan_digest}, sort_keys=True,
+                    separators=(',', ':'), allow_nan=False).encode()).hexdigest()}
         selection = {'plan': {}, 'private': {
             'root': '/var/lib/cryptad-cross-version/experiments/pr315-test-never-created'},
-            'authorization': {'maxSeconds': 30}}
+            'authorization': {'maxSeconds': 30, **mail_authorization}}
         kit = {**identity, 'files': {relative: hashlib.sha256(Path(driver.__file__).read_bytes()).hexdigest()}}
         installation = SimpleNamespace(verify_execution=lambda: identity,
             read_json=lambda path: kit, secured=lambda path: path)
         campaign_deadline = time.monotonic_ns() + 30 * 10**9
+        def write(path, *args, **_kwargs):
+            events.append('terminal-report' if path == driver.REPORT else
+                          'private-diagnostics')
+            if path == driver.REPORT:
+                self.last_report = args[0]
         workload = SimpleNamespace(ROOT=Path('/var/lib/cryptad-restricted-workload'),
             read=lambda path: selection if path == driver.SELECTION else
-                {'deadlineMonotonicNs': campaign_deadline},
-            write=lambda path, *args, **kwargs: events.append(
-                'terminal-report' if path == driver.REPORT else 'private-diagnostics'))
+                {'deadlineMonotonicNs': campaign_deadline}, write=write)
         def prepare(*args):
             events.append('prepare')
             if failure == 'prepare':
@@ -1710,16 +1811,25 @@ class TerminalPublicationTest(unittest.TestCase):
             stack.enter_context(patch.object(driver.socket, 'socketpair', return_value=(Mock(), Mock())))
             stack.enter_context(patch.object(driver.subprocess, 'run', side_effect=(
                 subprocess.TimeoutExpired('systemctl', 30) if failure == 'controller' else None)))
+            raw_result = (CleanupTest.mail_observation() if mail else
+                          {'contentRetrieval': 'observed', 'newEpoch': True})
+            if mail:
+                raw_result['selectionDigest'] = mail_authorization['selectionDigest']
             stack.enter_context(patch.object(driver, 'collect_child',
-                return_value=(b'{"contentRetrieval":"observed","newEpoch":true}', 0)))
+                return_value=(json.dumps(raw_result).encode(), 0)))
             stack.enter_context(patch.object(driver, 'cleanup', side_effect=cleanup))
             stack.enter_context(patch.object(driver, 'retain_volatile',
                 side_effect=lambda *_: events.append('volatile-diagnostics')))
             if failure:
                 with self.assertRaises((ValueError, subprocess.TimeoutExpired)):
-                    driver.execute()
+                    driver.execute(lifecycle_scenario='none' if mail else 'cancellation',
+                                   execution_class=(driver.MAIL_EXECUTION_CLASS
+                                                    if mail else None))
             else:
-                self.assertEqual('incomplete', driver.execute()['workloadAcceptance'])
+                self.assertEqual('incomplete', driver.execute(
+                    lifecycle_scenario='none' if mail else 'cancellation',
+                    execution_class=(driver.MAIL_EXECUTION_CLASS
+                                     if mail else None))['workloadAcceptance'])
         return events
 
     def test_partial_preparation_and_controller_start_failure_reconcile(self):
@@ -1733,6 +1843,20 @@ class TerminalPublicationTest(unittest.TestCase):
 
     def test_terminal_report_follows_completed_cleanup(self):
         self.assertEqual(['prepare', 'cleanup', 'private-diagnostics', 'volatile-diagnostics', 'terminal-report'], self.exercise(None))
+
+    def test_mail_credit_is_projected_only_in_the_post_cleanup_private_report(self):
+        self.assertEqual(['prepare', 'cleanup', 'private-diagnostics',
+                          'volatile-diagnostics', 'terminal-report'],
+                         self.exercise(None, mail=True))
+        self.assertTrue(self.last_report['installedMailFlowObserved'])
+        self.assertEqual('completed', self.last_report['cleanupState'])
+        self.assertTrue(self.last_report['observerMailFlowObserved'])
+        for field in ('installedWorkloadAcceptanceSatisfied',
+                      'historicalPr315AcceptanceTransferred',
+                      'finiteNativeAcceptance', 'originalProtectedAuthority',
+                      'independentSecurityReview', 'releaseEligible', 'phaseComplete',
+                      'protectedExecutionEnabled'):
+            self.assertFalse(self.last_report[field])
 
 
 class MeasuredRoleProbeStagingTest(unittest.TestCase):
