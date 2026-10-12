@@ -12,6 +12,9 @@ import pr316_pve_vm_inventory as inventory
 
 
 class PveInventoryTest(unittest.TestCase):
+    def test_inventory_has_a_distinct_launch_phase(self):
+        self.assertEqual(('pre', 'final', 'launch'), inventory.PHASES)
+
     def test_inventory_helper_is_host_only_test_seam(self):
         self.assertIn(
             'tools/release-certification/restricted/pr316_pve_vm_inventory.py',

@@ -98,8 +98,8 @@ python3 tools/release-certification/restricted/pr316_mail_runtime_runner.py \
 
 After the runner writes `suite-N/awaiting-final-pve-inventory.private.json`, PVE root publishes the
 second inventory. After all fixture, inventory, capacity and host-side attempt preparation passes,
-the runner writes `suite-N/awaiting-pressure-watcher.private.json`; only then does PVE root start
-the watcher in the background:
+the runner writes `suite-N/awaiting-pressure-watcher.private.json`; only then does PVE root publish
+the launch-bound host admission and task inventory before starting the watcher in the background:
 
 ```bash
 # PVE root terminal, after awaiting-final-pve-inventory.private.json appears.
@@ -109,6 +109,8 @@ python3 tools/release-certification/restricted/pr316_pve_vm_inventory.py \
 # PVE root terminal, after awaiting-pressure-watcher.private.json appears.
 python3 tools/release-certification/restricted/pr315_pve_host_admission.py \
   --suite suite-N --source-commit COMMIT --phase launch
+python3 tools/release-certification/restricted/pr316_pve_vm_inventory.py \
+  --suite suite-N --source-commit COMMIT --phase launch
 
 nohup python3 tools/release-certification/restricted/pr315_pve_pressure_watch.py \
   --suite suite-N --source-commit COMMIT \
@@ -116,9 +118,10 @@ nohup python3 tools/release-certification/restricted/pr315_pve_pressure_watch.py
 ```
 
 The runner authenticates the watcher ready receipt at the final pre-QEMU boundary and then launches
-the guest immediately. The same callback first requires the distinct immutable
-`suite-N-launch.json` host-admission receipt, so memory, swap and pressure are remeasured after host
-preparation rather than inherited from the initial receipt. A fixture, final-inventory or capacity
+the guest immediately. The same callback first requires distinct immutable launch-phase host
+admission and PVE inventory receipts created after its marker. Memory, swap, pressure, absence of a
+task QEMU, allocated task storage and the free-space reserve are therefore remeasured after host
+preparation rather than inherited from earlier receipts. A fixture, final-inventory or capacity
 failure therefore occurs before the watcher is requested. If QEMU does not appear within 30 seconds
 after readiness, the watcher closes as `stopped-before-launch`. Before launch, the runner also
 requires at least five seconds of that window to remain and rejects any already-published finished

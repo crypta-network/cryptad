@@ -195,7 +195,7 @@ def wait_final_pve_inventory(root, output, suite, source_commit):
         return receipt
 
 
-def validate_final_pve_capacity(args, observation, required):
+def validate_pve_capacity(args, observation, required):
     """Require the authoritative host view to admit one attempt and its free-space reserve."""
     allocated = observation.get('allocatedTaskBytes') if isinstance(observation, dict) else None
     available = observation.get('availableTaskBytes') if isinstance(observation, dict) else None
@@ -208,12 +208,15 @@ def validate_final_pve_capacity(args, observation, required):
         raise ValueError('pr316-final-pve-capacity-unavailable')
 
 
-def wait_pressure_watcher(root, output, suite, source_commit):
-    """Require fresh host admission and an active watcher at the launch boundary."""
+def wait_pressure_watcher(args, root, output, suite, source_commit, required):
+    """Require fresh PVE admission, inventory and watcher at the launch boundary."""
+    not_before = time.monotonic_ns()
     retained_runner._save(output / 'awaiting-pressure-watcher.private.json', {
         'schemaVersion': 1, 'kind': 'pr316-awaiting-pressure-watcher',
         'suite': suite, 'sourceCommit': source_commit,
-        'requiredHostAdmissionPhase': 'launch'})
+        'notBeforeMonotonicNs': not_before,
+        'requiredHostAdmissionPhase': 'launch',
+        'requiredPveInventoryPhase': 'launch'})
     deadline = time.monotonic() + 120
     admission_path = root / 'host-admission' / host_admission.receipt_name(
         suite, 'launch')
@@ -221,13 +224,32 @@ def wait_pressure_watcher(root, output, suite, source_commit):
         try:
             admission = host_admission.verify_receipt(
                 admission_path, suite, source_commit, 'launch')
-            retained_runner._save(
-                output / 'launch-host-admission.private.json', admission)
             break
         except (FileNotFoundError, OSError, ValueError):
             if time.monotonic() >= deadline:
                 raise ValueError('pr316-launch-host-admission-unavailable') from None
             time.sleep(.25)
+    admitted = admission.get('observation', {}).get('observedMonotonicNs')
+    if type(admitted) is not int or admitted <= not_before:
+        raise ValueError('pr316-launch-host-admission-before-barrier')
+    retained_runner._save(
+        output / 'launch-host-admission.private.json', admission)
+    inventory_path = root / 'host-inventory' / (suite + '-launch.json')
+    while True:
+        try:
+            inventory = pve_inventory.verify_receipt(
+                inventory_path, suite, source_commit, 'launch')
+            break
+        except (FileNotFoundError, OSError, ValueError):
+            if time.monotonic() >= deadline:
+                raise ValueError('pr316-launch-pve-inventory-unavailable') from None
+            time.sleep(.25)
+    observed = inventory.get('observation', {}).get('observedMonotonicNs')
+    if type(observed) is not int or observed <= not_before:
+        raise ValueError('pr316-launch-pve-inventory-before-barrier')
+    validate_pve_capacity(args, inventory['observation'], required)
+    retained_runner._save(
+        output / 'launch-pve-inventory.private.json', inventory)
     while True:
         try:
             return pressure_watch.verify_launch_ready(suite, source_commit)
@@ -699,7 +721,7 @@ def run(args):
                     root, output, output.name, source_commit)
                 capacity['finalPveTaskInventory'] = final_inventory['observation']
                 required = capacity['requiredAttemptBytes']
-                validate_final_pve_capacity(args, final_inventory['observation'], required)
+                validate_pve_capacity(args, final_inventory['observation'], required)
                 reason = retained_runner.capacity_reason(args, root, required)
                 if reason:
                     raise ValueError('pr316-preallocation-capacity-unavailable')
@@ -710,7 +732,7 @@ def run(args):
                 def start_pressure_watcher():
                     nonlocal watch_ready
                     watch_ready = wait_pressure_watcher(
-                        root, output, output.name, source_commit)
+                        args, root, output, output.name, source_commit, required)
 
                 with (output / 'transport.private.log').open('x') as log, \
                         redirect_stdout(log):

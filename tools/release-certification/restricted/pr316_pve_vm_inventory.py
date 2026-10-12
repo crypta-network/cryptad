@@ -17,7 +17,7 @@ TASK_ROOT = Path('/mnt/tank1/files/pr315-workload-acceptance')
 VISIBLE_ROOT = Path('/work/pr315-task/host-inventory')
 QEMU_ROOTS = ('/work/pr315-task/', '/mnt/tank1/files/pr315-workload-acceptance/')
 MAX_ENTRIES = 500000
-PHASES = ('pre', 'final')
+PHASES = ('pre', 'final', 'launch')
 
 
 @contextmanager
