@@ -53,6 +53,18 @@ PRIVATE_FIELDS = frozenset({
     'schemaVersion', 'kind', 'contract', 'executionClass', 'selectionDigest',
     'window', 'contexts', 'directions', 'commands', 'milestones',
     'privacySurfaces', 'uncertainOutcome'})
+GUEST_OBSERVATION_FIELDS = frozenset({
+    'schemaVersion', 'kind', 'contract', 'executionClass', 'selectionDigest',
+    'privateEvidenceDigest', 'evidenceClass', 'topologyRoles',
+    'namespaceTransportImplemented', 'installedMailFlowObserved',
+    'observerMailFlowObserved', 'ciphertextInsertionAndRecipientFetch',
+    'wrongRecipientObserved', 'duplicateBeforeRestart', 'duplicateAfterRestart',
+    'workerRestart', 'roleRestart', 'replyObserved',
+    'privacyCanarySurfacesObserved', 'uncertainOperationState',
+    'cleanupState', 'installedWorkloadAcceptanceSatisfied',
+    'historicalPr315AcceptanceTransferred', 'finiteNativeAcceptance',
+    'originalProtectedAuthority', 'independentSecurityReview',
+    'releaseEligible', 'phaseComplete'})
 PUBLIC_FLAGS = (
     'namespaceTransportObserved', 'installedMailFlowObserved',
     'insertFetchDecryptObserved', 'wrongRecipientObserved',
@@ -183,6 +195,60 @@ def selection_digest(plan, authorization):
             or authorization.get('selectionDigest') != digest):
         raise ValueError('pr316-selection-digest-invalid')
     return digest
+
+
+def authorization_selection_digest(authorization):
+    """Derive the guest's selected execution identity from its admitted authorization."""
+    return canonical_digest({
+        'executionClass': EXECUTION_CLASS,
+        'planDigest': authorization.get('planDigest')})
+
+
+def validate_guest_observation(value, expected_selection_digest=None):
+    """Accept only the fixed pre-cleanup result returned by the installed observer."""
+    expected = {
+        'schemaVersion': 1,
+        'kind': 'pr316-installed-mail-runtime-observation',
+        'contract': EXECUTION_CLASS,
+        'executionClass': EXECUTION_CLASS,
+        'evidenceClass': 'installed-four-role-private-observer',
+        'topologyRoles': 4,
+        'namespaceTransportImplemented': True,
+        'installedMailFlowObserved': False,
+        'observerMailFlowObserved': True,
+        'ciphertextInsertionAndRecipientFetch': 'worker-observed',
+        'wrongRecipientObserved': True,
+        'duplicateBeforeRestart': True,
+        'duplicateAfterRestart': True,
+        'workerRestart': True,
+        'roleRestart': True,
+        'replyObserved': True,
+        'privacyCanarySurfacesObserved': True,
+        'uncertainOperationState': False,
+        'cleanupState': 'administrator-required',
+        'installedWorkloadAcceptanceSatisfied': False,
+        'historicalPr315AcceptanceTransferred': False,
+        'finiteNativeAcceptance': False,
+        'originalProtectedAuthority': False,
+        'independentSecurityReview': False,
+        'releaseEligible': False,
+        'phaseComplete': False}
+    if (not isinstance(value, dict) or set(value) != GUEST_OBSERVATION_FIELDS
+            or any(value.get(key) != selected for key, selected in expected.items())
+            or any(_DIGEST.fullmatch(str(value.get(key))) is None
+                   for key in ('selectionDigest', 'privateEvidenceDigest'))
+            or expected_selection_digest is not None
+            and value.get('selectionDigest') != expected_selection_digest):
+        raise ValueError('workload-mail-observation-invalid')
+
+
+def attach_guest_context(value, identity, runtime_policy, campaign_deadline):
+    """Return the validated guest result with the administrator-owned context attached."""
+    validate_guest_observation(value)
+    return {**value, 'identity': identity, 'runtimePolicy': runtime_policy,
+            'campaignDeadlineMonotonicNs': campaign_deadline,
+            'workloadAcceptance': 'incomplete-pr316-private-evidence-not-verified',
+            'protectedExecutionEnabled': False}
 
 
 def _exact(value, fields, code):

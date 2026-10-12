@@ -26,6 +26,8 @@ import time
 
 sys.dont_write_bytecode = True
 
+import pr316_mail_runtime_evidence as mail_evidence
+
 INSTALLED = Path('/opt/cryptad-cross-version/current')
 TEST_KIT = Path('/opt/cryptad-restricted-test-kit')
 SELECTION = Path('/root/pr314-workload-selection.json')
@@ -46,19 +48,14 @@ READINESS_STAGES = ('start-request', 'fcp-get-node', 'daemon-epoch', 'journal-no
 LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
                        'revocation-running', 'setsid-double-fork',
                        'observer-death', 'none')
-MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
-MAIL_OBSERVATION_FIELDS = frozenset({
-    'schemaVersion', 'kind', 'contract', 'executionClass', 'selectionDigest',
-    'privateEvidenceDigest', 'evidenceClass', 'topologyRoles',
-    'namespaceTransportImplemented', 'installedMailFlowObserved',
-    'observerMailFlowObserved', 'ciphertextInsertionAndRecipientFetch',
-    'wrongRecipientObserved', 'duplicateBeforeRestart', 'duplicateAfterRestart',
-    'workerRestart', 'roleRestart', 'replyObserved',
-    'privacyCanarySurfacesObserved', 'uncertainOperationState',
-    'cleanupState', 'installedWorkloadAcceptanceSatisfied',
-    'historicalPr315AcceptanceTransferred', 'finiteNativeAcceptance',
-    'originalProtectedAuthority', 'independentSecurityReview',
-    'releaseEligible', 'phaseComplete'})
+WORKLOAD_GROUPS = (
+    'positive', 'lost-start-response', 'partial-launch', 'stuck-output',
+    'late-child', 'cleanup-race', 'resource-exhaustion', 'output-symlink',
+    'output-fifo', 'output-hardlink', 'output-flood', 'output-replacement',
+    'role-readiness-diagnostic', 'role-boundary', 'authority', 'network-app',
+    'cancellation', 'controller-restart', 'deadline', 'revocation-running',
+    'setsid-double-fork', 'observer-death')
+MAIL_EXECUTION_CLASS = mail_evidence.EXECUTION_CLASS
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective administrator observation budget after the installed startup measurement.
 # Production limits and the retained campaign deadline remain unchanged.
@@ -3676,42 +3673,7 @@ def readiness_deadline(campaign_deadline_ns, started, startup_measurement=False)
     return min(campaign_deadline_ns / 10**9, started + seconds)
 
 
-def validate_mail_observation(value, expected_selection_digest=None):
-    """Accept only the fixed observer result; administrator completion is projected later."""
-    expected = {
-        'schemaVersion': 1,
-        'kind': 'pr316-installed-mail-runtime-observation',
-        'contract': MAIL_EXECUTION_CLASS,
-        'executionClass': MAIL_EXECUTION_CLASS,
-        'evidenceClass': 'installed-four-role-private-observer',
-        'topologyRoles': 4,
-        'namespaceTransportImplemented': True,
-        'installedMailFlowObserved': False,
-        'observerMailFlowObserved': True,
-        'ciphertextInsertionAndRecipientFetch': 'worker-observed',
-        'wrongRecipientObserved': True,
-        'duplicateBeforeRestart': True,
-        'duplicateAfterRestart': True,
-        'workerRestart': True,
-        'roleRestart': True,
-        'replyObserved': True,
-        'privacyCanarySurfacesObserved': True,
-        'uncertainOperationState': False,
-        'cleanupState': 'administrator-required',
-        'installedWorkloadAcceptanceSatisfied': False,
-        'historicalPr315AcceptanceTransferred': False,
-        'finiteNativeAcceptance': False,
-        'originalProtectedAuthority': False,
-        'independentSecurityReview': False,
-        'releaseEligible': False,
-        'phaseComplete': False}
-    if (not isinstance(value, dict) or set(value) != MAIL_OBSERVATION_FIELDS
-            or any(value.get(key) != selected for key, selected in expected.items())
-            or any(re.fullmatch('sha256:[0-9a-f]{64}', str(value.get(key))) is None
-                   for key in ('selectionDigest', 'privateEvidenceDigest'))
-            or expected_selection_digest is not None
-            and value.get('selectionDigest') != expected_selection_digest):
-        raise ValueError('workload-mail-observation-invalid')
+validate_mail_observation = mail_evidence.validate_guest_observation
 
 
 def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
@@ -4256,16 +4218,7 @@ def _validate_execution_mode(*, startup_measurement, lifecycle_scenario,
                 or workload_group is not None or retired_authority_preparation):
             raise ValueError('workload-execution-class-invalid')
         return
-    if workload_group not in (None, 'positive', 'lost-start-response',
-                             'partial-launch', 'stuck-output', 'late-child',
-                             'cleanup-race',
-                             'resource-exhaustion',
-                             'output-symlink', 'output-fifo',
-                             'output-hardlink', 'output-flood', 'output-replacement',
-                             'role-readiness-diagnostic', 'role-boundary',
-                             'authority', 'network-app', 'cancellation',
-                             'controller-restart', 'deadline', 'revocation-running',
-                             'setsid-double-fork', 'observer-death') or (
+    if workload_group not in (None, *WORKLOAD_GROUPS) or (
             startup_measurement and workload_group or
             retired_authority_preparation and
             (workload_group != 'role-readiness-diagnostic'
@@ -4325,10 +4278,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             or execution_class is not None and selected_class != execution_class):
         raise ValueError('workload-test-execution-class-mismatch')
     if execution_class == MAIL_EXECUTION_CLASS:
-        expected_selection_digest = 'sha256:' + hashlib.sha256(json.dumps({
-            'executionClass': execution_class,
-            'planDigest': selected['authorization'].get('planDigest')}, sort_keys=True,
-            separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+        expected_selection_digest = mail_evidence.authorization_selection_digest(
+            selected['authorization'])
         if selected['authorization'].get('selectionDigest') != expected_selection_digest:
             raise ValueError('workload-test-selection-digest-mismatch')
     observer = pwd.getpwnam('cryptad-soak')
@@ -4514,10 +4465,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                  or result.get('newEpoch') is not False)):
             raise ValueError('workload-group-preparation-incomplete')
         if execution_class == MAIL_EXECUTION_CLASS:
-            result.update(identity=identity, runtimePolicy=launcher_policy(),
-                campaignDeadlineMonotonicNs=campaign_deadline,
-                workloadAcceptance='incomplete-pr316-private-evidence-not-verified',
-                protectedExecutionEnabled=False)
+            result = mail_evidence.attach_guest_context(
+                result, identity, launcher_policy(), campaign_deadline)
         else:
             result.update(identity=identity, runtimePolicy=launcher_policy(),
                           finiteNativeAcceptance='not-executed-by-this-driver',
@@ -5016,20 +4965,7 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,))
-    parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
-                                                    'partial-launch', 'stuck-output', 'late-child',
-                                                    'cleanup-race',
-                                                    'resource-exhaustion',
-                                                    'output-symlink', 'output-fifo',
-                                                    'output-hardlink', 'output-flood',
-                                                    'output-replacement',
-                                                    'role-readiness-diagnostic',
-                                                    'role-boundary', 'authority',
-                                                    'network-app', 'cancellation',
-                                                    'controller-restart', 'deadline',
-                                                    'revocation-running',
-                                                    'setsid-double-fork',
-                                                    'observer-death'))
+    parser.add_argument('--workload-group', choices=WORKLOAD_GROUPS)
     parser.add_argument('--retired-authority-preparation', action='store_true')
     args = parser.parse_args()
     reasons = prerequisites()
