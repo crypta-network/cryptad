@@ -319,6 +319,20 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                 'suite-1', 'a' * 40, 'final')
             sleep.assert_not_called()
 
+    def test_final_pve_capacity_requires_host_budget_and_free_reserve(self):
+        selected = SimpleNamespace(storage_budget_bytes=1000, min_free_bytes=200)
+        self.assertIsNone(runner.validate_final_pve_capacity(selected, {
+            'allocatedTaskBytes': 300, 'availableTaskBytes': 700}, 500))
+        for observation in (
+                {'allocatedTaskBytes': 501, 'availableTaskBytes': 700},
+                {'allocatedTaskBytes': 300, 'availableTaskBytes': 699}):
+            with self.subTest(observation=observation), self.assertRaisesRegex(
+                    ValueError, 'pr316-final-pve-capacity-unavailable'):
+                runner.validate_final_pve_capacity(selected, observation, 500)
+        with self.assertRaisesRegex(ValueError, 'pr316-final-pve-capacity-invalid'):
+            runner.validate_final_pve_capacity(
+                selected, {'allocatedTaskBytes': 300, 'availableTaskBytes': True}, 500)
+
     def test_attempt_projection_uses_private_evidence_validator_and_terminal_proof(self):
         selected_args = SimpleNamespace(
             product_source_commit='9' * 40,
@@ -419,7 +433,7 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                                  return_value={'observation': {
                                      'activeTaskQemu': [],
                                      'allocatedTaskBytes': 0,
-                                     'availableTaskBytes': 1}}), \
+                                     'availableTaskBytes': 2 * 1024**3}}), \
                     patch.object(runner.retained_runner, 'allocated_bytes',
                                  return_value=0), \
                     patch.object(runner.retained_runner, 'required_attempt_bytes',
@@ -443,11 +457,17 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             root.chmod(0o700)
             selected = args(root)
             projected = public_result()
-            captured = {}
+            captured, events = {}, []
+            validate_capacity = runner.validate_final_pve_capacity
 
             def execute(call):
+                events.append('execute')
                 captured['args'] = call
                 call.attempt.mkdir()
+
+            def check_capacity(*values):
+                events.append('pve-capacity')
+                return validate_capacity(*values)
 
             with patch.object(runner.reference, 'sha256', return_value='a'), \
                     patch.object(runner, 'task_vm_inventory', return_value={
@@ -468,7 +488,9 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                                  return_value={'observation': {
                                      'activeTaskQemu': [],
                                      'allocatedTaskBytes': 0,
-                                     'availableTaskBytes': 1}}), \
+                                     'availableTaskBytes': 2 * 1024**3}}), \
+                    patch.object(runner, 'validate_final_pve_capacity',
+                                 side_effect=check_capacity) as pve_capacity, \
                     patch.object(runner.pressure_watch, 'wait_ready',
                                  return_value={'observedMonotonicNs': 1}), \
                     patch.object(runner.pressure_watch, 'verify_finished',
@@ -496,6 +518,10 @@ class MailRuntimeRunnerTest(unittest.TestCase):
             self.assertFalse(invoked.startup_measurement)
             self.assertEqual(selected.output / 'attempt-01', invoked.attempt)
             self.assertEqual(2, inventory.call_count)
+            self.assertEqual(['pve-capacity', 'execute'], events)
+            pve_capacity.assert_called_once_with(selected, {
+                'activeTaskQemu': [], 'allocatedTaskBytes': 0,
+                'availableTaskBytes': 2 * 1024**3}, 1024)
 
     def test_failed_private_reconciliation_still_emits_closed_assessment(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -525,7 +551,7 @@ class MailRuntimeRunnerTest(unittest.TestCase):
                                  return_value={'observation': {
                                      'activeTaskQemu': [],
                                      'allocatedTaskBytes': 0,
-                                     'availableTaskBytes': 1}}), \
+                                     'availableTaskBytes': 2 * 1024**3}}), \
                     patch.object(runner.pressure_watch, 'wait_ready',
                                  return_value={'observedMonotonicNs': 1}), \
                     patch.object(runner.pressure_watch, 'verify_finished',

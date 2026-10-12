@@ -195,6 +195,19 @@ def wait_final_pve_inventory(root, output, suite, source_commit):
         return receipt
 
 
+def validate_final_pve_capacity(args, observation, required):
+    """Require the authoritative host view to admit one attempt and its free-space reserve."""
+    allocated = observation.get('allocatedTaskBytes') if isinstance(observation, dict) else None
+    available = observation.get('availableTaskBytes') if isinstance(observation, dict) else None
+    if (type(required) is not int or required <= 0
+            or type(allocated) is not int or allocated < 0
+            or type(available) is not int or available < 0):
+        raise ValueError('pr316-final-pve-capacity-invalid')
+    if (allocated + required > args.storage_budget_bytes
+            or available < required + args.min_free_bytes):
+        raise ValueError('pr316-final-pve-capacity-unavailable')
+
+
 def _private_json(path, maximum=MAX_PRIVATE_RECORD):
     """Read one owner-private, single-link regular JSON record exactly once."""
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -633,8 +646,9 @@ def run(args):
                 final_inventory = wait_final_pve_inventory(
                     root, output, output.name, source_commit)
                 capacity['finalPveTaskInventory'] = final_inventory['observation']
-                reason = retained_runner.capacity_reason(
-                    args, root, retained_runner.required_attempt_bytes(args))
+                required = capacity['requiredAttemptBytes']
+                validate_final_pve_capacity(args, final_inventory['observation'], required)
+                reason = retained_runner.capacity_reason(args, root, required)
                 if reason:
                     raise ValueError('pr316-preallocation-capacity-unavailable')
                 retained_runner._save(
