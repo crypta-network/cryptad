@@ -28,6 +28,12 @@ import restricted_workload_prepare as preparation
 
 
 class ControllerStartupDiagnosticsTest(unittest.TestCase):
+    def setUp(self):
+        self.boot_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        boot = patch.object(workload, 'boot', return_value=self.boot_id)
+        boot.start()
+        self.addCleanup(boot.stop)
+
     def test_bootstrap_failure_phase_is_private_closed_and_keeps_original_error(self):
         boot_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
         with patch.object(workload, 'write') as written, \
@@ -61,7 +67,7 @@ class ControllerStartupDiagnosticsTest(unittest.TestCase):
             self.assertEqual(0o600, stat.S_IMODE(controller.STARTUP.stat().st_mode))
         self.assertEqual('private-runtime-diagnostic-not-acceptance', record['classification'])
         self.assertEqual(os.getpid(), record['pid'])
-        self.assertEqual(workload.boot(), record['bootId'])
+        self.assertEqual(self.boot_id, record['bootId'])
         self.assertEqual(123, record['startedMonotonicNs'])
         self.assertGreater(record['observedMonotonicNs'], 123)
         self.assertEqual(2, record['schemaVersion'])
@@ -133,6 +139,14 @@ class ControllerStartupDiagnosticsTest(unittest.TestCase):
         self.assertEqual('ValueError', records[-1]['exceptionType'])
         self.assertEqual(records[0]['startedMonotonicNs'], records[1]['startedMonotonicNs'])
         self.assertNotIn('private verification detail', json.dumps(records))
+
+    def test_unavailable_boot_observation_cannot_replace_verification_failure(self):
+        failure = ValueError('private verification detail')
+        with patch.object(workload, 'boot', side_effect=FileNotFoundError('boot ID unavailable')):
+            records, events, raised = self.run_startup(failure)
+        self.assertIs(failure, raised)
+        self.assertEqual([], records)
+        self.assertEqual(['verify-called'], events)
 
     def test_successful_startup_records_all_fixed_stages_before_request_loop(self):
         records, events, _raised = self.run_startup()

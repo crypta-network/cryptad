@@ -426,6 +426,7 @@ class SocketTransferTests(unittest.TestCase):
                 array.array('i', [received]).tobytes())], 0, None)
             error = network.NetworkBoundaryError('restricted-workload-connect-child-reconciliation-required')
             with patch.object(network, 'NETNS_ROOT', root), \
+                    patch.object(network.socket, 'MSG_CMSG_CLOEXEC', 0x40000000, create=True), \
                     patch.object(network, '_load', return_value=state), \
                     patch.object(network, '_namespace_identity', return_value=identity), \
                     patch.object(network.socket, 'socketpair', return_value=(parent, child)), \
@@ -435,6 +436,7 @@ class SocketTransferTests(unittest.TestCase):
                     self.assertRaisesRegex(network.NetworkBoundaryError, 'child-reconciliation-required'):
                 network._connect_port(role, 19401)
             kill.assert_called_once_with(123456, network.signal.SIGKILL)
+            self.assertEqual(0x40000000, parent.recvmsg.call_args.args[2])
             self.assertEqual(2, wait.call_count)
             with self.assertRaises(OSError):
                 os.fstat(received)
@@ -459,6 +461,7 @@ class SocketTransferTests(unittest.TestCase):
                 array.array('i', [received]).tobytes())], 0, None)
             error = ChildProcessError('already reaped')
             with patch.object(network, 'NETNS_ROOT', root), \
+                    patch.object(network.socket, 'MSG_CMSG_CLOEXEC', 0x40000000, create=True), \
                     patch.object(network, '_load', return_value=state), \
                     patch.object(network, '_namespace_identity', return_value=identity), \
                     patch.object(network.socket, 'socketpair', return_value=(parent, child)), \
@@ -468,6 +471,7 @@ class SocketTransferTests(unittest.TestCase):
                     self.assertRaises(network.NetworkBoundaryError):
                 network._connect_port(role, 19401)
             kill.assert_not_called()
+            self.assertEqual(0x40000000, parent.recvmsg.call_args.args[2])
             self.assertEqual(1, wait.call_count)
             with self.assertRaises(OSError):
                 os.fstat(received)

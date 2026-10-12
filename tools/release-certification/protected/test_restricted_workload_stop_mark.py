@@ -68,6 +68,7 @@ class MembershipTest(unittest.TestCase):
         with self.assertRaisesRegex(workload.WorkloadError, 'subtree'):
             mark._members(self.fd, 3)
 
+    @unittest.skipUnless(Path('/proc/self/stat').is_file(), 'requires Linux procfs process epoch')
     def test_actual_self_epoch_is_stable_without_privilege(self):
         first = mark._self_epoch()
         self.assertEqual(os.getpid(), first[0])
@@ -80,6 +81,14 @@ class StopReceiptTest(unittest.TestCase):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.root = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
+        self.start_ticks = 12345
+        self.proc_stat = self.root / 'self.stat'
+        self.proc_stat.write_text(f'{os.getpid()} (offline marker) S ' + '0 ' * 18 +
+                                  str(self.start_ticks) + '\n')
+        original_open = os.open
+        def open_fixture(path, *args, **kwargs):
+            return original_open(self.proc_stat if path == '/proc/self/stat' else path, *args, **kwargs)
+        self.stack.enter_context(patch.object(mark.os, 'open', side_effect=open_fixture))
         self.group = self.root / 'group'
         self.group.mkdir()
         (self.group / 'cgroup.procs').write_text(str(os.getpid()) + '\n')
@@ -113,6 +122,7 @@ class StopReceiptTest(unittest.TestCase):
         self.assertEqual(0, receipt['descendantCgroups'])
         self.assertEqual(self.identity, receipt['cgroupIdentity'])
         self.assertEqual(os.getpid(), receipt['helperPid'])
+        self.assertEqual(self.start_ticks, receipt['helperStartTimeTicks'])
         self.assertGreaterEqual(receipt['observedMonotonicNs'], receipt['startedMonotonicNs'])
         self.current.assert_not_called()
         self.lease.assert_not_called()
@@ -153,6 +163,14 @@ class StopReceiptTest(unittest.TestCase):
             with self.assertRaises(workload.WorkloadError):
                 self.receipt()
         self.write.assert_not_called()
+
+    def test_wrong_helper_pid_and_nonpositive_epoch_reject_without_receipt(self):
+        for pid, ticks in ((os.getpid() + 1, self.start_ticks), (os.getpid(), 0)):
+            with self.subTest(pid=pid, ticks=ticks):
+                self.proc_stat.write_text(f'{pid} (offline marker) S ' + '0 ' * 18 + str(ticks) + '\n')
+                with self.assertRaisesRegex(workload.WorkloadError, 'helper-epoch-invalid'):
+                    self.receipt()
+                self.write.assert_not_called()
 
     def test_replaced_group_helper_epoch_and_expired_observation_reject(self):
         epoch = mark._self_epoch()
