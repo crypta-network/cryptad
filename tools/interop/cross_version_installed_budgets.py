@@ -23,8 +23,10 @@ import urllib.parse
 
 import cross_version_runtime as runtime
 import cross_version_workload as installed
-from cryptad_certification import composed_budget_evidence as composed
-from cryptad_certification import runtime_pressure_evidence as pressure
+
+with runtime.fixed_helper_imports():
+    from cryptad_certification import composed_budget_evidence as composed
+    from cryptad_certification import runtime_pressure_evidence as pressure
 
 
 EXECUTION_CLASS = "pr317-namespace-bound-composed-budget-v1"

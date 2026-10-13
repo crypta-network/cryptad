@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -37,6 +41,24 @@ def event(sequence, kind, operation_id=7, operation="trust_graph_import", scope=
 
 
 class InstalledBudgetAdapterTest(unittest.TestCase):
+    def test_import_finds_fixed_helpers_without_pythonpath_or_checkout_working_directory(self):
+        script = """
+import sys
+sys.path.insert(0, sys.argv[1])
+original = list(sys.path)
+import cross_version_installed_budgets as budgets
+assert budgets.composed.__name__ == 'cryptad_certification.composed_budget_evidence'
+assert budgets.pressure.__name__ == 'cryptad_certification.runtime_pressure_evidence'
+assert sys.path == original
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, '-I', '-B', '-c', script,
+                 str(Path(budgets.__file__).resolve().parent)],
+                cwd=directory, capture_output=True, text=True, timeout=15, check=False)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_start_readiness_failure_kills_and_reaps_spawned_client(self):
         class Channel:
             def poll(self, _):
