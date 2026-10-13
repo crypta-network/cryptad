@@ -115,6 +115,12 @@ public final class RuntimeWorkObservation {
      * Missing or exceptional acknowledgment remains unknown and retains holds.
      */
     FETCH_TERMINATION_UNKNOWN,
+    /** The bounded caller invoked the actual native fetch owner's cancellation API. */
+    FETCH_CANCEL_REQUESTED,
+    /** The native fetch owner acknowledged normal termination after a bounded waiter returned. */
+    FETCH_OWNER_TERMINATED,
+    /** The native fetch owner's termination acknowledgment completed exceptionally. */
+    FETCH_OWNER_TERMINATION_FAILED,
 
     /** An enabled pass acquired the no-overlap guard. */
     TICK_ENTERED,
@@ -163,6 +169,12 @@ public final class RuntimeWorkObservation {
     RATE_LIMIT_REACHED,
     /** An applicable process-local concurrency limit denied admission. */
     BUDGET_CONCURRENCY_DENIED,
+    /**
+     * The actual saturated concurrency family. Operation is the limiting family, scope is its
+     * app/global label, value is the number of held family slots, and operationId is the denied
+     * admission ID.
+     */
+    CONCURRENCY_LIMIT_REACHED,
     /** All required family reservations were acquired. */
     BUDGET_RESERVED,
     /** The composed budget acquisition or reservation commit completed. */
@@ -355,7 +367,7 @@ public final class RuntimeWorkObservation {
    * @return detached bounded history, with explicit cumulative truncation count
    */
   public synchronized Snapshot snapshot() {
-    return new Snapshot(2, sequence, dropped, List.copyOf(events), collectorEpoch);
+    return new Snapshot(3, sequence, dropped, List.copyOf(events), collectorEpoch);
   }
 
   /**

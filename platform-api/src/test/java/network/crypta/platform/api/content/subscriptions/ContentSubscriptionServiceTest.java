@@ -67,10 +67,48 @@ class ContentSubscriptionServiceTest {
     terminal.complete(null);
     assertEquals(0, budget.diagnostics().activeFamilyLeases());
     assertEquals(0, budget.diagnostics().reservedFamilyRates());
-    assertTrue(
+    var kinds =
         budget.observation().snapshot().events().stream()
-            .anyMatch(event -> event.kind() == RuntimeWorkObservation.Kind.FETCH_FAILED));
+            .map(RuntimeWorkObservation.Event::kind)
+            .toList();
+    assertTrue(kinds.contains(RuntimeWorkObservation.Kind.FETCH_FAILED));
+    assertTrue(
+        kinds.indexOf(RuntimeWorkObservation.Kind.FETCH_TERMINATION_UNKNOWN)
+            < kinds.indexOf(RuntimeWorkObservation.Kind.FETCH_OWNER_TERMINATED));
+    assertTrue(
+        kinds.indexOf(RuntimeWorkObservation.Kind.FETCH_OWNER_TERMINATED)
+            < kinds.indexOf(RuntimeWorkObservation.Kind.BUDGET_RELEASED));
     assertTrue(budget.diagnostics().usage().stream().allMatch(row -> row.count() == 1));
+  }
+
+  @Test
+  void refreshExceptionalOwnerAcknowledgmentRetainsUnknownNativeCapacity() {
+    var terminal = new java.util.concurrent.CompletableFuture<Void>();
+    ContentFetchPort fetch =
+        _ -> {
+          throw new ContentFetchException(
+              ContentFetchException.CATALOG_FETCH_TIMEOUT,
+              "synthetic timeout",
+              null,
+              terminal.minimalCompletionStage());
+        };
+    var budget = subscriptionBudget(10);
+    var service = service(fetch, config(2), budget);
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+
+    service.refresh(APP_ID, subscriptionId);
+    terminal.completeExceptionally(new IllegalStateException("synthetic owner unavailable"));
+
+    assertTrue(budget.diagnostics().activeFamilyLeases() > 0);
+    var kinds =
+        budget.observation().snapshot().events().stream()
+            .map(RuntimeWorkObservation.Event::kind)
+            .toList();
+    assertTrue(kinds.contains(RuntimeWorkObservation.Kind.FETCH_OWNER_TERMINATION_FAILED));
+    assertFalse(kinds.contains(RuntimeWorkObservation.Kind.FETCH_OWNER_TERMINATED));
+    assertFalse(kinds.contains(RuntimeWorkObservation.Kind.FETCH_FAILED));
+    assertFalse(kinds.contains(RuntimeWorkObservation.Kind.BUDGET_RELEASED));
   }
 
   @Test

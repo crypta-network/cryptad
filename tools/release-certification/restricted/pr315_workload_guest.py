@@ -17,6 +17,7 @@ sys.dont_write_bytecode = True
 
 SOURCE = Path('/root/cryptad')
 FIXTURES = SOURCE / 'build/pr315-inputs'
+BUDGET_FIXTURES = SOURCE / 'build/pr317-inputs'
 KIT = Path('/opt/cryptad-restricted-test-kit/tools/release-certification/restricted')
 STAGE = 'prerequisites'
 FAILURE = Path('/root/pr315-workload-failure.private.json')
@@ -25,11 +26,12 @@ LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
                        'revocation-running', 'setsid-double-fork',
                        'observer-death', 'none')
 MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
+BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
 
 
 def _validate_mode(*, startup_measurement, lifecycle_scenario, workload_group,
                    retired_authority_preparation, execution_class):
-    if execution_class not in (None, MAIL_EXECUTION_CLASS):
+    if execution_class not in (None, MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS):
         raise ValueError('workload-guest-execution-class-invalid')
     if execution_class is not None:
         if (startup_measurement or lifecycle_scenario != 'none'
@@ -77,9 +79,13 @@ def execute(manifest_digest, product_commit, *, startup_measurement=False,
         'fixed-installed-source-required', 'separate-measured-test-kit-required'}
     if missing:
         return {'status': 'not-executed', 'protectedExecutionEnabled': False}, 78
-    import pr315_workload_fixtures as fixtures
     STAGE = 'fixture-verification'
-    fixtures.verify(FIXTURES, manifest_digest, SOURCE, product_commit)
+    if execution_class == BUDGET_EXECUTION_CLASS:
+        import pr317_budget_selection as fixtures
+        fixtures.verify(BUDGET_FIXTURES, manifest_digest, SOURCE, product_commit)
+    else:
+        import pr315_workload_fixtures as fixtures
+        fixtures.verify(FIXTURES, manifest_digest, SOURCE, product_commit)
     integration.load_installation(SOURCE)
     STAGE = 'installation'
     with tempfile.TemporaryDirectory(dir='/root') as temporary:
@@ -110,20 +116,27 @@ def installed(manifest_digest, product_commit, *, startup_measurement=False,
     sys.path.insert(0, str(KIT))
     for relative in ('tools/release-certification/protected', 'tools/interop'):
         sys.path.insert(0, str(Path('/opt/cryptad-cross-version/current') / relative))
-    import pr315_workload_fixtures as fixtures
     import pr314_workload_driver as driver
     if Path(__file__).resolve() != KIT / Path(__file__).name:
         raise ValueError('workload-installed-test-kit-required')
     STAGE = 'selection-materialization'
-    fixtures.verify(FIXTURES, manifest_digest, SOURCE, product_commit)
-    materialize = (fixtures.materialize_mail_selection
-                   if execution_class == MAIL_EXECUTION_CLASS
-                   else fixtures.materialize_selection)
-    selection = materialize(FIXTURES, SOURCE, manifest_digest, product_commit)
+    if execution_class == BUDGET_EXECUTION_CLASS:
+        import pr317_budget_selection as fixtures
+        fixtures.verify(BUDGET_FIXTURES, manifest_digest, SOURCE, product_commit)
+        selection = fixtures.materialize_selection(
+            BUDGET_FIXTURES, SOURCE, manifest_digest, product_commit)
+    else:
+        import pr315_workload_fixtures as fixtures
+        fixtures.verify(FIXTURES, manifest_digest, SOURCE, product_commit)
+        materialize = (fixtures.materialize_mail_selection
+                       if execution_class == MAIL_EXECUTION_CLASS
+                       else fixtures.materialize_selection)
+        selection = materialize(FIXTURES, SOURCE, manifest_digest, product_commit)
     sys.path.insert(0, '/opt/cryptad-cross-version/current/tools/release-certification/protected')
     import restricted_workload as workload
     workload.write(driver.SELECTION, selection, create=True)
-    STAGE = ('pr316-mail-driver' if execution_class == MAIL_EXECUTION_CLASS else
+    STAGE = ('pr317-budget-driver' if execution_class == BUDGET_EXECUTION_CLASS else
+             'pr316-mail-driver' if execution_class == MAIL_EXECUTION_CLASS else
              'startup-measurement' if startup_measurement else
              'role-readiness-measurement' if workload_group == 'role-readiness-diagnostic' else
              'selected-group-driver' if workload_group not in (None, 'positive')
@@ -274,7 +287,8 @@ def main():
     parser.add_argument('--retired-authority-preparation', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,))
+    parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,
+                                                      BUDGET_EXECUTION_CLASS))
     parser.add_argument('--workload-group', choices=('positive', 'lost-start-response',
                                                     'partial-launch', 'stuck-output', 'late-child',
                                                     'cleanup-race',

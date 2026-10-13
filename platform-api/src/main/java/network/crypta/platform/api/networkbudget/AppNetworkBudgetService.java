@@ -204,7 +204,8 @@ public final class AppNetworkBudgetService {
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
     try {
       AppNetworkBudgetDecision concurrencyDecision =
-          concurrencyDecision(normalizedAppId, checkedOperation, now, concurrencyLimits);
+          concurrencyDecision(
+              normalizedAppId, checkedOperation, now, concurrencyLimits, operationId);
       if (!concurrencyDecision.allowed()) {
         recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits);
         observation.recordEvent(
@@ -318,7 +319,8 @@ public final class AppNetworkBudgetService {
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
     try {
       AppNetworkBudgetDecision concurrencyDecision =
-          concurrencyDecision(normalizedAppId, checkedOperation, now, concurrencyLimits);
+          concurrencyDecision(
+              normalizedAppId, checkedOperation, now, concurrencyLimits, operationId);
       if (!concurrencyDecision.allowed()) {
         observation.recordEvent(
             RuntimeWorkObservation.Kind.BUDGET_CONCURRENCY_DENIED,
@@ -407,7 +409,8 @@ public final class AppNetworkBudgetService {
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
     try {
       AppNetworkBudgetDecision concurrencyDecision =
-          concurrencyDecision(normalizedAppId, checkedOperation, now, concurrencyLimits);
+          concurrencyDecision(
+              normalizedAppId, checkedOperation, now, concurrencyLimits, operationId);
       if (!concurrencyDecision.allowed()) {
         recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits);
         observation.recordEvent(
@@ -521,9 +524,18 @@ public final class AppNetworkBudgetService {
       String appId,
       AppNetworkBudgetOperation operation,
       Instant now,
-      List<ConcurrencyLimit> concurrencyLimits) {
+      List<ConcurrencyLimit> concurrencyLimits,
+      long operationId) {
     for (ConcurrencyLimit limit : concurrencyLimits) {
-      if (activeLeases.getOrDefault(limit.key(), 0) >= limit.limit()) {
+      int active = activeLeases.getOrDefault(limit.key(), 0);
+      if (active >= limit.limit()) {
+        observation.recordEvent(
+            RuntimeWorkObservation.Kind.CONCURRENCY_LIMIT_REACHED,
+            limit.operation(),
+            0,
+            active,
+            operationId,
+            observation.scope(limit.appId()));
         return AppNetworkBudgetDecision.denied(
             429,
             appId,

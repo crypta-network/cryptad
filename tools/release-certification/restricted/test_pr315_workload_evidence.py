@@ -46,6 +46,24 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertNotIn('must-not-copy', json.dumps(result))
         self.assertLess(len(json.dumps(result)), evidence.MAX_OUTPUT)
 
+    def test_role_epoch_digest_binds_controller_identity_without_retaining_handle(self):
+        epoch = {'handle': 'a' * 64, 'generation': 'b' * 64,
+                 'managerInvocation': 'c' * 32,
+                 'bootId': '01234567-89ab-cdef-0123-456789abcdef'}
+        value = {**epoch, 'state': 'quiescent', 'cgroupIdentity': [1, 2]}
+
+        with patch.object(evidence.snapshot, 'read_file',
+                          return_value=json.dumps(value).encode()):
+            result = evidence._record(
+                Path('/fixed'), 'candidate-sender.json', evidence.ROLE_FIELDS,
+                float('inf'), role_epoch=True)
+
+        expected = 'sha256:' + hashlib.sha256(json.dumps(
+            epoch, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        record = result['record']
+        self.assertEqual(expected, record['roleEpochDigest'])
+        self.assertNotIn(epoch['handle'], json.dumps(result))
+
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux O_PATH reader required')
     def test_resolver_audit_preserves_only_active_root_target_and_denied_syscall(self):
         actor = {'hostPid': 123, 'hostParentPid': 100, 'pidNamespace': 'pid:[5]',

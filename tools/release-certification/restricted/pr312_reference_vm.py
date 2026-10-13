@@ -31,6 +31,7 @@ CPU_MODEL = 'qemu64'
 ACCELERATOR = 'tcg,thread=multi'
 PROFILES = {'tcg-multi': 'tcg,thread=multi', 'tcg-single': 'tcg,thread=single'}
 MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
+BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
 MAIL_PRIVATE_MAX_BYTES = 512 * 1024
 GUEST_STAGES = frozenset(('installation', 'installation-export',
     'dependency-profile-measurement', 'installation-publication', 'installed-profile-verification',
@@ -325,10 +326,11 @@ def workload_guest_command(args):
     scenario = getattr(args, 'lifecycle_scenario', 'cancellation')
     workload_group = getattr(args, 'workload_group', None)
     execution_class = getattr(args, 'execution_class', None)
-    mail_execution = execution_class == MAIL_EXECUTION_CLASS
+    selected_execution = execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS)
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
             or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
-            or execution_class not in (None, MAIL_EXECUTION_CLASS)
+            or execution_class not in (None, MAIL_EXECUTION_CLASS,
+                                       BUDGET_EXECUTION_CLASS)
             or scenario not in ('cancellation', 'controller-restart', 'deadline',
                                 'revocation-running', 'setsid-double-fork',
                                 'observer-death', 'none')
@@ -344,18 +346,18 @@ def workload_guest_command(args):
                                       'controller-restart', 'deadline',
                                       'revocation-running', 'setsid-double-fork',
                                       'observer-death')
-            or mail_execution and (scenario != 'none' or workload_group is not None
+            or selected_execution and (scenario != 'none' or workload_group is not None
                 or getattr(args, 'startup_measurement', False)
                 or getattr(args, 'retired_authority_preparation', False))
-            or not mail_execution and (workload_group in ('cancellation', 'controller-restart', 'deadline',
+            or not selected_execution and (workload_group in ('cancellation', 'controller-restart', 'deadline',
                                    'revocation-running', 'setsid-double-fork',
                                    'observer-death')
                 and scenario != workload_group)
-            or not mail_execution and (workload_group not in (None, 'cancellation', 'controller-restart',
+            or not selected_execution and (workload_group not in (None, 'cancellation', 'controller-restart',
                                       'deadline', 'revocation-running',
                                       'setsid-double-fork', 'observer-death')
                 and scenario != 'none')
-            or not mail_execution and (workload_group is None and scenario == 'none')
+            or not selected_execution and (workload_group is None and scenario == 'none')
             or (workload_group is not None and getattr(args, 'startup_measurement', False))
             or (getattr(args, 'retired_authority_preparation', False)
                 and workload_group != 'role-readiness-diagnostic')):
@@ -396,8 +398,9 @@ def run(args, *, before_guest_launch=None):
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
     if args.mode == 'workload-positive':
-        report['workloadPurpose'] = ('mail-runtime' if getattr(args, 'execution_class', None) ==
-                                     MAIL_EXECUTION_CLASS
+        report['workloadPurpose'] = ('budget-lifecycle' if getattr(args, 'execution_class', None) ==
+                                     BUDGET_EXECUTION_CLASS
+                                     else 'mail-runtime' if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
                                      else 'startup-measurement' if getattr(args, 'startup_measurement', False)
                                      else 'role-readiness-measurement'
                                      if getattr(args, 'workload_group', None) == 'role-readiness-diagnostic'
@@ -452,6 +455,8 @@ def run(args, *, before_guest_launch=None):
         helper_names = ['pr312_reference_vm.py', 'pr313_boot_inputs.py', 'pr313_fixtures.py', 'installation.py']
         if args.mode == 'workload-positive':
             helper_names.extend(('pr315_workload_fixtures.py', 'pr315_workload_guest.py'))
+            if getattr(args, 'execution_class', None) == BUDGET_EXECUTION_CLASS:
+                helper_names.append('pr317_budget_selection.py')
         for name in helper_names:
             if sha256(Path(__file__).resolve().parent / name) != sha256(source / 'tools/release-certification/restricted' / name):
                 raise ValueError('executing-reference-source-mismatch')
@@ -468,8 +473,12 @@ def run(args, *, before_guest_launch=None):
         report['productSourceVerification'] = 'local-git-and-embedded-marker-v1'
         if args.prepared_fixtures is not None:
             if args.mode == 'workload-positive':
-                import pr315_workload_fixtures as fixture_module
-                fixtures = clone / 'build/pr315-inputs'
+                if getattr(args, 'execution_class', None) == BUDGET_EXECUTION_CLASS:
+                    import pr317_budget_selection as fixture_module
+                    fixtures = clone / 'build/pr317-inputs'
+                else:
+                    import pr315_workload_fixtures as fixture_module
+                    fixtures = clone / 'build/pr315-inputs'
             else:
                 import pr313_fixtures as fixture_module
                 fixtures = clone / 'build/pr313-inputs'
@@ -553,7 +562,9 @@ def run(args, *, before_guest_launch=None):
                        + (' --prepared-fixtures /root/cryptad/build/pr313-inputs --fixture-manifest-digest '
                           + args.fixture_manifest_digest if args.prepared_fixtures is not None else '')
                        + ' > /home/vmadmin/report.json 2>/home/vmadmin/driver.private.log\n')
-        report['stage'] = ('installed-pr316-mail-runtime'
+        report['stage'] = ('installed-pr317-budget-lifecycle'
+                           if getattr(args, 'execution_class', None) == BUDGET_EXECUTION_CLASS
+                           else 'installed-pr316-mail-runtime'
                            if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
                            else 'installed-' + args.mode)
         result = subprocess.run([*ssh, 'bash -s'], input=script.encode(), stdout=log, stderr=log,
@@ -597,9 +608,13 @@ print(json.dumps(records))
                 ('pr313-observation.private.json', '/root/pr313-observation.private.json', 65536),
                 ('pr314-workload-observation.private.json', '/root/pr314-workload-observation.private.json', 65536),
                 ('pr316-selection.private.json', '/root/pr314-workload-selection.json', 131072),
+                ('pr317-selection.private.json', '/root/pr314-workload-selection.json', 262144),
                 ('pr316-mail-flow.private.json',
                  '/var/lib/cryptad-cross-version/experiments/pr316-installed-mail-runtime/'
                  'pr316-mail-flow.private.json', MAIL_PRIVATE_MAX_BYTES),
+                ('pr317-budget-lifecycle.private.json',
+                 '/var/lib/cryptad-cross-version/experiments/pr317-namespace-bound-composed-budget/'
+                 'pr317-composed-budget-lifecycle.private.json', 4 * 1024 * 1024),
                 ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
                 ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
                 ('pr315-retired-authority.private.json', '/root/pr315-retired-authority.private.json', 8192),

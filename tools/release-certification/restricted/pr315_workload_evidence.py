@@ -31,6 +31,7 @@ OBSERVER_FCP_TAIL = 2048
 CAMPAIGN_FIELDS = ('generation', 'bootId', 'state', 'deadlineMonotonicNs', 'usedOperations')
 ROLE_FIELDS = ('generation', 'bootId', 'state', 'managerInvocation', 'cgroupIdentity', 'stopReason',
                'previousStopGeneration')
+ROLE_EPOCH_FIELDS = ('handle', 'generation', 'managerInvocation', 'bootId')
 STOP_FIELDS = ('schemaVersion', 'role', 'campaign', 'generation', 'bootId', 'managerInvocation',
                'cgroupIdentity', 'helperPid', 'helperStartTimeTicks', 'startedMonotonicNs',
                'observedMonotonicNs', 'membership', 'descendantCgroups')
@@ -121,7 +122,7 @@ def prepare_sentinel(workload):
     return _digest(raw)
 
 
-def _record(root, name, fields, deadline):
+def _record(root, name, fields, deadline, *, role_epoch=False):
     try:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -141,6 +142,14 @@ def _record(root, name, fields, deadline):
                 and len(projection['cgroupIdentity']) == 2
                 and all(type(part) is int and part >= 0 for part in projection['cgroupIdentity'])):
             return {'status': 'invalid-record'}
+        if role_epoch:
+            epoch = {key: value.get(key) for key in ROLE_EPOCH_FIELDS}
+            patterns = (r'[0-9a-f]{64}', r'[0-9a-f]{64}', r'[0-9a-f]{32}',
+                        r'[0-9a-f-]{36}')
+            projection['roleEpochDigest'] = (
+                _digest(json.dumps(epoch, sort_keys=True, separators=(',', ':')).encode())
+                if all(re.fullmatch(pattern, str(epoch[key])) is not None
+                       for key, pattern in zip(ROLE_EPOCH_FIELDS, patterns)) else None)
         return {'status': 'captured', 'record': projection}
     except (OSError, ValueError, UnicodeError):
         return {'status': 'unavailable-or-unsafe'}
@@ -2089,7 +2098,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
         result['controllerRecords']['network'] = _record(root / 'authority', 'network.json',
             ('version', 'bootId', 'phase', 'pending'), deadline)
         for role in ROLES:
-            result['controllerRecords'][role] = _record(root / 'authority', role + '.json', ROLE_FIELDS, deadline)
+            result['controllerRecords'][role] = _record(
+                root / 'authority', role + '.json', ROLE_FIELDS, deadline, role_epoch=True)
         result['stopReceipts'] = {}
         for role in ROLES:
             receipts = {'current': _record(root / 'authority', role + '-stop.json', STOP_FIELDS, deadline)}
@@ -2226,8 +2236,8 @@ def _capture(root, expected, cleanup_complete, *, observer_root=None):
             ('version', 'bootId', 'phase', 'pending'), deadline)
         result['stopReceipts'] = {}
         for role in ROLES:
-            result['controllerRecords'][role] = _record(root / 'authority', role + '.json',
-                                                       ROLE_FIELDS, deadline)
+            result['controllerRecords'][role] = _record(
+                root / 'authority', role + '.json', ROLE_FIELDS, deadline, role_epoch=True)
             result['stopReceipts'][role] = {'current': _record(
                 root / 'authority', role + '-stop.json', STOP_FIELDS, deadline)}
         result['arbitraryEndpointAudit'] = _arbitrary_endpoint_audit(root, deadline)

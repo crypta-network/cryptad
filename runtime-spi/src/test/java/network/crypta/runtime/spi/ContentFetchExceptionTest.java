@@ -3,6 +3,7 @@ package network.crypta.runtime.spi;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -16,6 +17,7 @@ class ContentFetchExceptionTest {
         new ContentFetchException(ContentFetchException.CATALOG_FETCH_FAILED, FAILURE_MESSAGE);
 
     assertEquals(ContentFetchException.CATALOG_FETCH_FAILED, exception.errorCode());
+    assertFalse(exception.ownerCancellationRequested());
     assertEquals(FAILURE_MESSAGE, exception.getMessage());
   }
 

@@ -14,6 +14,13 @@ COMPOSED_KINDS = frozenset(('COMPOSED_DIRECT_IMPORT_START COMPOSED_PASTED_PREVIE
     'PARSE_SUCCEEDED PARSE_FAILED FINGERPRINT_ACCEPTED FINGERPRINT_REJECTED '
     'GRAPH_STORE_ATTEMPT GRAPH_STORE_IMPORTED GRAPH_STORE_DUPLICATE GRAPH_STORE_UNVERIFIED '
     'GRAPH_STORE_UNKNOWN REQUEST_SUCCEEDED REQUEST_FAILED FETCH_TERMINATION_UNKNOWN PREVIEW_BUILT CONTENT_URI_REJECTED CONTENT_BYTES_REJECTED CONTENT_UTF8_REJECTED FETCH_TIMEOUT RATE_LIMIT_REACHED').split())
+CAUSAL_KINDS = frozenset({
+    'CONCURRENCY_LIMIT_REACHED',
+    'FETCH_CANCEL_REQUESTED',
+    'FETCH_OWNER_TERMINATED',
+    'FETCH_OWNER_TERMINATION_FAILED',
+})
+CAUSAL_CASES = ('import-concurrency', 'fetch-concurrency', 'timeout', 'cancellation', 'retry')
 # This policy cannot be reduced by a caller choosing an easier subset.
 REQUIRED_CASES = tuple(('direct-valid direct-malformed pasted-preview-valid uri-preview-valid '
     'uri-preview-malformed uri-valid uri-malformed uri-fingerprint-mismatch uri-duplicate '
@@ -244,27 +251,573 @@ def _interference(segment, snapshots):
     return shared_key in expected_deltas
 
 
+def _causal_rates(rows):
+    if not isinstance(rows, list) or len(rows) > 4096:
+        raise ComposedEvidenceError('composed-budget-causal-rate-snapshot-invalid')
+    mapped = {}
+    for row in rows:
+        _closed(row, ('operation', 'scope', 'windowStartEpochSecond', 'count'))
+        key = row['operation'], row['scope'], row['windowStartEpochSecond']
+        if (row['operation'] not in pressure.OPERATIONS - {None}
+                or any(not pressure._number(row[name]) for name in
+                       ('scope', 'windowStartEpochSecond', 'count'))
+                or row['scope'] < 1 or key in mapped):
+            raise ComposedEvidenceError('composed-budget-causal-rate-snapshot-invalid')
+        mapped[key] = row['count']
+    return mapped
+
+
+def _causal_snapshot(value, expected_sequence, operation_ids):
+    _closed(value, ('sequence', 'budgetValid', 'droppedEvents', 'rates', 'holds',
+                    'retainedStatements'))
+    if (not pressure._number(value['sequence']) or value['sequence'] != expected_sequence
+            or type(value['budgetValid']) is not bool
+            or not pressure._number(value['droppedEvents'])
+            or not pressure._number(value['retainedStatements'])):
+        raise ComposedEvidenceError('composed-budget-causal-snapshot-invalid')
+    rates = _causal_rates(value['rates'])
+    holds = value['holds']
+    if not isinstance(holds, list) or len(holds) > 128:
+        raise ComposedEvidenceError('composed-budget-causal-hold-snapshot-invalid')
+    mapped_holds = {}
+    for row in holds:
+        _closed(row, ('operationId', 'operation', 'scope', 'kind', 'count'))
+        key = row['operationId'], row['operation'], row['scope'], row['kind']
+        if (not pressure._number(row['operationId']) or row['operationId'] < 1
+                or row['operationId'] not in operation_ids
+                or row['operation'] not in pressure.OPERATIONS - {None}
+                or not pressure._number(row['scope']) or row['scope'] < 1
+                or row['kind'] not in {'concurrency', 'rate'}
+                or not pressure._number(row['count']) or row['count'] < 1
+                or key in mapped_holds):
+            raise ComposedEvidenceError('composed-budget-causal-hold-snapshot-invalid')
+        mapped_holds[key] = row['count']
+    return rates, mapped_holds, value['retainedStatements']
+
+
+def _causal_event_window(case, outer_epoch, outer_node_epoch, epochs, observation_time):
+    fields = {'caseId', 'collectorEpoch', 'nodeEpoch', 'scope', 'operationId',
+              'sequenceStart', 'sequenceEnd', 'budgetValid', 'droppedEvents',
+              'requestOutcome', 'ownerOutcome', 'unresolved', 'censored',
+              'retryOfOperationId', 'operations', 'events', 'snapshots', 'rateAttribution'}
+    _closed(case, fields)
+    if (case['caseId'] not in CAUSAL_CASES or case['collectorEpoch'] != outer_epoch
+            or case['nodeEpoch'] != outer_node_epoch
+            or type(case['scope']) is not int or case['scope'] < 3
+            or type(case['operationId']) is not int or case['operationId'] < 1
+            or type(case['sequenceStart']) is not int or case['sequenceStart'] < 1
+            or type(case['sequenceEnd']) is not int
+            or case['sequenceEnd'] < case['sequenceStart']
+            or type(case['budgetValid']) is not bool
+            or not pressure._number(case['droppedEvents'])
+            or type(case['unresolved']) is not bool or type(case['censored']) is not bool
+            or case['ownerOutcome'] not in {'not-applicable', 'normal-ack',
+                                             'exceptional-ack', 'unresolved'}
+            or not isinstance(case['requestOutcome'], str)):
+        raise ComposedEvidenceError('composed-budget-causal-binding-invalid')
+    operations = case['operations']
+    if not isinstance(operations, list) or not operations or len(operations) > 24:
+        raise ComposedEvidenceError('composed-budget-causal-operation-invalid')
+    operation_rows, roles = {}, {}
+    allowed_roles = {
+        'primary-parent', 'primary-import', 'primary-fetch',
+        'holder-parent', 'holder-import', 'holder-fetch',
+        'contender-parent', 'contender-import', 'contender-fetch',
+        'recovery-parent', 'recovery-import', 'recovery-fetch',
+        'prior-parent', 'prior-import', 'prior-fetch',
+        'retry-parent', 'retry-import', 'retry-fetch',
+        'support',
+    }
+    for row in operations:
+        _closed(row, ('operationId', 'parentOperationId', 'role', 'scope'))
+        operation_id, parent = row['operationId'], row['parentOperationId']
+        if (type(operation_id) is not int or operation_id < 1 or operation_id in operation_rows
+                or parent is not None and (type(parent) is not int or parent < 1
+                                           or parent == operation_id)
+                or row['role'] not in allowed_roles
+                or row['role'] != 'support' and row['role'] in roles
+                or type(row['scope']) is not int or row['scope'] < 3):
+            raise ComposedEvidenceError('composed-budget-causal-operation-invalid')
+        operation_rows[operation_id] = row
+        if row['role'] != 'support':
+            roles[row['role']] = operation_id
+    if (case['operationId'] not in operation_rows
+            or any(row['parentOperationId'] is not None
+                   and row['parentOperationId'] not in operation_rows
+                   for row in operations)):
+        raise ComposedEvidenceError('composed-budget-causal-operation-invalid')
+    events = case['events']
+    if (not isinstance(events, list) or len(events) !=
+            case['sequenceEnd'] - case['sequenceStart'] + 1 or len(events) > 4096):
+        raise ComposedEvidenceError('composed-budget-causal-event-window-invalid')
+    previous = None
+    for offset, event in enumerate(events):
+        _closed(event, pressure.EVENT_FIELDS)
+        operation_id = event['operationId']
+        row = operation_rows.get(operation_id)
+        if (event['kind'] not in pressure.KINDS | COMPOSED_KINDS | CAUSAL_KINDS
+                or event['operation'] not in pressure.OPERATIONS
+                or any(not pressure._number(event[key]) for key in pressure.EVENT_FIELDS -
+                       {'observedAt', 'kind', 'operation', 'sourceEpoch'})
+                or event['sequence'] != case['sequenceStart'] + offset
+                or operation_id < 1 or row is None
+                or event['scope'] not in {0, 1, row['scope']}
+                or event['sourceEpoch'] is not None and
+                   not re.fullmatch('[a-zA-Z0-9._-]{1,96}', str(event['sourceEpoch']))):
+            raise ComposedEvidenceError('composed-budget-causal-event-invalid')
+        stamp = pressure.baseline._time(event['observedAt'])
+        window = event['windowStartEpochSecond']
+        seconds = 3600 if event['operation'] in {
+            'subscription_poll', 'subscription_manual_refresh', 'trust_graph_import'} else 60
+        if (window and (window % seconds or window > stamp.timestamp())
+                or observation_time is not None
+                   and stamp > pressure.baseline._time(observation_time)
+                or previous and (event['elapsedNanos'] < previous['elapsedNanos']
+                                 or stamp < pressure.baseline._time(previous['observedAt']))):
+            raise ComposedEvidenceError('composed-budget-causal-event-order-invalid')
+        identity = outer_epoch, event['sequence']
+        if identity in epochs and epochs[identity] != event:
+            raise ComposedEvidenceError('composed-budget-event-substituted')
+        epochs[identity] = event
+        previous = event
+    for row in operations:
+        parent = row['parentOperationId']
+        if parent is None:
+            continue
+        links = [event for event in events if event['kind'] == 'COMPOSED_CHILD'
+                 and event['operationId'] == row['operationId'] and event['value'] == parent]
+        if len(links) != 1:
+            return None
+    snapshots = case['snapshots']
+    _closed(snapshots, ('before', 'during', 'after'))
+    during_sequence = snapshots['during'].get('sequence') if isinstance(snapshots['during'], dict) else None
+    if (type(during_sequence) is not int
+            or not case['sequenceStart'] <= during_sequence < case['sequenceEnd']):
+        raise ComposedEvidenceError('composed-budget-causal-snapshot-invalid')
+    parsed = {
+        'before': _causal_snapshot(snapshots['before'], case['sequenceStart'] - 1, operation_rows),
+        'during': _causal_snapshot(snapshots['during'], during_sequence, operation_rows),
+        'after': _causal_snapshot(snapshots['after'], case['sequenceEnd'], operation_rows),
+    }
+    for name in ('before', 'during', 'after'):
+        active = {}
+        sequence = snapshots[name]['sequence']
+        for event in events:
+            if event['sequence'] > sequence:
+                continue
+            hold_kind = None
+            delta = 0
+            if event['kind'] in {'CONCURRENCY_HELD', 'CONCURRENCY_RELEASED'}:
+                hold_kind = 'concurrency'
+                delta = 1 if event['kind'] == 'CONCURRENCY_HELD' else -1
+            elif event['kind'] in {'RATE_RESERVED', 'RATE_RESERVATION_RELEASED'}:
+                hold_kind = 'rate'
+                delta = 1 if event['kind'] == 'RATE_RESERVED' else -1
+            if hold_kind is None:
+                continue
+            key = event['operationId'], event['operation'], event['scope'], hold_kind
+            active[key] = active.get(key, 0) + delta
+            if active[key] < 0:
+                return None
+        if {key: count for key, count in active.items() if count} != parsed[name][1]:
+            return None
+        graph_delta = sum(event['kind'] == 'GRAPH_STORE_IMPORTED'
+                          and event['sequence'] <= sequence for event in events)
+        if parsed[name][2] != parsed['before'][2] + graph_delta:
+            return None
+    attribution = case['rateAttribution']
+    if not isinstance(attribution, list) or len(attribution) > 128:
+        raise ComposedEvidenceError('composed-budget-causal-attribution-invalid')
+    attributed, family_deltas = {}, {}
+    for row in attribution:
+        _closed(row, ('operationId', 'operation', 'scope', 'windowStartEpochSecond', 'delta'))
+        key = (row['operationId'], row['operation'], row['scope'], row['windowStartEpochSecond'])
+        family = key[1:]
+        if (row['operationId'] not in operation_rows
+                or row['operation'] not in pressure.OPERATIONS - {None}
+                or any(not pressure._number(row[name]) for name in
+                       ('scope', 'windowStartEpochSecond', 'delta'))
+                or row['scope'] < 1 or row['windowStartEpochSecond'] < 1
+                or row['delta'] < 1 or key in attributed):
+            raise ComposedEvidenceError('composed-budget-causal-attribution-invalid')
+        attributed[key] = row['delta']
+        family_deltas[family] = family_deltas.get(family, 0) + row['delta']
+    charged = {}
+    running = dict(parsed['before'][0])
+    for event in events:
+        if event['kind'] == 'RATE_CHARGED':
+            key = (event['operationId'], event['operation'], event['scope'],
+                   event['windowStartEpochSecond'])
+            family = key[1:]
+            if event['value'] != running.get(family, 0) + 1:
+                return None
+            running[family] = event['value']
+            charged[key] = charged.get(key, 0) + 1
+        if event['sequence'] == during_sequence and running != parsed['during'][0]:
+            return None
+    if (attributed != charged
+            or not _complete_rate_delta([parsed['before'][0], parsed['after'][0]], family_deltas)):
+        return None
+    return roles, operation_rows, events, parsed
+
+
+def _role_events(events, roles, role):
+    operation_id = roles.get(role)
+    return [] if operation_id is None else [event for event in events
+                                             if event['operationId'] == operation_id]
+
+
+def _kind_sequence(events, kind):
+    selected = [event['sequence'] for event in events if event['kind'] == kind]
+    return selected[0] if len(selected) == 1 else None
+
+
+def _active_concurrency(events, family, scope, sequence):
+    active = 0
+    for event in events:
+        if event['sequence'] >= sequence:
+            break
+        if event['operation'] != family or event['scope'] != scope:
+            continue
+        if event['kind'] == 'CONCURRENCY_HELD':
+            active += 1
+        elif event['kind'] == 'CONCURRENCY_RELEASED':
+            active -= 1
+            if active < 0:
+                return None
+    return active
+
+
+def _limiting_overlap(events, holder_id, denied_id, family, scope):
+    held = [event for event in events if event['operationId'] == holder_id
+            and event['kind'] == 'CONCURRENCY_HELD'
+            and event['operation'] == family and event['scope'] == scope]
+    released = [event for event in events if event['operationId'] == holder_id
+                and event['kind'] == 'CONCURRENCY_RELEASED'
+                and event['operation'] == family and event['scope'] == scope]
+    denied = [event for event in events if event['operationId'] == denied_id
+              and event['kind'] == 'CONCURRENCY_LIMIT_REACHED'
+              and event['operation'] == family and event['scope'] == scope]
+    active = None if len(denied) != 1 else _active_concurrency(
+        events, family, scope, denied[0]['sequence'])
+    return (len(held) == len(released) == len(denied) == 1
+            and active is not None and active > 0 and denied[0]['value'] == active
+            and held[0]['sequence'] < denied[0]['sequence'] < released[0]['sequence'])
+
+
+def _denied_without_work(events, operation_ids):
+    forbidden = {'RATE_CHARGED', 'BUDGET_COMMITTED', 'FETCH_INVOKED', 'GRAPH_STORE_ATTEMPT',
+                 'GRAPH_STORE_IMPORTED', 'GRAPH_STORE_DUPLICATE'}
+    return not any(event['operationId'] in operation_ids and event['kind'] in forbidden
+                   for event in events)
+
+
+def _snapshot_has_hold(parsed, operation_id, family, scope, kind='concurrency'):
+    return parsed['during'][1].get((operation_id, family, scope, kind), 0) > 0
+
+
+def _exact_charges(events, operation_id, families, scope):
+    charged = [(event['operation'], event['scope']) for event in events
+               if event['operationId'] == operation_id and event['kind'] == 'RATE_CHARGED']
+    expected = {(family, 1 if owner == 'global' else scope) for family, owner in families}
+    return set(charged) == expected and len(charged) == len(expected)
+
+
+def _fetch_success(events, operation_id, scope):
+    selected = [event for event in events if event['operationId'] == operation_id
+                and event['operation'] == 'trust_graph_import_uri'
+                and event['scope'] == scope]
+    if any(event['kind'] in {'FETCH_FAILED', 'FETCH_TERMINATION_UNKNOWN',
+                             'FETCH_OWNER_TERMINATION_FAILED'} for event in selected):
+        return None
+    invoked = _kind_sequence(selected, 'FETCH_INVOKED')
+    succeeded = _kind_sequence(selected, 'FETCH_SUCCEEDED')
+    return None if invoked is None or succeeded is None else (invoked, succeeded)
+
+
+def _successful_recovery(case, roles, events, after_sequence, uri):
+    parent_id = roles.get('recovery-parent')
+    import_id = roles.get('recovery-import')
+    fetch_id = roles.get('recovery-fetch') if uri else None
+    if parent_id is None or import_id is None or (uri and fetch_id is None):
+        return False
+    parent = _role_events(events, roles, 'recovery-parent')
+    if any(event['kind'] in {'REQUEST_FAILED', 'GRAPH_STORE_UNVERIFIED',
+                             'GRAPH_STORE_UNKNOWN'} for event in parent):
+        return False
+    start = _kind_sequence(parent, 'COMPOSED_URI_IMPORT_START' if uri
+                           else 'COMPOSED_DIRECT_IMPORT_START')
+    graph_attempt = _kind_sequence(parent, 'GRAPH_STORE_ATTEMPT')
+    outcomes = [event['sequence'] for event in parent if event['kind'] in {
+        'GRAPH_STORE_IMPORTED', 'GRAPH_STORE_DUPLICATE'}]
+    done = _kind_sequence(parent, 'REQUEST_SUCCEEDED')
+    imported = _role_events(events, roles, 'recovery-import')
+    import_committed = _kind_sequence(imported, 'BUDGET_COMMITTED')
+    import_released = _kind_sequence(imported, 'BUDGET_RELEASED')
+    if (any(value is None for value in (start, graph_attempt, done, import_committed,
+                                        import_released))
+            or len(outcomes) != 1
+            or not _exact_charges(events, import_id, IMPORT, case['scope'])
+            or not _concurrency_covers(events, import_id, IMPORT, case['scope'],
+                                       [event for event in parent if event['kind'] in {
+                                           'GRAPH_STORE_ATTEMPT', 'GRAPH_STORE_IMPORTED',
+                                           'GRAPH_STORE_DUPLICATE'}])):
+        return False
+    outcome = outcomes[0]
+    if not uri:
+        return (after_sequence < start < import_committed < graph_attempt < outcome
+                < import_released < done)
+    reserved = _kind_sequence(imported, 'BUDGET_RESERVED')
+    fetched = _role_events(events, roles, 'recovery-fetch')
+    fetch_committed = _kind_sequence(fetched, 'BUDGET_COMMITTED')
+    fetch_released = _kind_sequence(fetched, 'BUDGET_RELEASED')
+    fetch_work = _fetch_success(events, fetch_id, case['scope'])
+    if (reserved is None or fetch_committed is None or fetch_released is None
+            or fetch_work is None or not _exact_charges(events, fetch_id, FETCH, case['scope'])
+            or not _concurrency_covers(events, fetch_id, FETCH, case['scope'],
+                                       [event for event in fetched if event['kind'] in {
+                                           'FETCH_INVOKED', 'FETCH_SUCCEEDED'}])):
+        return False
+    invoked, succeeded = fetch_work
+    return (after_sequence < start < reserved < fetch_committed < invoked < succeeded
+            < fetch_released < import_committed < graph_attempt < outcome
+            < import_released < done)
+
+
+def _causal_concurrency(case, roles, events, parsed, fetch):
+    holder_role = 'holder-fetch' if fetch else 'holder-import'
+    denied_role = 'contender-fetch' if fetch else 'contender-import'
+    recovery_role = 'recovery-fetch' if fetch else 'recovery-import'
+    required = {'holder-parent', holder_role, 'contender-parent', denied_role,
+                'recovery-parent', recovery_role}
+    if not required <= roles.keys() or case['operationId'] != roles['contender-parent']:
+        return False
+    holder, denied = roles[holder_role], roles[denied_role]
+    limits = [event for event in events if event['operationId'] == denied
+              and event['kind'] == 'CONCURRENCY_LIMIT_REACHED']
+    expected = FETCH if fetch else IMPORT
+    if len(limits) != 1:
+        return False
+    limit = limits[0]
+    family_scope = (limit['operation'], 'global' if limit['scope'] == 1 else 'app')
+    if (family_scope not in expected
+            or limit['scope'] not in {1, case['scope']}
+            or not _limiting_overlap(events, holder, denied, limit['operation'], limit['scope'])
+            or not _snapshot_has_hold(parsed, holder, limit['operation'], limit['scope'])
+            or parsed['before'][1] or parsed['after'][1]
+            or not _denied_without_work(events, {roles['contender-parent'], denied})
+            or _kind_sequence(_role_events(events, roles, denied_role),
+                              'BUDGET_CONCURRENCY_DENIED') is None):
+        return False
+    if fetch:
+        if 'contender-import' not in roles:
+            return False
+        import_events = _role_events(events, roles, 'contender-import')
+        denied_sequence = limit['sequence']
+        reserved = _kind_sequence(import_events, 'BUDGET_RESERVED')
+        released = _kind_sequence(import_events, 'BUDGET_RELEASED')
+        if (reserved is None or released is None or not reserved < denied_sequence < released
+                or not _denied_without_work(events, {roles['contender-import']})):
+            return False
+    holder_events = _role_events(events, roles, holder_role)
+    holder_done = _kind_sequence(holder_events, 'BUDGET_RELEASED')
+    return (holder_done is not None and limit['sequence'] < holder_done
+            and _successful_recovery(case, roles, events, holder_done, fetch)
+            and case['requestOutcome'] == 'denied'
+            and case['ownerOutcome'] == 'not-applicable'
+            and not case['unresolved'] and not case['censored']
+            and case['retryOfOperationId'] is None)
+
+
+def _causal_deferred_owner(case, roles, events, parsed, cancelled):
+    required = {'primary-parent', 'primary-import', 'primary-fetch',
+                'contender-parent', 'contender-fetch', 'recovery-parent'}
+    if not required <= roles.keys() or case['operationId'] != roles['primary-parent']:
+        return False
+    parent = _role_events(events, roles, 'primary-parent')
+    owner = _role_events(events, roles, 'primary-fetch')
+    request_failed = _kind_sequence(parent, 'REQUEST_FAILED')
+    unknown = _kind_sequence(owner, 'FETCH_TERMINATION_UNKNOWN')
+    cancel_requested = _kind_sequence(owner, 'FETCH_CANCEL_REQUESTED')
+    acknowledged = _kind_sequence(owner, 'FETCH_OWNER_TERMINATED')
+    fetch_failed_events = [event for event in owner
+                           if event['kind'] == 'FETCH_FAILED'
+                           and event['operation'] == 'trust_graph_import_uri'
+                           and event['scope'] == case['scope']]
+    owner_failed = _kind_sequence(owner, 'FETCH_OWNER_TERMINATION_FAILED')
+    released = _kind_sequence(owner, 'BUDGET_RELEASED')
+    import_owner = _role_events(events, roles, 'primary-import')
+    import_reserved = _kind_sequence(import_owner, 'BUDGET_RESERVED')
+    import_released = _kind_sequence(import_owner, 'BUDGET_RELEASED')
+    timeout = _kind_sequence(parent, 'FETCH_TIMEOUT')
+    limits = [event for event in _role_events(events, roles, 'contender-fetch')
+              if event['kind'] == 'CONCURRENCY_LIMIT_REACHED']
+    family_releases = [event['sequence'] for event in owner
+                       if event['kind'] == 'CONCURRENCY_RELEASED' and limits
+                       and event['operation'] == limits[0]['operation']
+                       and event['scope'] == limits[0]['scope']]
+    import_holds = [event for event in import_owner
+                    if event['kind'] == 'CONCURRENCY_HELD'
+                    and event['operation'] == 'trust_graph_import'
+                    and event['scope'] in {1, case['scope']}]
+    import_family_releases = [event for event in import_owner
+                              if event['kind'] == 'CONCURRENCY_RELEASED'
+                              and event['operation'] == 'trust_graph_import'
+                              and event['scope'] in {1, case['scope']}]
+    import_scopes = {1, case['scope']}
+    if (any(item is None for item in (request_failed, unknown, acknowledged, released,
+                                      import_reserved, import_released))
+            or owner_failed is not None or len(limits) != 1 or len(family_releases) != 1
+            or len(fetch_failed_events) != 1
+            or len(import_holds) != len(import_scopes)
+            or {event['scope'] for event in import_holds} != import_scopes
+            or len(import_family_releases) != len(import_scopes)
+            or {event['scope'] for event in import_family_releases} != import_scopes
+            or not all(event['sequence'] < import_reserved for event in import_holds)
+            or not unknown < request_failed < limits[0]['sequence'] < acknowledged \
+                   < fetch_failed_events[0]['sequence'] < family_releases[0] < released
+            or not all(import_reserved < unknown < acknowledged
+                       < fetch_failed_events[0]['sequence'] < event['sequence'] < import_released
+                       for event in import_family_releases)
+            or cancel_requested is None or cancel_requested >= unknown
+            or cancelled and timeout is not None
+            or not cancelled and (timeout is None or timeout >= cancel_requested)
+            or not _snapshot_has_hold(parsed, roles['primary-fetch'],
+                                      limits[0]['operation'], limits[0]['scope'])
+            or not all(_snapshot_has_hold(parsed, roles['primary-import'],
+                                          'trust_graph_import', scope)
+                       for scope in import_scopes)
+            or parsed['before'][1] or parsed['after'][1]
+            or not _denied_without_work(events, {roles['contender-parent'], roles['contender-fetch']})
+            or not _limiting_overlap(events, roles['primary-fetch'], roles['contender-fetch'],
+                                     limits[0]['operation'], limits[0]['scope'])):
+        return False
+    expected_request = 'cancelled' if cancelled else 'timed-out'
+    return (_successful_recovery(case, roles, events, max(released, import_released), False)
+            and case['requestOutcome'] == expected_request
+            and case['ownerOutcome'] == 'normal-ack'
+            and not case['unresolved'] and not case['censored']
+            and case['retryOfOperationId'] is None)
+
+
+def _causal_retry(case, roles, events, parsed):
+    required = {'prior-parent', 'prior-import', 'prior-fetch',
+                'retry-parent', 'retry-import', 'retry-fetch'}
+    if (not required <= roles.keys() or case['operationId'] != roles['retry-parent']
+            or case['retryOfOperationId'] != roles['prior-parent']
+            or roles['retry-parent'] == roles['prior-parent']
+            or parsed['before'][1] or parsed['after'][1]):
+        return False
+    prior = _role_events(events, roles, 'prior-parent')
+    retry = _role_events(events, roles, 'retry-parent')
+    prior_success = _kind_sequence(prior, 'REQUEST_SUCCEEDED')
+    retry_success = _kind_sequence(retry, 'REQUEST_SUCCEEDED')
+    prior_imported = _kind_sequence(prior, 'GRAPH_STORE_IMPORTED')
+    retry_duplicate = _kind_sequence(retry, 'GRAPH_STORE_DUPLICATE')
+    prior_import_release = _kind_sequence(
+        _role_events(events, roles, 'prior-import'), 'BUDGET_RELEASED')
+    prior_fetch_release = _kind_sequence(
+        _role_events(events, roles, 'prior-fetch'), 'BUDGET_RELEASED')
+    retry_import_release = _kind_sequence(
+        _role_events(events, roles, 'retry-import'), 'BUDGET_RELEASED')
+    retry_fetch_release = _kind_sequence(
+        _role_events(events, roles, 'retry-fetch'), 'BUDGET_RELEASED')
+    prior_fetch = _fetch_success(events, roles['prior-fetch'], case['scope'])
+    retry_fetch = _fetch_success(events, roles['retry-fetch'], case['scope'])
+    prior_attempt = _kind_sequence(prior, 'GRAPH_STORE_ATTEMPT')
+    retry_attempt = _kind_sequence(retry, 'GRAPH_STORE_ATTEMPT')
+    retry_start = _kind_sequence(retry, 'COMPOSED_URI_IMPORT_START')
+    values = (prior_success, retry_success, prior_imported, retry_duplicate,
+              prior_import_release, prior_fetch_release, retry_import_release,
+              retry_fetch_release, retry_start, prior_attempt, retry_attempt)
+    charged = [(event['operationId'], event['operation'], event['scope'])
+               for event in events if event['kind'] == 'RATE_CHARGED']
+    expected_charged = {
+        (roles[prefix + '-import'], family, 1 if owner == 'global' else case['scope'])
+        for prefix in ('prior', 'retry') for family, owner in IMPORT
+    } | {
+        (roles[prefix + '-fetch'], family, 1 if owner == 'global' else case['scope'])
+        for prefix in ('prior', 'retry') for family, owner in FETCH
+    }
+    return (all(value is not None for value in values)
+            and prior_fetch is not None and retry_fetch is not None
+            and prior_fetch[0] < prior_fetch[1] < prior_fetch_release
+            and prior_fetch[1] < prior_attempt < prior_imported < prior_import_release
+            and max(prior_import_release, prior_fetch_release) < prior_success < retry_start
+            and retry_fetch[0] < retry_fetch[1] < retry_fetch_release
+            and retry_fetch[1] < retry_attempt < retry_duplicate < retry_import_release
+            and max(retry_import_release, retry_fetch_release) < retry_success
+            and set(charged) == expected_charged and len(charged) == len(expected_charged)
+            and parsed['after'][0] != parsed['before'][0]
+            and parsed['after'][0]
+            and parsed['after'][2] - parsed['before'][2] == 1
+            and case['requestOutcome'] == 'response-lost-retry-succeeded'
+            and case['ownerOutcome'] == 'not-applicable'
+            and not case['unresolved'] and not case['censored'])
+
+
+def _derive_causal_cases(value, epochs, observation_time):
+    rows = value['causalCases']
+    if not isinstance(rows, list) or len(rows) > len(CAUSAL_CASES):
+        raise ComposedEvidenceError('composed-budget-causal-case-limit')
+    observed, seen_cases, seen_operations = set(), set(), set()
+    for case in rows:
+        result = _causal_event_window(
+            case, value['collectorEpoch'], value['nodeEpoch'], epochs, observation_time)
+        case_id = case.get('caseId') if isinstance(case, dict) else None
+        if case_id in seen_cases:
+            raise ComposedEvidenceError('composed-budget-causal-case-replayed')
+        seen_cases.add(case_id)
+        if result is None:
+            continue
+        roles, operation_rows, events, parsed = result
+        identities = {(value['collectorEpoch'], operation_id) for operation_id in operation_rows}
+        if identities & seen_operations:
+            raise ComposedEvidenceError('composed-budget-causal-operation-replayed')
+        seen_operations |= identities
+        if (not case['budgetValid'] or case['droppedEvents']
+                or any(not case['snapshots'][name]['budgetValid']
+                       or case['snapshots'][name]['droppedEvents']
+                       for name in ('before', 'during', 'after'))):
+            continue
+        if case_id == 'import-concurrency':
+            valid = _causal_concurrency(case, roles, events, parsed, False)
+        elif case_id == 'fetch-concurrency':
+            valid = _causal_concurrency(case, roles, events, parsed, True)
+        elif case_id == 'timeout':
+            valid = _causal_deferred_owner(case, roles, events, parsed, False)
+        elif case_id == 'cancellation':
+            valid = _causal_deferred_owner(case, roles, events, parsed, True)
+        else:
+            valid = _causal_retry(case, roles, events, parsed)
+        if valid:
+            observed.add(case_id)
+    return observed
+
+
 def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_digest,
            observation_time=None, node_epoch=None, collector_digest=None, configuration_digest=None):
     """Recompute observed route accounting; missing hard cases remain explicitly missing."""
     fields = {'schemaVersion', 'workloadDigest', 'productDigest', 'sourceCommit',
               'appCohortDigest', 'collectorDigest', 'configurationDigest', 'segments'}
     version = value.get('schemaVersion') if isinstance(value, dict) else None
-    if version == 2:
+    if version in {2, 3}:
         fields |= {'collectorEpoch', 'nodeEpoch'}
+    if version == 3:
+        fields.add('causalCases')
     _closed(value, fields)
-    if version == 2 and (not re.fullmatch('[0-9a-f-]{36}', str(value['collectorEpoch']))
+    if version in {2, 3} and (not re.fullmatch('[0-9a-f-]{36}', str(value['collectorEpoch']))
             or not re.fullmatch('[0-9a-f]{32}', str(value['nodeEpoch']))
             or node_epoch is not None and value['nodeEpoch'] != node_epoch):
         raise ComposedEvidenceError('composed-budget-process-epoch-mismatch')
-    if node_epoch is not None and version != 2:
+    if node_epoch is not None and version not in {2, 3}:
         raise ComposedEvidenceError('composed-budget-original-process-binding-required')
     if node_epoch is not None and (collector_digest is None or configuration_digest is None):
         raise ComposedEvidenceError('composed-budget-original-input-binding-required')
     if any(expected is not None and value[key] != expected for key, expected in
            (('collectorDigest', collector_digest), ('configurationDigest', configuration_digest))):
         raise ComposedEvidenceError('composed-budget-original-input-substitution')
-    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2}
+    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2, 3}
             or any(value[key] != expected for key, expected in (
                 ('workloadDigest', workload_digest), ('productDigest', product_digest),
                 ('sourceCommit', source_commit), ('appCohortDigest', app_cohort_digest)))
@@ -285,12 +838,13 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
                                      ('caseId', 'collectorEpoch', 'operationId', 'scope'))
         if (case not in REQUIRED_CASES or not isinstance(epoch, str)
                 or not re.fullmatch('[0-9a-f-]{36}', epoch)
-                or type(parent) is not int or parent < 1 or type(scope) is not int or scope < (3 if version == 2 else 2)
+                or type(parent) is not int or parent < 1 or type(scope) is not int
+                or scope < (3 if version in {2, 3} else 2)
                 or type(segment['budgetValid']) is not bool
                 or not pressure._number(segment['droppedEvents'])
                 or (epoch, parent) in seen):
             raise ComposedEvidenceError('composed-budget-segment-binding-invalid')
-        if version == 2 and epoch != value['collectorEpoch']:
+        if version in {2, 3} and epoch != value['collectorEpoch']:
             raise ComposedEvidenceError('composed-budget-collector-epoch-mismatch')
         seen.add((epoch, parent))
         snapshots = []
@@ -318,7 +872,8 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
         previous = None
         for event in events:
             _closed(event, pressure.EVENT_FIELDS)
-            if (event['kind'] not in pressure.KINDS | COMPOSED_KINDS
+            if (event['kind'] not in pressure.KINDS | COMPOSED_KINDS |
+                    (CAUSAL_KINDS if version == 3 else frozenset())
                     or event['operation'] not in pressure.OPERATIONS
                     or any(not pressure._number(event[key]) for key in pressure.EVENT_FIELDS -
                            {'observedAt', 'kind', 'operation', 'sourceEpoch'})
@@ -531,6 +1086,8 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
         if graph_delta != (1 if 'GRAPH_STORE_IMPORTED' in kinds else 0):
             continue
         observed.add(case)
+    if version == 3:
+        observed |= _derive_causal_cases(value, epochs, observation_time)
     return {'schemaVersion': 1, 'kind': 'composed-budget-coverage',
             'requiredCases': list(REQUIRED_CASES), 'observedCases': sorted(observed),
             'missingCases': sorted(set(REQUIRED_CASES) - observed),

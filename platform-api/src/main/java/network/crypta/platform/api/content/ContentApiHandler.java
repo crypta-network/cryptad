@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletionStage;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
@@ -277,25 +278,46 @@ public final class ContentApiHandler {
           && ContentFetchException.CATALOG_FETCH_TOO_LARGE.equals(exception.errorCode())) {
         parent.recordStage(RuntimeWorkObservation.Kind.CONTENT_BYTES_REJECTED);
       }
-      if (exception.ownerTermination() != null) {
-        observeFetch(RuntimeWorkObservation.Kind.FETCH_TERMINATION_UNKNOWN, lease, appId);
-        var terminal =
-            exception
-                .ownerTermination()
-                .thenRun(
-                    () -> observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId));
-        lease.deferUntil(terminal);
-        if (reservation != null) {
-          reservation.deferUntil(terminal);
-        }
-      } else {
-        observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId);
-      }
+      observeFetchFailure(exception, lease, appId, reservation);
       throw mappedFetchException(exception);
     } catch (RuntimeException _) {
       observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId);
       throw new PlatformApiException(502, "content_fetch_failed", "Content fetch failed.");
     }
+  }
+
+  private void observeFetchFailure(
+      ContentFetchException exception,
+      AppNetworkBudgetLease lease,
+      String appId,
+      AppNetworkBudgetReservation reservation) {
+    if (exception.ownerTermination() == null) {
+      observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId);
+      return;
+    }
+    if (exception.ownerCancellationRequested()) {
+      observeFetch(RuntimeWorkObservation.Kind.FETCH_CANCEL_REQUESTED, lease, appId);
+    }
+    observeFetch(RuntimeWorkObservation.Kind.FETCH_TERMINATION_UNKNOWN, lease, appId);
+    CompletionStage<Void> terminal =
+        observeOwnerTermination(exception.ownerTermination(), lease, appId);
+    lease.deferUntil(terminal);
+    if (reservation != null) {
+      reservation.deferUntil(terminal);
+    }
+  }
+
+  private CompletionStage<Void> observeOwnerTermination(
+      CompletionStage<Void> ownerTermination, AppNetworkBudgetLease lease, String appId) {
+    return ownerTermination.whenComplete(
+        (_, failure) -> {
+          if (failure == null) {
+            observeFetch(RuntimeWorkObservation.Kind.FETCH_OWNER_TERMINATED, lease, appId);
+            observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId);
+          } else {
+            observeFetch(RuntimeWorkObservation.Kind.FETCH_OWNER_TERMINATION_FAILED, lease, appId);
+          }
+        });
   }
 
   private static PlatformApiException mappedFetchException(ContentFetchException exception) {

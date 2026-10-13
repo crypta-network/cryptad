@@ -161,7 +161,14 @@ def validate_plan(plan):
         raise EvidenceError("candidate-artifacts-differ")
     if previous["artifactDigest"] == sender["artifactDigest"] or previous["sourceCommit"] == sender["sourceCommit"]:
         raise EvidenceError("previous-relabels-current")
-    if any(n["contractVersion"] < 25 or not n["appDigests"] for n in (sender, recipient)):
+    budget_profile = (plan["experimentId"] == "pr317-namespace-bound-composed-budget"
+        and set(workload) == {"scheduler"}
+        and set(plan.get("composedBudgetInputs", {})) == {
+            "collectorDigest", "configurationDigest"}
+        and len(sender["appDigests"]) == 4 and not recipient["appDigests"]
+        and not previous["appDigests"])
+    if (any(n["contractVersion"] < 25 for n in (sender, recipient))
+            or not budget_profile and any(not n["appDigests"] for n in (sender, recipient))):
         raise EvidenceError("mail-endpoint-incompatible")
     if len({n["configDigest"] for n in nodes}) != len(nodes):
         raise EvidenceError("node-config-alias")

@@ -69,6 +69,7 @@ public class ContentFetchException extends Exception {
     super(message);
     this.errorCode = validateErrorCode(errorCode);
     this.ownerTermination = null;
+    this.ownerCancellationRequested = false;
   }
 
   /**
@@ -85,9 +86,11 @@ public class ContentFetchException extends Exception {
     super(message, cause);
     this.errorCode = validateErrorCode(errorCode);
     this.ownerTermination = null;
+    this.ownerCancellationRequested = false;
   }
 
   private final transient java.util.concurrent.CompletionStage<Void> ownerTermination;
+  private final boolean ownerCancellationRequested;
 
   /**
    * Creates a failure whose asynchronous owner has not necessarily terminated.
@@ -102,9 +105,28 @@ public class ContentFetchException extends Exception {
       String message,
       Throwable cause,
       java.util.concurrent.CompletionStage<Void> ownerTermination) {
+    this(errorCode, message, cause, ownerTermination, false);
+  }
+
+  /**
+   * Creates an asynchronous-owner failure and records whether cancellation reached that owner.
+   *
+   * @param errorCode fixed failure code
+   * @param message diagnostic message
+   * @param cause underlying failure
+   * @param ownerTermination native owner completion acknowledgment
+   * @param ownerCancellationRequested whether the existing owner cancellation API was invoked
+   */
+  public ContentFetchException(
+      String errorCode,
+      String message,
+      Throwable cause,
+      java.util.concurrent.CompletionStage<Void> ownerTermination,
+      boolean ownerCancellationRequested) {
     super(message, cause);
     this.errorCode = validateErrorCode(errorCode);
     this.ownerTermination = Objects.requireNonNull(ownerTermination, "ownerTermination");
+    this.ownerCancellationRequested = ownerCancellationRequested;
   }
 
   /**
@@ -115,6 +137,15 @@ public class ContentFetchException extends Exception {
    */
   public java.util.concurrent.CompletionStage<Void> ownerTermination() {
     return ownerTermination;
+  }
+
+  /**
+   * Returns whether the bounded caller invoked the actual runtime owner's cancellation API.
+   *
+   * @return {@code true} only after a cancellation request reached the native owner
+   */
+  public boolean ownerCancellationRequested() {
+    return ownerCancellationRequested;
   }
 
   /**

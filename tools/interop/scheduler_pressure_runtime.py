@@ -653,11 +653,12 @@ class SchedulerLane(runtime.Supervisor):
                     raise runtime.RuntimeFailure('scheduler-event-sequence-substituted')
         work_snapshot = observations[-1]['work']
         version = work_snapshot.get('version', 1)
-        if version == 2 and any(row['work'].get('collectorEpoch') != work_snapshot.get('collectorEpoch')
-                                or row['work'].get('version') != 2 for row in observations):
+        if version in {2, 3} and any(
+                row['work'].get('collectorEpoch') != work_snapshot.get('collectorEpoch')
+                or row['work'].get('version') != version for row in observations):
             raise runtime.RuntimeFailure('scheduler-native-collector-epoch-substituted')
         return {'schemaVersion': version,
-            **({'collectorEpoch': work_snapshot['collectorEpoch']} if version == 2 else {}),
+            **({'collectorEpoch': work_snapshot['collectorEpoch']} if version in {2, 3} else {}),
             'workloadDigest': self.fingerprint['workloadDigest'],
             'collectorDigest': self.fingerprint['collectorDigest'], 'configurationDigest': self.fingerprint['configurationDigest'],
             'series': self.epoch_series(epoch),

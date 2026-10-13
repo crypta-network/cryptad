@@ -277,9 +277,61 @@ class TrustGraphApiRouterTest {
 
     assertEquals(4, budgets.diagnostics().activeFamilyLeases());
     assertEquals(2, budgets.diagnostics().reservedFamilyRates());
+    var events = budgets.observation().snapshot().events();
+    assertFalse(events.stream().anyMatch(event -> event.kind().name().equals("FETCH_FAILED")));
+    var unknown =
+        events.stream()
+            .filter(event -> event.kind().name().equals("FETCH_TERMINATION_UNKNOWN"))
+            .findFirst()
+            .orElseThrow();
+    var failedAcknowledgment =
+        events.stream()
+            .filter(event -> event.kind().name().equals("FETCH_OWNER_TERMINATION_FAILED"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(
+        AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI, failedAcknowledgment.operation());
+    assertTrue(failedAcknowledgment.scope() > 1);
+    assertEquals(unknown.operationId(), failedAcknowledgment.operationId());
     assertFalse(
+        events.stream().anyMatch(event -> event.kind().name().equals("FETCH_OWNER_TERMINATED")));
+    assertFalse(events.stream().anyMatch(event -> event.kind().name().equals("BUDGET_RELEASED")));
+  }
+
+  @Test
+  void nativeCancellationRequestIsObservedBeforeOwnerAcknowledgment() {
+    var terminal = new java.util.concurrent.CompletableFuture<Void>();
+    var budgets = trustImportBudget(10, 100);
+    ContentFetchPort fetch =
+        _ -> {
+          throw new network.crypta.runtime.spi.ContentFetchException(
+              network.crypta.runtime.spi.ContentFetchException.CATALOG_FETCH_FAILED,
+              "synthetic interrupted owner",
+              null,
+              terminal.minimalCompletionStage(),
+              true);
+        };
+    var router =
+        router(
+            fetch, new TrustGraphApiHandler(new InMemoryTrustGraphStore(), FIXED_CLOCK, budgets));
+
+    router.route(
+        request(
+            "POST",
+            List.of("trust-graph", "import-uri"),
+            Map.of("uri", List.of("CHK@private-canary")),
+            PlatformApiPrincipal.appBrowserSession(
+                APP_ID, List.of("trust.write", "content.fetch"))));
+    terminal.complete(null);
+
+    var kinds =
         budgets.observation().snapshot().events().stream()
-            .anyMatch(event -> event.kind().name().equals("FETCH_FAILED")));
+            .map(event -> event.kind().name())
+            .toList();
+    assertTrue(
+        kinds.indexOf("FETCH_CANCEL_REQUESTED") < kinds.indexOf("FETCH_TERMINATION_UNKNOWN"));
+    assertTrue(
+        kinds.indexOf("FETCH_TERMINATION_UNKNOWN") < kinds.indexOf("FETCH_OWNER_TERMINATED"));
   }
 
   @ParameterizedTest
@@ -353,12 +405,48 @@ class TrustGraphApiRouterTest {
         assertTrue(other.allowed());
       }
     }
+    long releasesBeforeAcknowledgment =
+        budgets.observation().snapshot().events().stream()
+            .filter(event -> event.kind().name().equals("BUDGET_RELEASED"))
+            .count();
+    long familyReleasesBeforeAcknowledgment =
+        budgets.observation().snapshot().events().stream()
+            .filter(event -> event.kind().name().equals("CONCURRENCY_RELEASED"))
+            .count();
     terminal.complete(null);
     assertEquals(0, budgets.diagnostics().activeFamilyLeases());
     assertEquals(0, budgets.diagnostics().reservedFamilyRates());
-    assertTrue(
-        budgets.observation().snapshot().events().stream()
-            .anyMatch(event -> event.kind().name().equals("FETCH_FAILED")));
+    var completedEvents = budgets.observation().snapshot().events();
+    var terminationUnknown =
+        completedEvents.stream()
+            .filter(event -> event.kind().name().equals("FETCH_TERMINATION_UNKNOWN"))
+            .findFirst()
+            .orElseThrow();
+    var ownerTerminated =
+        completedEvents.stream()
+            .filter(event -> event.kind().name().equals("FETCH_OWNER_TERMINATED"))
+            .findFirst()
+            .orElseThrow();
+    assertEquals(AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI, ownerTerminated.operation());
+    assertTrue(ownerTerminated.scope() > 1);
+    assertEquals(terminationUnknown.operationId(), ownerTerminated.operationId());
+    assertEquals(
+        1,
+        completedEvents.stream()
+            .filter(event -> event.kind().name().equals("FETCH_FAILED"))
+            .count());
+    assertEquals(
+        releasesBeforeAcknowledgment + 2,
+        completedEvents.stream()
+            .filter(event -> event.kind().name().equals("BUDGET_RELEASED"))
+            .count());
+    assertEquals(
+        familyReleasesBeforeAcknowledgment + 4,
+        completedEvents.stream()
+            .filter(event -> event.kind().name().equals("CONCURRENCY_RELEASED"))
+            .count());
+    assertFalse(terminal.complete(null));
+    assertEquals(completedEvents, budgets.observation().snapshot().events());
     assertEquals(
         0,
         budgets.diagnostics().usage().stream()
@@ -409,7 +497,7 @@ class TrustGraphApiRouterTest {
 
     var history = budgets.observation().snapshot();
     var kinds = history.events().stream().map(event -> event.kind().name()).toList();
-    assertEquals(2, history.version());
+    assertEquals(3, history.version());
     assertTrue(kinds.contains("GRAPH_STORE_IMPORTED"));
     assertTrue(kinds.contains("GRAPH_STORE_DUPLICATE"));
     assertEquals(4, kinds.stream().filter("COMPOSED_CHILD"::equals).count());

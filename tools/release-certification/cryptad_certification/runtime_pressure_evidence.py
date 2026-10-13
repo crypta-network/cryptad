@@ -60,14 +60,16 @@ def validate(value, *, workload_digest, observation_time=None):
         fields.add('baseline')
     version = value.get('schemaVersion') if isinstance(value, dict) else None
     kinds = KINDS
-    if version == 2:
-        from .composed_budget_evidence import COMPOSED_KINDS
+    if version in {2, 3}:
+        from .composed_budget_evidence import CAUSAL_KINDS, COMPOSED_KINDS
         fields.add('collectorEpoch')
         kinds = KINDS | COMPOSED_KINDS
+        if version == 3:
+            kinds |= CAUSAL_KINDS
         if not re.fullmatch('[0-9a-f-]{36}', str(value.get('collectorEpoch'))):
             raise RuntimeEvidenceError('runtime-evidence-collector-epoch-invalid')
     _closed(value, fields, 'runtime-evidence-fields-invalid')
-    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2}
+    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2, 3}
             or value['workloadDigest'] != workload_digest
             or any(not baseline.DIGEST.fullmatch(str(value[key])) for key in ('workloadDigest', 'collectorDigest', 'configurationDigest'))
             or type(value['budgetValid']) is not bool or not _number(value['droppedEvents'])):

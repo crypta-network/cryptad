@@ -1,4 +1,4 @@
-"""Bound a reported Mail worker and dynamic UI listener to one owned role's kernel scope.
+"""Bind fixed Mail or budget workers and UI listeners to one owned role kernel scope.
 
 The installed controller calls this while holding the workload lease and an absolute
 request deadline, before and after its semantic bootstrap exchange. Candidate runtime JSON
@@ -79,6 +79,22 @@ def _descendant(pid, ancestor, processes):
         seen.add(pid)
         pid = processes[pid]['hostParentPid']
     return False
+
+
+def _budget_cwd(pid, app_id, deadline):
+    """Bind the identical fixture executable to its fixed AppHost-installed bundle root."""
+    path = PROC / str(pid) / 'cwd'
+    expected = '/node/data/node/apps/installed/' + app_id
+    _time(deadline)
+    before = path.stat()
+    if os.readlink(path) != expected:
+        _reject()
+    _time(deadline)
+    after = path.stat()
+    if ((before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
+            or os.readlink(path) != expected):
+        _reject()
+    return [before.st_dev, before.st_ino]
 
 
 def _listener(daemon, port, deadline):
@@ -212,5 +228,111 @@ def require_app_listener(role, runtime_dict, port):
         _time(deadline)
         return {'daemon': _projection(daemon), 'worker': _projection(worker),
                 'appJvm': _projection(app), 'listenerInode': inode}
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        _reject()
+
+
+def require_budget_listener(role, app_id, runtime_dict, port):
+    """Bind one selected non-Java budget fixture without reusing Mail JVM semantics.
+
+    The app id is accepted only to index the controller-created launch record.  The caller
+    obtains it from the retained PR-317 roster, never from request bytes.  AppHost's reported
+    daemon-namespace PID is treated as a hint; the actual signed fixture executable, ancestry,
+    nested namespace, cgroup, daemon and listener epochs are independently observed here.
+    """
+    deadline = time.monotonic() + MAX_SECONDS
+    if (role != 'candidate-sender'
+            or app_id not in ('feed-reader', 'budget-importer',
+                              'budget-no-trust', 'budget-no-fetch')
+            or type(port) is not int or not 1024 <= port <= 65535
+            or not isinstance(runtime_dict, dict) or runtime_dict.get('running') is not True
+            or type(runtime_dict.get('pid')) is not int
+            or not 1 <= runtime_dict['pid'] <= 2147483647):
+        _reject()
+    sandbox = runtime_dict.get('sandbox')
+    if (not isinstance(sandbox, dict) or sandbox.get('provider') != 'bubblewrap'
+            or sandbox.get('active') is not True):
+        _reject()
+    try:
+        launch = workload.read(workload.ROOT / 'roles' / role / 'launch.json')
+        if (launch.get('executionClass') != 'pr317-namespace-bound-composed-budget-v1'
+                or set(launch.get('budgetAppIdentities', {})) != {
+                    'feed-reader', 'budget-importer', 'budget-no-trust', 'budget-no-fetch'}):
+            _reject()
+        java_digest = launch.get('javaDigest')
+        executable_digest = launch.get('budgetExecutableDigest')
+        bundle = launch['budgetAppIdentities'][app_id]
+        if (re.fullmatch('sha256:[0-9a-f]{64}', str(java_digest)) is None
+                or re.fullmatch('sha256:[0-9a-f]{64}', str(executable_digest)) is None
+                or not isinstance(bundle, dict)
+                or set(bundle) != {'digest', 'fileCount', 'sizeBytes'}
+                or re.fullmatch('sha256:[0-9a-f]{64}', str(bundle.get('digest'))) is None):
+            _reject()
+        uid = workload.account(role).pw_uid
+        processes = {}
+        for pid in _members(role, deadline):
+            _time(deadline)
+            try:
+                processes[pid] = workload._process(pid, role, uid)
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+        daemons = [value for value in processes.values()
+                   if value['executableDigest'] == java_digest
+                   and len(value['namespacePids']) == 2]
+        if len(daemons) != 1:
+            _reject()
+        daemon = daemons[0]
+        leaders = [value for value in processes.values()
+                   if len(value['namespacePids']) >= 2
+                   and value['namespacePids'][1] == runtime_dict['pid']]
+        if len(leaders) != 1:
+            _reject()
+        leader = leaders[0]
+        outer_leader = len(leader['namespacePids']) == 2
+        if (leader['hostPid'] == daemon['hostPid']
+                or (leader['pidNamespace'] == daemon['pidNamespace']) != outer_leader
+                or not _descendant(leader['hostPid'], daemon['hostPid'], processes)):
+            _reject()
+        fixtures = [value for value in processes.values()
+                    if value['executableDigest'] == executable_digest
+                    and len(value['namespacePids']) >= 3
+                    and value['pidNamespace'] != daemon['pidNamespace']
+                    and _descendant(value['hostPid'], leader['hostPid'], processes)]
+        if len(fixtures) != 1:
+            _reject()
+        fixture = fixtures[0]
+        bundle_cwd = _budget_cwd(fixture['hostPid'], app_id, deadline)
+        if (leader['mountNamespaceIdentity'] != fixture['mountNamespaceIdentity']
+                or leader['userNamespaceIdentity'] != fixture['userNamespaceIdentity']):
+            _reject()
+        if any(value['noNewPrivileges'] is not True
+               or value['effectiveCapabilities'] != 0
+               for value in (daemon, leader, fixture)):
+            _reject()
+        inode = _listener(daemon, port, deadline)
+        required = set()
+        for origin in (leader['hostPid'], fixture['hostPid']):
+            cursor = origin
+            for _ in range(64):
+                required.add(cursor)
+                if cursor == daemon['hostPid']:
+                    break
+                cursor = processes[cursor]['hostParentPid']
+            else:
+                _reject()
+        for pid in sorted(required):
+            _time(deadline)
+            if _epoch(workload._process(pid, role, uid)) != _epoch(processes[pid]):
+                _reject()
+        if _listener(daemon, port, deadline) != inode:
+            _reject()
+        _time(deadline)
+        return {'daemon': _projection(daemon),
+                'worker': {'appHostLeader': _projection(leader),
+                           'fixtureProcess': _projection(fixture),
+                           'listenerInode': inode,
+                           'bundleCwdIdentity': bundle_cwd,
+                           'bundleDigest': bundle['digest'],
+                           'executableDigest': executable_digest}}
     except (OSError, ValueError, KeyError, IndexError, TypeError):
         _reject()

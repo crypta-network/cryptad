@@ -89,6 +89,7 @@ class LegacyContentFetchObservationTest {
       assertEquals(1, port.observation().inFlightOperations());
       assertEquals(0, port.observation().failedOperations());
       assertNotNull(failure.ownerTermination());
+      assertTrue(failure.ownerCancellationRequested());
       assertFalse(failure.ownerTermination().toCompletableFuture().isDone());
 
       nativeCallback
@@ -107,6 +108,42 @@ class LegacyContentFetchObservationTest {
             .onFailure(new FetchException(FetchException.FetchExceptionMode.CANCELLED));
       }
     }
+  }
+
+  @Test
+  void timeoutReportsNativeCancellationRequestUntilOwnerAcknowledgment() throws Exception {
+    NodeClientCore core = mock(NodeClientCore.class);
+    HighLevelSimpleClient client =
+        mock(HighLevelSimpleClient.class, withSettings().extraInterfaces(RequestClient.class));
+    ClientGetter getter = mock(ClientGetter.class);
+    ClientContext context = mock(ClientContext.class);
+    FetchContext fetchContext = mock(FetchContext.class);
+    AtomicReference<ClientGetCallback> nativeCallback = new AtomicReference<>();
+    when(core.getClientContext()).thenReturn(context);
+    when(core.makeClient(anyShort(), eq(false), eq(false))).thenReturn(client);
+    when(client.getFetchContext()).thenReturn(fetchContext);
+    when(client.fetch(any(FreenetURI.class), anyLong(), any(), any(), anyShort()))
+        .thenAnswer(
+            invocation -> {
+              nativeCallback.set(invocation.getArgument(2));
+              return getter;
+            });
+    LegacyContentFetchPort port = new LegacyContentFetchPort(core);
+    var request =
+        new BoundedContentFetchRequest(
+            FreenetURI.EMPTY_CHK_URI.toString(), 32, Duration.ofNanos(1), "test");
+
+    ContentFetchException failure =
+        assertThrows(ContentFetchException.class, () -> port.fetchContent(request));
+
+    verify(getter).cancel(context);
+    assertEquals(ContentFetchException.CATALOG_FETCH_TIMEOUT, failure.errorCode());
+    assertTrue(failure.ownerCancellationRequested());
+    assertNotNull(failure.ownerTermination());
+    assertFalse(failure.ownerTermination().toCompletableFuture().isDone());
+    nativeCallback.get().onFailure(new FetchException(FetchException.FetchExceptionMode.CANCELLED));
+    assertTrue(failure.ownerTermination().toCompletableFuture().isDone());
+    assertCompleted(port, false);
   }
 
   @Test
