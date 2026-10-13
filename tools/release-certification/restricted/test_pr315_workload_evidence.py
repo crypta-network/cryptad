@@ -863,15 +863,18 @@ class VolatileEvidenceTest(unittest.TestCase):
         self.assertEqual({'status': 'unavailable-or-unsafe'}, result)
 
     def test_fatal_deadline_and_output_budget_preserve_higher_priority_records(self):
+        output_budget = self.capture_output_budget()
         directory = self.fatal_directory()
         (directory / 'hs_err_pid1.log').write_bytes(b'H' * 4096)
         with patch.object(evidence.snapshot, 'read_file', side_effect=AssertionError('no reads')):
             self.assertEqual('capture-deadline',
                 evidence._fatal_logs(self.root, 'candidate-sender', 0)['status'])
-        with patch.object(evidence, 'MAX_OUTPUT', 4096):
+        with patch.object(evidence, 'MAX_OUTPUT', output_budget):
             result = evidence._capture(self.root, self.expected, True)
         self.assertEqual('not-captured-output-budget', result['fatalLogs']['candidate-sender']['status'])
         self.assertEqual('matched', result['sentinel']['status'])
+        self.assertLess(len(json.dumps(result, sort_keys=True, allow_nan=False).encode()),
+                        output_budget)
         with patch.object(evidence, '_fatal_logs', side_effect=AssertionError('no fatal enumeration')):
             result = evidence._capture(self.root, self.expected, False)
         self.assertTrue(all(row['status'] == 'not-captured-cleanup-unverified'
@@ -956,15 +959,17 @@ class VolatileEvidenceTest(unittest.TestCase):
                          evidence._wrapper_thread_dump(prefix, float('inf')))
 
     def test_wrapper_excerpt_yields_output_budget_to_existing_tail(self):
+        output_budget = self.capture_output_budget(log_bytes=6144)
         self.wrapper().write_bytes(b'ERROR | wrapper | failure ' + b'x' * 10000)
-        with patch.object(evidence, 'MAX_OUTPUT', 10000):
+        with patch.object(evidence, 'MAX_OUTPUT', output_budget):
             result = evidence._capture(self.root, self.expected, True)
         log = result['wrapperLogs']['candidate-sender']
         self.assertEqual('captured', log['status'])
         self.assertEqual(4096, log['tailBytes'])
         self.assertEqual({'status': 'not-captured-output-budget'}, log['excerpt'])
         self.assertEqual('matched', result['sentinel']['status'])
-        self.assertLess(len(json.dumps(result)), 10000)
+        self.assertLess(len(json.dumps(result, sort_keys=True, allow_nan=False).encode()),
+                        output_budget)
 
     def test_wrapper_excerpt_bounds_adversarial_text_and_deadline(self):
         line = b'FATAL | wrapper | spoofed-severity-is-not-proof ' + b'x' * 20000
@@ -1207,13 +1212,28 @@ class VolatileEvidenceTest(unittest.TestCase):
             self.assertEqual(2 * 1024 * 1024, read.call_args.kwargs['maximum'])
 
     def test_output_budget_omits_logs_without_discarding_prior_observations(self):
+        output_budget = self.capture_output_budget()
         self.wrapper().write_bytes(b'x' * 8192)
-        with patch.object(evidence, 'MAX_OUTPUT', 4096):
+        with patch.object(evidence, 'MAX_OUTPUT', output_budget):
             result = evidence._capture(self.root, self.expected, True)
         self.assertEqual('matched', result['sentinel']['status'])
         self.assertEqual('captured', result['controllerRecords']['campaign']['status'])
         self.assertEqual({'status': 'not-captured-output-budget'}, result['wrapperLogs']['candidate-sender'])
-        self.assertLess(len(json.dumps(result)), 4096)
+        self.assertLess(len(json.dumps(result, sort_keys=True, allow_nan=False).encode()),
+                        output_budget)
+
+    def capture_output_budget(self, *, log_bytes=0):
+        """Leave bounded log space after the current mandatory diagnostic metadata."""
+        baseline = evidence._capture(self.root, self.expected, True)
+        # Allow status/timestamp overhead, but not a log payload unless explicitly reserved.
+        return len(json.dumps(baseline, sort_keys=True, allow_nan=False).encode()) + 512 + log_bytes
+
+    def test_capture_rejects_budget_smaller_than_mandatory_metadata(self):
+        output_budget = self.capture_output_budget() - 1024
+
+        with patch.object(evidence, 'MAX_OUTPUT', output_budget):
+            with self.assertRaisesRegex(ValueError, '^workload-evidence-output-limit$'):
+                evidence._capture(self.root, self.expected, True)
 
     def test_changed_sentinel_is_not_matched(self):
         self.path.write_bytes(b'x' * 32)
