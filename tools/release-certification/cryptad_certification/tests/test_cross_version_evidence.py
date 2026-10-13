@@ -91,6 +91,33 @@ class CrossVersionEvidenceTest(unittest.TestCase):
         self.assertFalse(result["releaseEligible"])
         self.assertEqual("not-authenticated", result["protectedAuthentication"])
 
+    def test_restart_budget_plan_accepts_app_free_recipient_only_for_selected_budget_shape(self):
+        plan = fixture_plan()
+        plan.update(experimentId="pr319-composed-budget-restart-diagnostics",
+            workloadInputs={"scheduler": "sha256:" + "e" * 64},
+            composedBudgetInputs={"collectorDigest": "sha256:" + "f" * 64,
+                                  "configurationDigest": "sha256:" + "a" * 64})
+        plan["nodes"][0]["appDigests"] = ["sha256:" + str(i) * 64 for i in range(1, 5)]
+        plan["nodes"][1]["appDigests"] = []
+        plan["nodes"][2]["appDigests"] = []
+        self.assertEqual(plan, validate_plan(plan))
+        invalid = []
+        unselected = copy.deepcopy(plan)
+        unselected["experimentId"] = "offline-integrity-test"
+        invalid.append(unselected)
+        wrong_roster = copy.deepcopy(plan)
+        wrong_roster["nodes"][0]["appDigests"].pop()
+        invalid.append(wrong_roster)
+        wrong_workload = copy.deepcopy(plan)
+        wrong_workload["workloadInputs"]["catalog"] = "sha256:" + "b" * 64
+        invalid.append(wrong_workload)
+        previous_apps = copy.deepcopy(plan)
+        previous_apps["nodes"][2]["appDigests"] = ["sha256:" + "c" * 64]
+        invalid.append(previous_apps)
+        for malformed in invalid:
+            with self.subTest(plan=malformed), self.assertRaisesRegex(EvidenceError, "mail-endpoint-incompatible"):
+                validate_plan(malformed)
+
     def test_stopped_required_node_cannot_supply_operations_or_coverage(self):
         plan = fixture_plan()
         events, _ = fixture_events(plan)

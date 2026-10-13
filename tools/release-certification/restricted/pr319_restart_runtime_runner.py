@@ -91,6 +91,7 @@ def _selection(value, fixture, fixture_root):
     if (authorization["selectionDigest"] != fixtures.canonical_digest({
             "executionClass": evidence.EXECUTION_CLASS,
             "planDigest": authorization["planDigest"],
+            "maxSeconds": authorization["maxSeconds"],
             "budgetSelection": authorization["budgetSelection"]})
             or authorization["budgetSelection"]["statementDigest"] !=
                fixture["statementDigest"]

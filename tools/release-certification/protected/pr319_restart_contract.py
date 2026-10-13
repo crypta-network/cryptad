@@ -126,6 +126,10 @@ def verify_selection_contract(plan, private, authorization):
     try:
         if (authorization.get('executionClass') != EXECUTION_CLASS
                 or not valid_operation_budget(authorization.get('maxOperations'))
+                or type(authorization.get('maxSeconds')) is not int
+                or not 60 <= authorization['maxSeconds'] <= 3600
+                or type(plan.get('requestedSeconds')) is not int
+                or authorization['maxSeconds'] != plan['requestedSeconds']
                 or plan.get('experimentId') != EXPERIMENT
                 or private.get('root') != '/var/lib/cryptad-cross-version/experiments/' + EXPERIMENT
                 or authorization.get('experimentId') != EXPERIMENT
@@ -182,6 +186,7 @@ def verify_selection_contract(plan, private, authorization):
             and authorization.get('selectionDigest') == canonical_digest({
                 'executionClass': EXECUTION_CLASS,
                 'planDigest': authorization.get('planDigest'),
+                'maxSeconds': authorization['maxSeconds'],
                 'budgetSelection': budget}))
     except (KeyError, TypeError, ValueError):
         return False
