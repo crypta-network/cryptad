@@ -1,0 +1,14 @@
+{
+  "observedCases": ["abrupt-restart", "diagnostics-unavailable", "graceful-restart"],
+  "requiredCaseCount": 31,
+  "requiredCases": ["direct-valid", "direct-malformed", "pasted-preview-valid", "uri-preview-valid", "uri-preview-malformed", "uri-valid", "uri-malformed", "uri-fingerprint-mismatch", "uri-duplicate", "authorization-denied", "app-import-rate", "global-import-rate", "import-concurrency", "app-fetch-rate", "global-fetch-rate", "fetch-concurrency", "shared-foreground", "shared-subscription", "invalid-uri", "invalid-utf8", "oversized", "timeout", "cancellation", "retry", "window-crossing", "partial-rate-write", "graph-store-unavailable", "graceful-restart", "abrupt-restart", "diagnostics-unavailable", "privacy"],
+  "missingCaseCount": 28,
+  "unobservedMandatoryVariants": [],
+  "inflightTailStatus": "censored",
+  "measurementClaims": ["p12-300-consumers"],
+  "authenticatedObservedSeconds": 0,
+  "fullAppBudgets": "not-observed",
+  "originalAuthentication": "not-established",
+  "releaseEligible": false,
+  "nativeVariants": ["settled-graceful", "settled-abrupt", "inflight-abrupt", "enumeration-only", "required-key-unreadable", "malformed-record", "identity-mismatch", "special-member", "bounded-exhaustion"]
+}

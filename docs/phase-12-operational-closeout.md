@@ -1,5 +1,12 @@
 # Phase 12 acceptance audit and operational closeout
 
+The [PR-319 restart and diagnostics slice](pr-319-composed-budget-restart-diagnostics.md)
+adds actual file-backed JVM restart traces, fixed installed role/fault drivers and cross-epoch
+consumers for three existing budget cases. Local native coverage is separate from unexecuted
+installed acceptance. Complete privacy, cancellation/storage directions, original protected
+operations, resource baselines and long runs remain open; all 31 budget cases and 49 Phase 12
+requirements remain mandatory. Historical cutoffs and incomplete decisions are unchanged.
+
 The [PR-318 window and storage budget slice](pr-318-fixed-window-partial-store-budget-evidence.md)
 adds operation-correlated write observations, real file-backed handler tests and prospective
 installed representatives for three existing budget cases. The 31-case budget policy and 49

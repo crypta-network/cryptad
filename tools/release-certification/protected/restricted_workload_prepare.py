@@ -27,6 +27,7 @@ MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
 MAIL_EXPERIMENT = 'pr316-installed-mail-runtime'
 BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
 STORAGE_EXECUTION_CLASS = 'pr318-fixed-window-partial-store-v1'
+RESTART_EXECUTION_CLASS = 'pr319-composed-budget-restart-diagnostics-v1'
 BUDGET_EXPERIMENT = 'pr317-namespace-bound-composed-budget'
 BUDGET_APP_IDS = ('feed-reader', 'budget-importer', 'budget-no-trust', 'budget-no-fetch')
 
@@ -37,6 +38,9 @@ def valid_execution_selection(plan, private, authorization):
     if execution_class is None:
         return ('executionClass' not in authorization
                 and 'selectionDigest' not in authorization)
+    if execution_class == RESTART_EXECUTION_CLASS:
+        import pr319_restart_contract
+        return pr319_restart_contract.verify_selection_contract(plan, private, authorization)
     if execution_class == STORAGE_EXECUTION_CLASS:
         import pr318_storage_contract
         return pr318_storage_contract.verify_selection_contract(plan, private, authorization)
@@ -125,7 +129,7 @@ def configuration_identity(role, trust_digest, execution_class=None):
     value = {'profile': workload.PROFILE, 'role': role,
              'configuration': text, 'appTrustDigest': trust_digest,
              'launcherPolicy': launcher_policy()}
-    if execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS):
+    if execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
         value['budgetLauncherPolicy'] = budget_launcher_policy(execution_class)
     elif execution_class is not None:
         if execution_class != MAIL_EXECUTION_CLASS:
@@ -145,7 +149,7 @@ def prepare(plan, private, authorization):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
     import cross_version_runtime as runtime
     execution_class = authorization.get('executionClass')
-    budget_class = execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS)
+    budget_class = execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS)
     if (plan.get('provenanceClass') != 'source-build-comparison'
             or set(private) != {'root', 'nodes'}
             or (not budget_class and plan.get('workloadInputs'))
