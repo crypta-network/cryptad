@@ -175,7 +175,7 @@ def _verify_bundles(root, source, selected):
 def prepare(args):
     """Create a new PR-319 fixture root without changing PR-315 fixture bytes."""
     if (type(args.max_seconds) is not int or not 60 <= args.max_seconds <= 3600
-            or type(args.max_operations) is not int or not 1 <= args.max_operations <= 10000
+            or not contract.valid_operation_budget(args.max_operations)
             or not re.fullmatch('[0-9a-f]{40}', args.candidate_commit)
             or not re.fullmatch('[0-9a-f]{40}', args.previous_commit)
             or args.candidate_commit == args.previous_commit):
@@ -294,7 +294,7 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
             or value['normalizedConfiguration'] != NORMALIZED_CONFIGURATION
             or value['failurePolicy'] != FAILURE_POLICY
             or type(value['maxSeconds']) is not int or not 60 <= value['maxSeconds'] <= 3600
-            or type(value['maxOperations']) is not int or not 1 <= value['maxOperations'] <= 10000
+            or not contract.valid_operation_budget(value['maxOperations'])
             or value['members'] != base.inventory(root)):
         raise ValueError('pr319-storage-fixture-manifest-invalid')
     base.validate_roster(value['products'])

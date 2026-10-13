@@ -26,6 +26,8 @@ Full rate records and selected graph facts are compared before any chargeable re
 
 Fixture selection requires at least 70 seconds before the selected hour boundary: the runtime stops admitting work 60 seconds before that boundary, and the fixed start margin reserves another 10 seconds. Startup delays can still exhaust this window; the runtime rechecks the original cutoff and fails without moving the selected hour.
 
+The operation allowance must be at least 772 and at most 10,000. The minimum accounts for the four-role setup, two readiness attempts per start, bounded peer/native polling, initial app installation, 32-request exhaustion setup, all three restart variants, both diagnostic variants and final readback. Preparation, retained-fixture verification and protected admission enforce the same minimum before role startup; further provider-readiness retries remain subject to the caller's finite operation cap and original deadline.
+
 ## Execution status
 
 The bounded local implementation and verification are complete; installed acceptance is not executed. No installed VM, managed host allocation, live-node action, protected workflow, merge, or publication is authorized or claimed by this local task. Installed acceptance requires separately executed exact product/helper/selection bytes and original administrator and terminal records.

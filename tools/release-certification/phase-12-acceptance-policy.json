@@ -2689,12 +2689,12 @@
           },
           {
             "path": "tools/release-certification/protected/pr319_restart_contract.py",
-            "digest": "sha256:f19b3196601f4df8e5803a8851244ac570c7c53908965a2b43e0cd24e428912a",
+            "digest": "sha256:0d5c4bb3a1e1afe10d3e0d20670b105184b05b0f809e91a94a60edb14e26a105",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion."
           },
           {
             "path": "tools/release-certification/restricted/pr319_restart_selection.py",
-            "digest": "sha256:dfd5b0a41571dbe7d8d2d7176c59f9114b53158c735765a96e29c5ac0e3ee31c",
+            "digest": "sha256:ad69dbe453dd2b41eb45d328da5e6d96cb4309ab8e3233229babce1426365d1f",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion."
           },
           {
@@ -2922,7 +2922,7 @@
           },
           {
             "path": "tools/release-certification/restricted/test_pr319_restart_runtime_runner.py",
-            "digest": "sha256:62f66d4ce2479d26b2f72b6c41be8d6d0a10677365858d5243c343fed2c1f06f",
+            "digest": "sha256:5dae299e2e9d7c23d70d80fbba370037a044c0bad4fb435786571d34c89913c8",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion."
           }
         ]
@@ -3158,12 +3158,12 @@
           },
           {
             "path": "tools/release-certification/protected/pr319_restart_contract.py",
-            "digest": "sha256:f19b3196601f4df8e5803a8851244ac570c7c53908965a2b43e0cd24e428912a",
+            "digest": "sha256:0d5c4bb3a1e1afe10d3e0d20670b105184b05b0f809e91a94a60edb14e26a105",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion."
           },
           {
             "path": "tools/release-certification/restricted/pr319_restart_selection.py",
-            "digest": "sha256:dfd5b0a41571dbe7d8d2d7176c59f9114b53158c735765a96e29c5ac0e3ee31c",
+            "digest": "sha256:ad69dbe453dd2b41eb45d328da5e6d96cb4309ab8e3233229babce1426365d1f",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion."
           },
           {
@@ -3391,7 +3391,7 @@
           },
           {
             "path": "tools/release-certification/restricted/test_pr319_restart_runtime_runner.py",
-            "digest": "sha256:62f66d4ce2479d26b2f72b6c41be8d6d0a10677365858d5243c343fed2c1f06f",
+            "digest": "sha256:5dae299e2e9d7c23d70d80fbba370037a044c0bad4fb435786571d34c89913c8",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion."
           }
         ]

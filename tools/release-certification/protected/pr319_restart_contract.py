@@ -54,6 +54,34 @@ FAILURE_POLICY = {'maximumSetupAttempts': 2, 'requestDeadlineMillis': 45_000,
     'clientCleanupMillis': 5_000,
     'retainFailedAttempts': True, 'unknownOwnerTermination': 'inconclusive',
     'collectionGap': 'fail-closed'}
+# Conservative allocation for the complete fixed lane, including app requests made by
+# spawned clients. Additional provider-readiness retries still use the caller's finite cap.
+MIN_OPERATIONS = (
+    # ClientHello/GetNode, two setup attempts for four initial starts and three restarts.
+    2 * FAILURE_POLICY['maximumSetupAttempts'] * (len(ROLES) + 3)
+    # Three peer pairs: two handshakes/adds and two ListPeers per 2s poll over 150s.
+    + (len(ROLES) - 1) * (4 + 2 * 75)
+    # Host bootstrap, contract/inventory, install/start for each app, controller bootstrap.
+    + 3 + 2 * len(APP_IDS) + 1
+    # Initial sample, two seeds, exhaustion, two key generations/one publish, subscription.
+    + 1 + 2 + NORMALIZED_CONFIGURATION['budgetConfiguration']['trustGraphImportPerAppPerHour']
+    + 3 * 3 + 2
+    # Three restart samples/checks/rebootstraps, graceful FCP shutdown, in-flight setup sample.
+    + 3 * (3 + 2 + 2 + 2 * len(APP_IDS)) + 2 + 1
+    # Two diagnostics variants: five samples (including invalid resampling), two requests.
+    + 2 * (5 + 2)
+    # Interrupted URI request and native snapshots every 50ms for the fixed eight-second wait.
+    + 1 + 160
+    # Final native sample.
+    + 1
+)
+
+
+def valid_operation_budget(value):
+    """Reject allocations below the fixed lane's conservative request/poll allowance."""
+    return type(value) is int and MIN_OPERATIONS <= value <= 10000
+
+
 HOST_EVIDENCE_PATHS = {
     'installedRuntime': 'tools/interop/cross_version_runtime.py',
     'installedWorkload': 'tools/interop/cross_version_workload.py',
@@ -97,6 +125,7 @@ def verify_selection_contract(plan, private, authorization):
     """Validate the full class member without importing a runner or mutating state."""
     try:
         if (authorization.get('executionClass') != EXECUTION_CLASS
+                or not valid_operation_budget(authorization.get('maxOperations'))
                 or plan.get('experimentId') != EXPERIMENT
                 or private.get('root') != '/var/lib/cryptad-cross-version/experiments/' + EXPERIMENT
                 or authorization.get('experimentId') != EXPERIMENT
