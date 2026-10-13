@@ -102,7 +102,7 @@ python3 tools/release-certification/certify.py stable-maintenance --self-test
 python3 tools/release-certification/certify.py phase-12-closeout --self-test
 ```
 
-The real Java producer writes owner-only observations and separate parent-owned originals under `platform-api/build/test-results/pr319-native`. The scoped integration uses those actual three process and six diagnostic exports unchanged. Its fixed expected 31-case inventory is a separate test fixture; it never generates expected pass objects from the implementation. The measurement reaches the existing journal and `maintenance-measurements` verifier with three local cases observed and 28 missing, original provenance unverified and runtime execution unobserved.
+The real Java producer writes owner-only observations and separate parent-owned originals under `platform-api/build/test-results/pr319-native`. The Platform API test task declares that directory as an output and clears it before execution, so skipped or failed producers cannot leave earlier exports available to the Python integration. A filtered test run also replaces the entire export set; the integration rejects partial sets and skips when no producer files exist. The scoped integration uses the actual three process and six diagnostic exports unchanged. Its fixed expected 31-case inventory is a separate test fixture; it never generates expected pass objects from the implementation. The measurement reaches the existing journal and `maintenance-measurements` verifier with three local cases observed and 28 missing, original provenance unverified and runtime execution unobserved.
 
 The host fixture preparer and actual one-attempt runner are usable entry points:
 
