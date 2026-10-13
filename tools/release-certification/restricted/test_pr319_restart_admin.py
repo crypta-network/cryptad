@@ -35,14 +35,21 @@ def make_store(root):
     apps = Path(root) / "state" / admin.ROLE / "data/node/apps"
     budget = apps / "network-budget/feed-reader"
     graph = apps / "trust-graph/statements"
-    budget.mkdir(parents=True, mode=0o700)
-    graph.mkdir(parents=True, mode=0o700)
+    # mkdir(parents=True) applies mode only to the leaf; create every private ancestor.
+    for leaf in (budget, graph):
+        directory = Path(root)
+        for part in leaf.relative_to(root).parts:
+            directory /= part
+            directory.mkdir(mode=0o700, exist_ok=True)
     counter = budget / admin.COUNTER
+    counter.touch(mode=0o600)
     counter.write_text("# generated\nversion=1\nappId=feed-reader\noperation=trust_graph_import\n"
         "windowStart=2026-10-13T10\\:00\\:00Z\nwindowSeconds=3600\ncount=3\n"
         "lastDecisionAt=2026-10-13T10\\:01\\:00Z\nlastDecision=allowed\n")
     document = "f" * 64
-    (graph / (document + ".properties")).write_text("version=1\ndocumentFingerprint=" + document +
+    statement = graph / (document + ".properties")
+    statement.touch(mode=0o600)
+    statement.write_text("version=1\ndocumentFingerprint=" + document +
         "\npayloadHash=" + "e" * 64 + "\nsignatureVerified=true\nsource=app\n"
         "importedAt=2026-10-13T10\\:00\\:00Z\nupdatedAt=2026-10-13T10\\:01\\:00Z\n"
         'documentBytes=2\ndocumentJson={"type"\\:"synthetic"}\n')
@@ -50,6 +57,18 @@ def make_store(root):
 
 
 class CaptureTest(unittest.TestCase):
+    def test_private_store_is_capturable_under_group_writable_umask(self):
+        previous = os.umask(0o002)
+        try:
+            with tempfile.TemporaryDirectory() as root:
+                make_store(root)
+                workload, _, _ = fixtures(root)
+                value = admin._store_capture(workload, os.getuid())
+                self.assertEqual(3, value["durableUsage"][0]["count"])
+                self.assertEqual(1, len(value["graphFacts"]))
+        finally:
+            os.umask(previous)
+
     def test_real_properties_capture_retains_windows_decisions_and_graph_metadata(self):
         with tempfile.TemporaryDirectory() as root:
             make_store(root)

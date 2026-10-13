@@ -33,11 +33,23 @@ def process(variant='settled-graceful'):
     old.charge(1, 'trust_graph_import', 3, W1)
     old.charge(1, 'trust_graph_import', 1, W1)
     if variant == 'inflight-abrupt':
-        old.event('RATE_RESERVED', 2, 'trust_graph_import', 3, 1, W1)
+        old.event('COMPOSED_URI_IMPORT_START', 4)
+        old.event('COMPOSED_CHILD', 2, value=4)
+        old.event('BUDGET_RESERVE', 2, 'trust_graph_import')
+        for scope in (3, 1):
+            old.event('RATE_RESERVED', 2, 'trust_graph_import', scope, 1, W1)
         old.hold(2, [('trust_graph_import', 3), ('trust_graph_import', 1)])
+        old.event('BUDGET_RESERVED', 2, 'trust_graph_import')
+        old.event('COMPOSED_CHILD', 3, value=4)
+        old.event('BUDGET_ACQUIRE', 3, 'trust_graph_import_uri')
+        old.charge(3, 'foreground_content_fetch', 3, W1)
+        old.charge(3, 'content_fetch_global', 1, W1)
+        old.hold(3, [('foreground_content_fetch', 3), ('content_fetch_global', 1)])
+        old.event('BUDGET_COMMITTED', 3, 'trust_graph_import_uri')
+        old.event('FETCH_INVOKED', 3, 'trust_graph_import_uri')
     before = phase(old, EPOCH_A, 101)
     new = Vector()
-    new.rates = {('trust_graph_import', 4 if scope == 3 else scope, window): count
+    new.rates = {(family, 4 if scope == 3 else scope, window): count
                  for (family, scope, window), count in old.rates.items()}
     after = phase(new, EPOCH_B, 202, scope=4)
     new.charge(1, 'trust_graph_import', 4, W1)
@@ -56,7 +68,7 @@ def process(variant='settled-graceful'):
             deadBeforeRestart=True, newPid=202, forced=variant != 'settled-graceful'),
         dataIdentity={'fileKey': '(dev=1,ino=2)'},
         selectedFingerprint='a' * 64,
-        pendingOperationIds=[2] if variant == 'inflight-abrupt' else [],
+        pendingOperationIds=[2, 3] if variant == 'inflight-abrupt' else [],
         tailStatus='censored' if variant == 'inflight-abrupt' else 'complete')
 
 
@@ -131,6 +143,92 @@ class RestartEvidenceTests(unittest.TestCase):
             change(forged)
             with self.assertRaises(owner.ComposedEvidenceError):
                 restart.derive_controlled(forged)
+
+    def test_reservation_only_prefix_cannot_credit_interrupted_owner(self):
+        raw = process('inflight-abrupt')
+        reservation = Vector()
+        reservation.charge(1, 'trust_graph_import', 3, W1)
+        reservation.charge(1, 'trust_graph_import', 1, W1)
+        reservation.event('RATE_RESERVED', 2, 'trust_graph_import', 3, 1, W1)
+        reservation.hold(2, [('trust_graph_import', 3), ('trust_graph_import', 1)])
+        before = phase(reservation, EPOCH_A, 101)
+        before['graph'] = raw['before']['graph']
+        raw['before'] = before
+        raw['pendingOperationIds'] = [2]
+        for name in ('after', 'recovery'):
+            raw[name]['diagnostics']['usage'] = [r for r in raw[name]['diagnostics']['usage']
+                                                if r['operation'] == 'trust_graph_import']
+        with self.assertRaisesRegex(owner.ComposedEvidenceError, 'inflight-owner-missing'):
+            restart.derive_controlled(raw)
+        with self.assertRaisesRegex(owner.ComposedEvidenceError, 'inflight-owner-missing'):
+            restart.derive_cases(dict(restartCases=[process('settled-abrupt'), raw], diagnosticsCases=[]))
+
+    def test_inflight_owner_requires_ordered_parent_links_and_fetch_admission(self):
+        for kind, field, value in (
+                ('COMPOSED_URI_IMPORT_START', 'kind', 'COMPOSED_DIRECT_IMPORT_START'),
+                ('FETCH_INVOKED', 'kind', 'BUDGET_ACQUIRE'),
+                ('FETCH_INVOKED', 'operationId', 2),
+                ('FETCH_INVOKED', 'scope', 1),
+                ('COMPOSED_CHILD', 'value', 99),
+                ('BUDGET_RESERVED', 'kind', 'BUDGET_RESERVE'),
+                ('BUDGET_COMMITTED', 'kind', 'BUDGET_ACQUIRE')):
+            raw = process('inflight-abrupt')
+            event = next(e for e in raw['before']['nativeSnapshot']['events'] if e['kind'] == kind)
+            event[field] = value
+            with self.subTest(kind=kind, field=field), self.assertRaisesRegex(
+                    owner.ComposedEvidenceError, 'inflight-owner-missing'):
+                restart.derive_controlled(raw)
+
+    def test_terminal_owner_with_unreleased_holds_cannot_credit_inflight_variant(self):
+        for kind, operation_id in (('REQUEST_SUCCEEDED', 4), ('REQUEST_FAILED', 4),
+                                   ('FETCH_SUCCEEDED', 3), ('FETCH_FAILED', 3),
+                                   ('FETCH_OWNER_TERMINATED', 3), ('BUDGET_RELEASED', 2)):
+            raw = process('inflight-abrupt')
+            snapshot = raw['before']['nativeSnapshot']
+            event = copy.deepcopy(snapshot['events'][-1])
+            event.update(kind=kind, operationId=operation_id, sequence=snapshot['lastSequence'] + 1,
+                         elapsedNanos=event['elapsedNanos'] + 1000)
+            snapshot['events'].append(event)
+            snapshot['lastSequence'] += 1
+            with self.subTest(kind=kind), self.assertRaisesRegex(
+                    owner.ComposedEvidenceError, 'inflight-owner-missing'):
+                restart.derive_controlled(raw)
+
+    def test_inflight_links_holds_and_admission_must_precede_fetch_invocation(self):
+        for first, second in (('COMPOSED_URI_IMPORT_START', 'COMPOSED_CHILD'),
+                              ('BUDGET_RESERVED', 'FETCH_INVOKED'),
+                              ('CONCURRENCY_HELD', 'BUDGET_RESERVED'),
+                              ('BUDGET_COMMITTED', 'FETCH_INVOKED')):
+            raw = process('inflight-abrupt')
+            events = raw['before']['nativeSnapshot']['events']
+            left = next(e for e in events if e['kind'] == first)
+            right = next(e for e in events if e['kind'] == second)
+            fields = ('kind', 'operationId', 'operation', 'scope', 'value', 'windowStartEpochSecond')
+            left_values, right_values = {k: left[k] for k in fields}, {k: right[k] for k in fields}
+            left.update(right_values)
+            right.update(left_values)
+            with self.subTest(first=first, second=second), self.assertRaisesRegex(
+                    owner.ComposedEvidenceError, 'inflight-owner-missing'):
+                restart.derive_controlled(raw)
+
+    def test_import_and_fetch_holds_must_be_live_when_prefix_is_captured(self):
+        for operation_id, family, scope, rate in (
+                (2, 'trust_graph_import', 3, True), (2, 'trust_graph_import', 1, True),
+                (2, 'trust_graph_import', 3, False), (2, 'trust_graph_import', 1, False),
+                (3, 'foreground_content_fetch', 3, False), (3, 'content_fetch_global', 1, False)):
+            raw = process('inflight-abrupt')
+            snapshot = raw['before']['nativeSnapshot']
+            event = copy.deepcopy(snapshot['events'][-1])
+            event.update(kind='RATE_RESERVATION_RELEASED' if rate else 'CONCURRENCY_RELEASED',
+                         operationId=operation_id, operation=family, scope=scope,
+                         windowStartEpochSecond=W1 if rate else 0,
+                         sequence=snapshot['lastSequence'] + 1, elapsedNanos=event['elapsedNanos'] + 1000)
+            snapshot['events'].append(event)
+            snapshot['lastSequence'] += 1
+            raw['before']['diagnostics']['reservedFamilyRates' if rate else 'activeFamilyLeases'] -= 1
+            with self.subTest(family=family, scope=scope, rate=rate), self.assertRaisesRegex(
+                    owner.ComposedEvidenceError, 'inflight-owner-missing'):
+                restart.derive_controlled(raw)
 
     def test_original_wrong_stop_or_scope_cannot_authenticate_self_consistent_guest(self):
         raw = process('settled-abrupt')

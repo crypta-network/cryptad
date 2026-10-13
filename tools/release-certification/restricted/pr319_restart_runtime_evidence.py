@@ -285,6 +285,26 @@ def _transition(raw, original, before, after, diagnostics):
               "forced-daemon-substitution")
 
 
+def _forced_intent(actual, original, before, after):
+    """The administrator must retain a bound intent before the forced daemon death."""
+    intents = [r for r in actual if r["caseId"] == original["caseId"]
+               and r["phase"] == "fault-intent"]
+    _need(len(intents) == 1, "forced-intent-missing")
+    intent = intents[0]
+    bindings = ("campaign", "generation", "managerInvocation", "bootId", "selectionDigest",
+                "deadlineMonotonicNs", "daemon", "dataIdentity", "startedMonotonicNs")
+    _need(all(intent[k] == original[k] for k in bindings)
+          and all(intent[k] == before[k] for k in bindings if k != "startedMonotonicNs")
+          and intent["intendedSignal"] == original["forcedSignal"] == "SIGKILL",
+          "forced-intent-substitution")
+    started = intent["startedMonotonicNs"]
+    _need(type(started) is int and before["observedMonotonicNs"] < started
+          <= intent["observedMonotonicNs"] < original["observedMonotonicNs"]
+          < after["observedMonotonicNs"]
+          and actual.index(before) < actual.index(intent) < actual.index(original) < actual.index(after),
+          "forced-intent-order-invalid")
+
+
 def validate_originals(private, diagnostics, terminal, selection_digest):
     """Match guest claims against independently captured root/admin history in strict order."""
     try:
@@ -351,6 +371,8 @@ def validate_originals(private, diagnostics, terminal, selection_digest):
                 matches = [r for r in actual if r["caseId"] == case and r["phase"] == "terminal"]
                 _need(len(matches) == 1, "terminal-fault-missing")
                 original = matches[0]
+                if key[1] != "settled-graceful":
+                    _forced_intent(actual, original, phase_receipts["before"], phase_receipts["after"])
                 _transition(row, original, phase_receipts["before"], phase_receipts["after"], diagnostics)
                 _need(phase_receipts["before"]["observedMonotonicNs"] < original["observedMonotonicNs"]
                       < phase_receipts["after"]["observedMonotonicNs"], "restart-time-substitution")

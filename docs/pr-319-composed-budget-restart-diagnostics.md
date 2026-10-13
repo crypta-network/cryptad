@@ -58,11 +58,15 @@ The operator route samples its event ring before strict diagnostics. The driver 
 
 A ring is volatile. No release, request success, final old counter sample or normal owner acknowledgment is appended after abrupt death. Zero new leases describes only the new service. The actual last prefix, original stop/fault witness and independent post-restart readback remain separate. This does not prove cancellation, exactly-once import, arbitrary write cutpoints or power-loss durability.
 
+The `inflight-abrupt` prefix must contain a started URI-import owner, its linked import reservation and admitted `FETCH_INVOKED` child, and live app/global import and fetch holds. Outstanding reservations alone cannot credit this variant; a terminal request or fetch outcome also prevents interrupted-owner credit.
+
 ## Original evidence and private retention
 
 Each accepted installed phase binds native collector epoch and original app-to-scope mappings to root-read complete records. Native usage order is the production store's app/family sort order; scope numbers are never initialized to force equality. Original records retain actual minute/hour windows and all decision metadata. The selected real import hour and original campaign deadline do not move; a missed hour fails. Host UTC brackets cover every phase, including invalid `during`, and monotonic values remain in their original domains.
 
 The host verifier independently checks administrator receipt order, actual daemon identities, archived stop receipts, unchanged boot/tmpfs mount ID and inode/device identity, root-retained controller bootstrap contexts and fresh workers. It compares graph metadata and all rate families, not just totals or graph cardinality. A self-consistent guest result paired with another original stop, fault, bootstrap or file sample rejects.
+
+Each forced terminal receipt requires exactly one retained `fault-intent` for the same case, daemon, generation, manager invocation, boot, campaign, selection, deadline, data identity and fault start time. Its intended signal must match the terminal `SIGKILL`, and both monotonic times and receipt order must place the intent between the preceding snapshot and termination. Missing, duplicate, mismatched or reordered intent receipts reject the original history.
 
 The bounded JSONL checkpoint stream is fsynced before transitions and includes interruptions and uncredited first invalid samples. Complete private files and original root diagnostics are captured through the existing safe fixed descriptor reader while tmpfs is still mounted. PR-319 uses a separate fixed 262 KiB root diagnostics writer/capture ceiling to retain complete originals; older classes keep their 64 KiB ceiling. The shared campaign source cap remains 5,000 lines; finite dispatch is extracted into a cohesive helper.
 

@@ -247,7 +247,7 @@ def _reconcile(first, second, events, *, require_charge=False, selected=None):
     _need(len(added) == len(outcomes), 'graph-import-unexplained')
 
 
-def _pending(phase):
+def _pending_holds(phase):
     active = {}
     for event in phase['events']:
         kind = event['kind']
@@ -264,7 +264,68 @@ def _pending(phase):
     diagnostic = phase['raw']['diagnostics']
     _need(counts == (diagnostic['activeFamilyLeases'], diagnostic['reservedFamilyRates']),
           'hold-prefix-substituted')
-    return {key[0] for key, value in active.items() if value}
+    return {key for key, value in active.items() if value}
+
+
+def _pending(phase):
+    return {key[0] for key in _pending_holds(phase)}
+
+
+def _live_uri_owner(phase):
+    """An interrupted URI owner must still hold import and invoked-fetch capacity."""
+    events, live = phase['events'], _pending_holds(phase)
+    terminal = {'REQUEST_SUCCEEDED', 'REQUEST_FAILED', 'FETCH_SUCCEEDED', 'FETCH_FAILED',
+                'FETCH_OWNER_TERMINATED', 'FETCH_OWNER_TERMINATION_FAILED',
+                'FETCH_TERMINATION_UNKNOWN', 'BUDGET_RELEASED'}
+    for start in events:
+        if (start['kind'] != 'COMPOSED_URI_IMPORT_START' or start['scope'] < 3
+                or start['operationId'] < 1):
+            continue
+        parent, scope = start['operationId'], start['scope']
+        links = [e for e in events if e['kind'] == 'COMPOSED_CHILD' and e['value'] == parent]
+        if (len(links) != 2 or len({e['operationId'] for e in links} | {parent}) != 3
+                or any(e['scope'] != scope or e['sequence'] <= start['sequence'] for e in links)):
+            continue
+        children = {e['operationId'] for e in links}
+        group = [e for e in events if e['operationId'] in children | {parent}]
+        if any(e['kind'] in terminal for e in group):
+            continue
+        reserved = [e for e in group if e['kind'] == 'BUDGET_RESERVED'
+                    and e['operation'] == 'trust_graph_import' and e['scope'] == scope]
+        invoked = [e for e in group if e['kind'] == 'FETCH_INVOKED'
+                   and e['operation'] == 'trust_graph_import_uri' and e['scope'] == scope]
+        if len(reserved) != 1 or len(invoked) != 1:
+            continue
+        import_id, fetch_id = reserved[0]['operationId'], invoked[0]['operationId']
+        commits = [e for e in group if e['kind'] == 'BUDGET_COMMITTED'
+                   and e['operationId'] == fetch_id
+                   and e['operation'] == 'trust_graph_import_uri' and e['scope'] == scope]
+        if (set((import_id, fetch_id)) != children or len(commits) != 1
+                or not reserved[0]['sequence'] < commits[0]['sequence'] < invoked[0]['sequence']
+                or not owner._exact_charges(group, fetch_id, owner.FETCH, scope)):
+            continue
+        expected = {(import_id, 'trust_graph_import', s, False, 0) for s in (scope, 1)}
+        expected |= {(fetch_id, family, 1 if role == 'global' else scope, False, 0)
+                     for family, role in owner.FETCH}
+        reservations = [e for e in group if e['kind'] == 'RATE_RESERVED'
+                        and e['operationId'] == import_id]
+        if (len(reservations) != 2 or {(e['operation'], e['scope']) for e in reservations}
+                != {('trust_graph_import', scope), ('trust_graph_import', 1)}):
+            continue
+        expected |= {(import_id, e['operation'], e['scope'], True,
+                      e['windowStartEpochSecond']) for e in reservations}
+        if not expected <= live:
+            continue
+        admission = {import_id: reserved[0]['sequence'], fetch_id: commits[0]['sequence']}
+        if any(e['sequence'] >= admission.get(e['operationId'], 0) for e in group
+               if e['kind'] in {'CONCURRENCY_HELD', 'RATE_RESERVED', 'RATE_CHARGED'}):
+            continue
+        if any(e['kind'] == 'COMPOSED_CHILD' and e['operationId'] in children
+               and (e['value'] != parent or e['sequence'] >= admission[e['operationId']])
+               for e in events):
+            continue
+        return True
+    return False
 
 
 def match_originals(raw, originals):
@@ -353,6 +414,7 @@ def derive_controlled(raw, *, originals=None, observation_time=None):
     censored = variant == 'inflight-abrupt'
     _need(raw['tailStatus'] == ('censored' if censored else 'complete')
           and (bool(pending) if censored else not pending), 'tail-status-invalid')
+    _need(not censored or _live_uri_owner(before), 'inflight-owner-missing')
     _need(not _pending(after), 'new-process-holds-present')
     events = _suffix(after, recovery)
     _reconcile(after, recovery, events, require_charge=True, selected=selected)

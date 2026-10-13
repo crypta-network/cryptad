@@ -82,6 +82,12 @@ def bound_vector(variant="settled-graceful"):
             **{k: receipt[k] for k in ("generation", "managerInvocation", "bootId")}, "apps": app_contexts}
     original_receipts = [phase_receipts[0]["receipt"], terminal,
                          phase_receipts[1]["receipt"], phase_receipts[2]["receipt"]]
+    retained_receipts = copy.deepcopy(original_receipts)
+    if variant != "settled-graceful":
+        intent = base("a" * 64, "a" * 32, 160) | {"caseId": purpose, "phase": "fault-intent",
+            "daemon": copy.deepcopy(terminal["daemon"]), "intendedSignal": "SIGKILL",
+            "startedMonotonicNs": 150}
+        retained_receipts.insert(1, intent)
     attachment = {"schemaVersion": 5, "restartCases": [row], "diagnosticsCases": []}
     private = {"schemaVersion": 1, "kind": "pr319-private-restart-budget", "selectionDigest": selection,
         "contexts": contexts["after"], "attempts": [], "composedBudgetEvidence": attachment,
@@ -89,7 +95,7 @@ def bound_vector(variant="settled-graceful"):
             "observedCases": sorted(oracle.derive_cases(attachment))}, "originalReceipts": original_receipts,
         "phaseReceipts": phase_receipts, "epochContexts": [{"caseId": row["caseId"], "variant": variant, **contexts}]}
     diagnostics = {"restartSelectionDigest": selection, "restartAccessCleanup": "completed",
-        "restartFaultReceipts": copy.deepcopy(original_receipts),
+        "restartFaultReceipts": retained_receipts,
         "restartOriginalStops": {"a" * 64: stop}, "restartBootstrapContexts": originals_context}
     host_terminal = {"controllerRecords": {"candidate-sender": {"record": {"state": "quiescent",
         "handle": handle, "campaign": campaign, "bootId": boot,
@@ -181,6 +187,57 @@ class OriginalWitnessTest(unittest.TestCase):
         for variant in ("settled-graceful", "settled-abrupt", "inflight-abrupt"):
             with self.subTest(variant=variant):
                 self.assertTrue(evidence.validate_originals(*bound_vector(variant)))
+
+    def test_forced_restart_requires_exactly_one_retained_fault_intent(self):
+        for variant in ("settled-abrupt", "inflight-abrupt"):
+            for duplicate in (False, True):
+                private, originals, terminal, selection = bound_vector(variant)
+                stream = originals["restartFaultReceipts"]
+                intent = stream.pop(1)
+                if duplicate:
+                    stream[1:1] = [intent, copy.deepcopy(intent)]
+                with self.subTest(variant=variant, duplicate=duplicate), self.assertRaisesRegex(
+                        ValueError, "forced-intent-missing"):
+                    evidence.validate_originals(private, originals, terminal, selection)
+
+    def test_forced_intent_must_bind_same_daemon_selection_generation_and_signal(self):
+        for variant in ("settled-abrupt", "inflight-abrupt"):
+            for field, replacement in (
+                    ("generation", "f" * 64), ("managerInvocation", "f" * 32),
+                    ("selectionDigest", "sha256:" + "f" * 64), ("bootId", "other-boot"),
+                    ("campaign", "f" * 64), ("daemon", {"hostPid": 999, "startTicks": 100,
+                                                         "pidNamespace": "pid:[999]"}),
+                    ("dataIdentity", {"device": 1, "inode": 99}), ("intendedSignal", "SIGTERM"),
+                    ("deadlineMonotonicNs", 9999), ("startedMonotonicNs", 151)):
+                private, originals, terminal, selection = bound_vector(variant)
+                originals["restartFaultReceipts"][1][field] = replacement
+                with self.subTest(variant=variant, field=field), self.assertRaises(ValueError):
+                    evidence.validate_originals(private, originals, terminal, selection)
+
+    def test_forced_intent_requires_pretermination_time_and_receipt_order(self):
+        for variant in ("settled-abrupt", "inflight-abrupt"):
+            for now in (99, 149, 200, 201):
+                private, originals, terminal, selection = bound_vector(variant)
+                originals["restartFaultReceipts"][1]["observedMonotonicNs"] = now
+                with self.subTest(variant=variant, now=now), self.assertRaisesRegex(
+                        ValueError, "forced-intent-order-invalid"):
+                    evidence.validate_originals(private, originals, terminal, selection)
+            for index in (0, 2, 3):
+                private, originals, terminal, selection = bound_vector(variant)
+                stream = originals["restartFaultReceipts"]
+                intent = stream.pop(1)
+                stream.insert(index, intent)
+                with self.subTest(variant=variant, index=index), self.assertRaisesRegex(
+                        ValueError, "forced-intent-order-invalid"):
+                    evidence.validate_originals(private, originals, terminal, selection)
+
+    def test_matching_forced_receipts_cannot_substitute_before_daemon_identity(self):
+        private, originals, terminal, selection = bound_vector("settled-abrupt")
+        for receipt in originals["restartFaultReceipts"][1:3]:
+            receipt["daemon"] = dict(receipt["daemon"], startTicks=101)
+        private["originalReceipts"][1] = copy.deepcopy(originals["restartFaultReceipts"][2])
+        with self.assertRaisesRegex(ValueError, "forced-intent-substitution"):
+            evidence.validate_originals(private, originals, terminal, selection)
 
     def test_self_consistent_substituted_guest_receipt_is_rejected(self):
         private, originals, terminal, selection = bound_vector()
