@@ -39,7 +39,12 @@ def bound_vector(variant="settled-graceful"):
         sample = row[phase]
         receipt = base(generation, invocation, now) | {"caseId": "restart",
             "phase": "snapshot" if phase != "after" else "readback",
-            "daemon": {"hostPid": pid, "startTicks": ticks, "pidNamespace": "pid:[" + str(pid) + "]"},
+            "daemon": {"hostPid": pid, "hostParentPid": 99, "startTicks": ticks,
+                "pidNamespace": "pid:[" + str(pid) + "]", "namespacePids": [pid, 2],
+                "executableDigest": "sha256:" + "1" * 64,
+                "networkNamespaceIdentity": [4, 5], "mountNamespaceIdentity": [4, 6],
+                "userNamespaceIdentity": [4, 7], "rssBytes": 100000, "processThreads": 10,
+                "noNewPrivileges": True, "effectiveCapabilities": 0},
             "captureSource": "administrator-fixed-file-store-readback", "capturedMonotonicNs": now,
             "durableUsage": copy.deepcopy(sample["diagnostics"]["usage"]),
             "graphFacts": copy.deepcopy(sample["graph"])}
@@ -67,6 +72,7 @@ def bound_vector(variant="settled-graceful"):
     else:
         terminal["forcedSignal"] = "SIGKILL"
         terminal["startedMonotonicNs"] = 150
+        terminal["daemon"] = dict(terminal["daemon"], rssBytes=200000, processThreads=20)
     contexts, originals_context = {}, {}
     for phase in ("before", "after"):
         receipt = next(p["receipt"] for p in phase_receipts if p["phase"] == phase)
@@ -74,7 +80,8 @@ def bound_vector(variant="settled-graceful"):
             ("generation", "managerInvocation", "bootId")}})
         app_contexts = {app: {"appId": app, "role": "candidate-sender",
             "roleEpochDigest": role_digest,
-            "daemonEpochDigest": evidence.canonical_digest(receipt["daemon"]),
+            "daemonEpochDigest": evidence.canonical_digest({k: receipt["daemon"][k]
+                for k in ("hostPid", "startTicks", "pidNamespace")}),
             "workerEpochDigest": evidence.canonical_digest({"app": app, "epoch": phase}),
             "sessionDigest": "sha256:" + "f" * 64} for app in evidence.APP_IDS}
         contexts[phase] = app_contexts
@@ -231,13 +238,40 @@ class OriginalWitnessTest(unittest.TestCase):
                         ValueError, "forced-intent-order-invalid"):
                     evidence.validate_originals(private, originals, terminal, selection)
 
-    def test_matching_forced_receipts_cannot_substitute_before_daemon_identity(self):
-        private, originals, terminal, selection = bound_vector("settled-abrupt")
-        for receipt in originals["restartFaultReceipts"][1:3]:
-            receipt["daemon"] = dict(receipt["daemon"], startTicks=101)
-        private["originalReceipts"][1] = copy.deepcopy(originals["restartFaultReceipts"][2])
-        with self.assertRaisesRegex(ValueError, "forced-intent-substitution"):
-            evidence.validate_originals(private, originals, terminal, selection)
+    def test_forced_restart_accepts_independently_changed_resource_samples(self):
+        for variant in ("settled-abrupt", "inflight-abrupt"):
+            for field, replacement in (("rssBytes", 300000), ("processThreads", 30)):
+                private, originals, terminal, selection = bound_vector(variant)
+                for receipt in originals["restartFaultReceipts"][1:3]:
+                    receipt["daemon"] = dict(receipt["daemon"], **{field: replacement})
+                private["originalReceipts"][1] = copy.deepcopy(originals["restartFaultReceipts"][2])
+                with self.subTest(variant=variant, field=field):
+                    self.assertTrue(evidence.validate_originals(private, originals, terminal, selection))
+
+    def test_matching_forced_receipts_cannot_substitute_immutable_daemon_identity(self):
+        for variant in ("settled-abrupt", "inflight-abrupt"):
+            for field, replacement in (("hostPid", 102), ("startTicks", 101),
+                    ("executableDigest", "sha256:" + "2" * 64), ("pidNamespace", "pid:[102]"),
+                    ("namespacePids", [101, 3]), ("networkNamespaceIdentity", [4, 8]),
+                    ("mountNamespaceIdentity", [4, 8]), ("userNamespaceIdentity", [4, 8])):
+                private, originals, terminal, selection = bound_vector(variant)
+                for receipt in originals["restartFaultReceipts"][1:3]:
+                    receipt["daemon"] = dict(receipt["daemon"], **{field: replacement})
+                private["originalReceipts"][1] = copy.deepcopy(originals["restartFaultReceipts"][2])
+                with self.subTest(variant=variant, field=field), self.assertRaisesRegex(
+                        ValueError, "forced-intent-substitution"):
+                    evidence.validate_originals(private, originals, terminal, selection)
+
+    def test_intent_and_terminal_must_preserve_the_exact_same_daemon_sample(self):
+        for variant in ("settled-abrupt", "inflight-abrupt"):
+            for field, replacement in (("rssBytes", 300000), ("processThreads", 30)):
+                private, originals, terminal, selection = bound_vector(variant)
+                receipt = originals["restartFaultReceipts"][2]
+                receipt["daemon"] = dict(receipt["daemon"], **{field: replacement})
+                private["originalReceipts"][1] = copy.deepcopy(receipt)
+                with self.subTest(variant=variant, field=field), self.assertRaisesRegex(
+                        ValueError, "forced-intent-substitution"):
+                    evidence.validate_originals(private, originals, terminal, selection)
 
     def test_self_consistent_substituted_guest_receipt_is_rejected(self):
         private, originals, terminal, selection = bound_vector()

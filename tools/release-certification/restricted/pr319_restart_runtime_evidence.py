@@ -293,8 +293,12 @@ def _forced_intent(actual, original, before, after):
     intent = intents[0]
     bindings = ("campaign", "generation", "managerInvocation", "bootId", "selectionDigest",
                 "deadlineMonotonicNs", "daemon", "dataIdentity", "startedMonotonicNs")
+    # Separate kernel samples may differ in RSS and thread count for the same daemon.
+    identity_fields = ("hostPid", "startTicks", "executableDigest", "pidNamespace", "namespacePids",
+                       "networkNamespaceIdentity", "mountNamespaceIdentity", "userNamespaceIdentity")
     _need(all(intent[k] == original[k] for k in bindings)
-          and all(intent[k] == before[k] for k in bindings if k != "startedMonotonicNs")
+          and all(intent[k] == before[k] for k in bindings if k not in {"daemon", "startedMonotonicNs"})
+          and all(intent["daemon"][k] == before["daemon"][k] for k in identity_fields)
           and intent["intendedSignal"] == original["forcedSignal"] == "SIGKILL",
           "forced-intent-substitution")
     started = intent["startedMonotonicNs"]
