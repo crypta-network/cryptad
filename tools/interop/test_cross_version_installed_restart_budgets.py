@@ -57,6 +57,47 @@ def rate(row, scope):
             'windowStartEpochSecond': int(driver.oracle._time(row['windowStart']))}
 
 
+class TimePlanTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        path = Path(driver.__file__).resolve().parents[1] / 'release-certification/protected/pr319_restart_contract.py'
+        spec = importlib.util.spec_from_file_location('pr319_time_plan_contract', path)
+        cls.contract = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.contract)
+
+    def plan(self, lead_seconds):
+        boundary = WINDOW + 3600
+        return {'boundaryEpochSecond': boundary, 'selectedAtEpochSecond': boundary - lead_seconds,
+                'startMarginSeconds': 10, 'requestDeadlineMillis': 45000}
+
+    def test_selection_must_leave_start_margin_before_runtime_cutoff(self):
+        for lead_seconds in (60, 61, 69):
+            with self.subTest(lead_seconds=lead_seconds):
+                self.assertFalse(self.contract.valid_time_plan(self.plan(lead_seconds)))
+
+    def test_valid_selection_keeps_minimum_margin_and_same_hour_upper_bound(self):
+        for lead_seconds in (70, 71, 3600):
+            with self.subTest(lead_seconds=lead_seconds):
+                self.assertTrue(self.contract.valid_time_plan(self.plan(lead_seconds)))
+        self.assertFalse(self.contract.valid_time_plan(self.plan(3601)))
+
+    def test_minimum_selection_can_start_until_its_margin_expires(self):
+        plan = self.plan(70)
+        adapter = SimpleNamespace(authorization={'budgetSelection': {'timePlan': plan}}, remaining=Mock())
+        with patch.object(driver.time, 'time', return_value=plan['selectedAtEpochSecond'] + 9):
+            driver._same_hour(adapter)
+        adapter.remaining.assert_called_once_with()
+        with patch.object(driver.time, 'time', return_value=plan['selectedAtEpochSecond'] + 10), \
+                self.assertRaisesRegex(driver.runtime.RuntimeFailure, 'restart-selected-hour-missed'):
+            driver._same_hour(adapter)
+
+    def test_fixed_start_margin_cannot_be_substituted_or_malformed(self):
+        for margin in (None, '10', True, 0, 9, 11):
+            plan = dict(self.plan(70), startMarginSeconds=margin)
+            with self.subTest(margin=margin):
+                self.assertFalse(self.contract.valid_time_plan(plan))
+
+
 class RetainedAppRecoveryTests(unittest.TestCase):
     def setup_recovery(self, *, running=True):
         statement = b'selected-signed-statement-private-fixture'

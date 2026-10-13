@@ -165,5 +165,6 @@ def valid_time_plan(value):
         and type(value["boundaryEpochSecond"]) is int
         and type(value["selectedAtEpochSecond"]) is int
         and value["boundaryEpochSecond"] % 3600 == 0
-        and 60 <= value["boundaryEpochSecond"] - value["selectedAtEpochSecond"] <= 3600
-        and value["startMarginSeconds"] == 10 and value["requestDeadlineMillis"] == 45000)
+        and value["startMarginSeconds"] == 10
+        and 60 + value["startMarginSeconds"] <= value["boundaryEpochSecond"] - value["selectedAtEpochSecond"] <= 3600
+        and value["requestDeadlineMillis"] == 45000)

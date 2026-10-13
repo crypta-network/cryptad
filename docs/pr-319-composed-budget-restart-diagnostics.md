@@ -24,6 +24,8 @@ This slice owns `graceful-restart`, `abrupt-restart`, and `diagnostics-unavailab
 
 Full rate records and selected graph facts are compared before any chargeable recovery operation. A retained old minute is preserved until native lazy-window replacement; unchanged-window decrements fail. No whole-node-directory equality, clock change, quota rewrite, store repair, or bundle reinstall supplies continuity.
 
+Fixture selection requires at least 70 seconds before the selected hour boundary: the runtime stops admitting work 60 seconds before that boundary, and the fixed start margin reserves another 10 seconds. Startup delays can still exhaust this window; the runtime rechecks the original cutoff and fails without moving the selected hour.
+
 ## Execution status
 
 The bounded local implementation and verification are complete; installed acceptance is not executed. No installed VM, managed host allocation, live-node action, protected workflow, merge, or publication is authorized or claimed by this local task. Installed acceptance requires separately executed exact product/helper/selection bytes and original administrator and terminal records.
