@@ -1,11 +1,7 @@
 #!/usr/bin/python3
-"""Administrator test-kit entry for the real installed four-role positive sequence.
+"""Installed four-role test-kit driver for the copied PR-313 reference.
 
-Run only in the copied, explicitly disposable PR-313 reference after base installation.
-The fixed private selection is prepared with two distinct source-built products and a
-normally signed Mail bundle. This driver never manufactures original release authority.
-Its positive result alone cannot satisfy the separate complete workload fault contract.
-"""
+Fixed source-built products and signed apps grant no authority or full fault-contract credit."""
 import argparse
 import base64
 import hashlib
@@ -23,9 +19,7 @@ import struct
 import stat
 import sys
 import time
-
 sys.dont_write_bytecode = True
-
 import pr316_mail_runtime_evidence as mail_evidence
 
 INSTALLED = Path('/opt/cryptad-cross-version/current')
@@ -45,20 +39,18 @@ OBSERVER_DEATH_CONTROL_SOCKET = '/run/cryptad-workload/control.sock'
 CGROUP_ROOT = Path('/sys/fs/cgroup/system.slice')
 ROLE_NAMES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
 READINESS_STAGES = ('start-request', 'fcp-get-node', 'daemon-epoch', 'journal-node-start')
-LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline',
-                       'revocation-running', 'setsid-double-fork',
-                       'observer-death', 'none')
+LIFECYCLE_SCENARIOS = ('cancellation', 'controller-restart', 'deadline', 'revocation-running',
+                       'setsid-double-fork', 'observer-death', 'none')
 WORKLOAD_GROUPS = (
-    'positive', 'lost-start-response', 'partial-launch', 'stuck-output',
-    'late-child', 'cleanup-race', 'resource-exhaustion', 'output-symlink',
-    'output-fifo', 'output-hardlink', 'output-flood', 'output-replacement',
-    'role-readiness-diagnostic', 'role-boundary', 'authority', 'network-app',
-    'cancellation', 'controller-restart', 'deadline', 'revocation-running',
+    'positive', 'lost-start-response', 'partial-launch', 'stuck-output', 'late-child',
+    'cleanup-race', 'resource-exhaustion', 'output-symlink', 'output-fifo', 'output-hardlink',
+    'output-flood', 'output-replacement', 'role-readiness-diagnostic', 'role-boundary',
+    'authority', 'network-app', 'cancellation', 'controller-restart', 'deadline', 'revocation-running',
     'setsid-double-fork', 'observer-death')
 MAIL_EXECUTION_CLASS = mail_evidence.EXECUTION_CLASS
+BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
 STARTUP_MEASUREMENT_SECONDS = 120
-# Prospective administrator observation budget after the installed startup measurement.
-# Production limits and the retained campaign deadline remain unchanged.
+# Prospective observation budget; production limits and the campaign deadline are unchanged.
 READINESS_SECONDS = 90
 ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C.UTF-8'}
 SIBLING_CANARY = 'pr315-sibling-data-canary'
@@ -3704,7 +3696,11 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if execution_class == MAIL_EXECUTION_CLASS:
+        if execution_class == BUDGET_EXECUTION_CLASS:
+            from cross_version_installed_budgets import run_budget_lane
+            result = run_budget_lane(adapter, leave_running_for_administrator=True,
+                                     on_start_failure=diagnostic)
+        elif execution_class == MAIL_EXECUTION_CLASS:
             result = adapter.run_mail_lane(leave_running_for_administrator=True,
                                            on_start_failure=diagnostic)
         elif workload_group in ('lost-start-response', 'partial-launch',
@@ -3812,7 +3808,7 @@ def _private_transport_diagnostic(error):
             and set(transport) == {'method', 'phase', 'elapsedNs',
                                    'causeType', 'errno'}
             and transport['method'] in ('start', 'observe', 'stop',
-                'connect-fcp', 'connect-http', 'bootstrap-mail')
+                'connect-fcp', 'connect-http', 'bootstrap-mail', 'bootstrap-budget')
             and transport['phase'] in ('connect', 'peer-check', 'request-send',
                 'response-read', 'response-parse', 'descriptor-validation')
             and type(transport['elapsedNs']) is int
@@ -3984,7 +3980,7 @@ def capture_controller_request_at_failure(workload, *, bind_instance=True):
                 or value['processStartTicks'] <= 0
                 or re.fullmatch('[0-9a-f-]{36}', str(value['bootId'])) is None
                 or value['method'] not in ('start', 'observe', 'stop',
-                    'connect-fcp', 'connect-http', 'bootstrap-mail')
+                    'connect-fcp', 'connect-http', 'bootstrap-mail', 'bootstrap-budget')
                 or value['phase'] not in ('executing', 'replied', 'failed')
                 or any(type(value[key]) is not int or value[key] <= 0
                        for key in ('startedMonotonicNs', 'observedMonotonicNs'))
@@ -4211,7 +4207,7 @@ def retain_volatile(workload, value):
 def _validate_execution_mode(*, startup_measurement, lifecycle_scenario,
                              workload_group, retired_authority_preparation,
                              execution_class):
-    if execution_class not in (None, MAIL_EXECUTION_CLASS):
+    if execution_class not in (None, MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS):
         raise ValueError('workload-execution-class-invalid')
     if execution_class is not None:
         if (startup_measurement or lifecycle_scenario != 'none'
@@ -4446,6 +4442,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if execution_class == MAIL_EXECUTION_CLASS:
             validate_mail_observation(
                 result, selected['authorization']['selectionDigest'])
+        elif execution_class == BUDGET_EXECUTION_CLASS:
+            from cross_version_installed_budgets import validate_guest_observation
+            validate_guest_observation(result, selected['authorization']['selectionDigest'])
         if (execution_class is None and not startup_measurement
                 and workload_group in (None, 'positive')
                 and (result.get('contentRetrieval') != 'observed' or result.get('newEpoch') is not True)):
@@ -4466,6 +4465,10 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             raise ValueError('workload-group-preparation-incomplete')
         if execution_class == MAIL_EXECUTION_CLASS:
             result = mail_evidence.attach_guest_context(
+                result, identity, launcher_policy(), campaign_deadline)
+        elif execution_class == BUDGET_EXECUTION_CLASS:
+            from cross_version_installed_budgets import attach_guest_context
+            result = attach_guest_context(
                 result, identity, launcher_policy(), campaign_deadline)
         else:
             result.update(identity=identity, runtimePolicy=launcher_policy(),
@@ -4906,10 +4909,11 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                         and volatile['sentinel']['status'] != 'matched'):
                     raise ValueError('workload-retained-sentinel-not-established')
     # No terminal result can exist before owned controller/role/network cleanup succeeds.
-    if execution_class == MAIL_EXECUTION_CLASS:
+    if execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS):
         if diagnostics['cleanup'] != 'completed':
-            raise ValueError('workload-mail-cleanup-incomplete')
-        result['installedMailFlowObserved'] = True
+            raise ValueError('workload-execution-class-cleanup-incomplete')
+        if execution_class == MAIL_EXECUTION_CLASS:
+            result['installedMailFlowObserved'] = True
         result['cleanupState'] = 'completed'
     if retired_authority_preparation:
         if (diagnostics['cleanup'] != 'completed'
@@ -4945,7 +4949,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             'senderProcessEpoch': sender['processEpoch'],
             'stopReceiptDigests': receipts}, create=True)
     workload.write(REPORT, result, create=True)
-    return {'status': ('mail-runtime-sequence-executed'
+    return {'status': ('budget-lifecycle-sequence-executed'
+                       if execution_class == BUDGET_EXECUTION_CLASS else
+                       'mail-runtime-sequence-executed'
                        if execution_class == MAIL_EXECUTION_CLASS else
                        'startup-measurement-executed' if startup_measurement else
                        'role-readiness-measurement-executed'
@@ -4953,7 +4959,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                        'group-sequence-executed' if workload_group not in (None, 'positive') else
                        'positive-sequence-executed'),
             'workloadAcceptance': ('incomplete'
-                                   if execution_class == MAIL_EXECUTION_CLASS else
+                                   if execution_class in (MAIL_EXECUTION_CLASS,
+                                                          BUDGET_EXECUTION_CLASS) else
                                    'not-executed' if workload_group == 'role-readiness-diagnostic'
                                    else 'incomplete'),
             'protectedExecutionEnabled': False}
@@ -4964,7 +4971,8 @@ def main():
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
-    parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,))
+    parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,
+                                                      BUDGET_EXECUTION_CLASS))
     parser.add_argument('--workload-group', choices=WORKLOAD_GROUPS)
     parser.add_argument('--retired-authority-preparation', action='store_true')
     args = parser.parse_args()

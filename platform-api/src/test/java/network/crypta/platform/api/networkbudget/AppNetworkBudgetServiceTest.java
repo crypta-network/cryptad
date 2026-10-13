@@ -206,6 +206,111 @@ class AppNetworkBudgetServiceTest {
         service.acquire("social-inbox", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH));
   }
 
+  @ParameterizedTest
+  @CsvSource({"import,false", "import,true", "fetch,false", "fetch,true"})
+  void concurrencyDenialIdentifiesActualHeldFamilyAndScope(String workload, boolean globalLimit)
+      throws Exception {
+    boolean importWorkload = "import".equals(workload);
+    var config =
+        new AppNetworkBudgetConfig(
+            100,
+            100,
+            globalLimit || importWorkload ? 2 : 1,
+            globalLimit && !importWorkload ? 1 : 8,
+            100,
+            100,
+            2,
+            8,
+            100,
+            100,
+            globalLimit || !importWorkload ? 2 : 1,
+            globalLimit && importWorkload ? 1 : 8);
+    var service = service(config, new MutableClock(START));
+    var holderReady = new CountDownLatch(1);
+    var releaseHolder = new CountDownLatch(1);
+
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var holder =
+          executor.submit(
+              () -> {
+                if (importWorkload) {
+                  try (var reservation =
+                      service.reserve("holder-app", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+                    assertTrue(reservation.allowed());
+                    holderReady.countDown();
+                    assertTrue(releaseHolder.await(10, TimeUnit.SECONDS));
+                  }
+                } else {
+                  var decision =
+                      service.acquire(
+                          "holder-app", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH);
+                  assertTrue(decision.allowed());
+                  try (var _ = decision.lease()) {
+                    holderReady.countDown();
+                    assertTrue(releaseHolder.await(10, TimeUnit.SECONDS));
+                  }
+                }
+                return null;
+              });
+      try {
+        assertTrue(holderReady.await(10, TimeUnit.SECONDS));
+        String contenderApp = globalLimit ? "other-app" : "holder-app";
+        if (importWorkload) {
+          try (var denied =
+              service.reserve(contenderApp, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+            assertFalse(denied.allowed());
+            assertEquals(0, trustGraphImportCount(service, contenderApp));
+          }
+        } else {
+          var denied =
+              service.acquire(contenderApp, AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH);
+          assertFalse(denied.allowed());
+        }
+
+        var events = service.observation().snapshot().events();
+        var reached =
+            events.stream()
+                .filter(
+                    event -> event.kind() == RuntimeWorkObservation.Kind.CONCURRENCY_LIMIT_REACHED)
+                .findFirst()
+                .orElseThrow();
+        var legacy =
+            events.stream()
+                .filter(
+                    event -> event.kind() == RuntimeWorkObservation.Kind.BUDGET_CONCURRENCY_DENIED)
+                .findFirst()
+                .orElseThrow();
+        AppNetworkBudgetOperation expectedFamily =
+            importWorkload
+                ? AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT
+                : globalLimit
+                    ? AppNetworkBudgetOperation.CONTENT_FETCH_GLOBAL
+                    : AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH;
+        assertEquals(expectedFamily, reached.operation());
+        if (globalLimit) {
+          assertEquals(1, reached.scope());
+        } else {
+          assertTrue(reached.scope() > 1);
+        }
+        assertEquals(1, reached.value());
+        assertEquals(legacy.operationId(), reached.operationId());
+      } finally {
+        releaseHolder.countDown();
+      }
+      holder.get(10, TimeUnit.SECONDS);
+    }
+
+    if (importWorkload) {
+      try (var recovered =
+          service.reserve("holder-app", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+        assertTrue(recovered.allowed());
+      }
+    } else {
+      assertAllowed(
+          service.acquire("holder-app", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH));
+    }
+  }
+
   @Test
   void acquire_whenLeaseClosedByExceptionPath_expectConcurrencyReleased() {
     AppNetworkBudgetService service = service(config(10, 20, 1, 8), new MutableClock(START));

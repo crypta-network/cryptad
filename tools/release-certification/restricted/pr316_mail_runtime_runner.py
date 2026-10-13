@@ -292,8 +292,8 @@ def reconcile_failed_watcher(suite, source_commit, ready):
         time.sleep(.25)
 
 
-def _private_json(path, maximum=MAX_PRIVATE_RECORD):
-    """Read one owner-private, single-link regular JSON record exactly once."""
+def _private_bytes(path, maximum=MAX_PRIVATE_RECORD):
+    """Read one owner-private, single-link regular record exactly once."""
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(descriptor)
@@ -310,6 +310,13 @@ def _private_json(path, maximum=MAX_PRIVATE_RECORD):
             raise ValueError('pr316-private-record-changed')
     finally:
         os.close(descriptor)
+    return raw
+
+
+def _private_json(path, maximum=MAX_PRIVATE_RECORD):
+    """Read and decode one owner-private, single-link regular JSON record exactly once."""
+    raw = _private_bytes(path, maximum)
+
     def unique(items):
         result = {}
         for key, value in items:

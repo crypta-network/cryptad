@@ -112,6 +112,24 @@ def derive(value):
 
 
 class RuntimePressureEvidenceTest(unittest.TestCase):
+    def test_v3_accepts_new_native_vocabulary_without_new_pressure_credit(self):
+        value = evidence_fixture()
+        value['schemaVersion'] = 3
+        value['collectorEpoch'] = '01234567-89ab-cdef-0123-456789abcdef'
+        prior = value['workEvents'][-1]
+        value['workEvents'].append({**prior,
+            'sequence': prior['sequence'] + 1,
+            'observedAt': (STAMP + dt.timedelta(seconds=11, milliseconds=900)).isoformat(),
+            'elapsedNanos': prior['elapsedNanos'] + 100000000,
+            'kind': 'CONCURRENCY_LIMIT_REACHED',
+            'operation': 'content_fetch_global', 'operationId': 99,
+            'scope': 1, 'value': 1, 'windowStartEpochSecond': 0})
+
+        result = derive(value)
+
+        self.assertEqual('not-observed', result['fullAppBudgets'])
+        self.assertFalse(result['releaseEligible'])
+
     def test_rejected_executor_attempts_do_not_credit_later_manual_ticks(self):
         value = evidence_fixture()
         events = []

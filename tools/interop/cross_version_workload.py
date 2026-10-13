@@ -30,6 +30,7 @@ import cross_version_runtime as runtime
 PROFILE = 'debian13-systemd257-workload-v1'
 MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
 MAIL_EXPERIMENT = 'pr316-installed-mail-runtime'
+BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
 MAIL_PRIVATE_KIND = 'pr316-private-mail-causal-observation'
 MAIL_CONTRACT = 'pr316-installed-mail-runtime-v1'
 MAIL_PRIVATE_FILE = 'pr316-mail-flow.private.json'
@@ -37,7 +38,7 @@ MAIL_PRIVATE_MAX_BYTES = 512 * 1024
 SOCKET = '/run/cryptad-workload/control.sock'
 MAX_RESPONSE = 1024 * 1024
 METHODS = {'start', 'observe', 'stop', 'connect-fcp',
-           'connect-http', 'bootstrap-mail'}
+           'connect-http', 'bootstrap-mail', 'bootstrap-budget'}
 EPOCH = ('handle', 'generation', 'managerInvocation', 'bootId')
 
 
@@ -925,11 +926,15 @@ class InstalledWorkloadAdapter:
                  *, control=None, counter_sampler=None, lost_start_sampler=None,
                  origin_handoff=None):
         expected_jdk_digests = expected_jdk_digests or handoff.get('expectedJdkDigests', {})
+        budget_class = authorization.get('executionClass') == BUDGET_EXECUTION_CLASS
         if (handoff.get('profile') != PROFILE or set(handoff.get('handles', {})) != set(runtime.ROLES)
                 or plan.get('provenanceClass') != 'source-build-comparison'
                 or set(private_config) != {'root', 'nodes'} or set(private_config['nodes']) != set(runtime.ROLES)
                 or len(plan['nodes']) != 4 or {node['role'] for node in plan['nodes']} != set(runtime.ROLES)
-                or plan.get('workloadInputs') or plan.get('cohorts')
+                or (not budget_class and plan.get('workloadInputs')) or plan.get('cohorts')
+                or budget_class and (set(plan.get('workloadInputs', {})) != {'scheduler'}
+                    or set(plan.get('composedBudgetInputs', {})) != {
+                        'collectorDigest', 'configurationDigest'})
                 or authorization.get('syntheticContent') is not True
                 or authorization.get('planDigest') != runtime.canonical_digest(plan)
                 or authorization.get('experimentId') != plan.get('experimentId')
@@ -942,12 +947,16 @@ class InstalledWorkloadAdapter:
         for role in runtime.ROLES:
             apps = private_config['nodes'][role].get('apps')
             ids = [app.get('appId') for app in apps] if isinstance(apps, list) else []
+            budget_ids = (['feed-reader', 'budget-importer', 'budget-no-trust',
+                           'budget-no-fetch'] if role == 'candidate-sender' else [])
             if (not isinstance(apps, list)
-                    or role == 'candidate-sender' and ids not in
+                    or budget_class and ids != budget_ids
+                    or not budget_class and (
+                    role == 'candidate-sender' and ids not in
                         (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
                     or role == 'candidate-recipient' and ids != ['mail-prototype']
                     or role == 'relay-no-apps' and ids != []
-                    or role == 'previous' and ids not in ([], ['mail-prototype'])):
+                    or role == 'previous' and ids not in ([], ['mail-prototype']))):
                 fail('app-selection-unsupported')
         root = Path(private_config['root'])
         lock = getattr(journal, '_lock', None)

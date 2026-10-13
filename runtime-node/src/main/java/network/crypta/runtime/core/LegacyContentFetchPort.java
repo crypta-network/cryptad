@@ -307,7 +307,8 @@ final class LegacyContentFetchPort implements ContentFetchPort {
           ContentFetchException.CATALOG_FETCH_FAILED,
           "Interrupted while fetching " + request.purpose(),
           exception,
-          callback.termination());
+          callback.termination(),
+          true);
     } catch (ExecutionException exception) {
       Throwable cause = exception.getCause();
       if (cause instanceof FetchException fetchException) {
@@ -325,6 +326,7 @@ final class LegacyContentFetchPort implements ContentFetchPort {
    *
    * @param request original request, used to include the diagnostic purpose
    * @param cause optional timeout cause from the waiting operation
+   * @param callback callback that exposes native owner termination acknowledgment
    * @return content-fetch exception with {@code catalog_fetch_timeout}
    */
   private static ContentFetchException timeoutException(
@@ -333,7 +335,8 @@ final class LegacyContentFetchPort implements ContentFetchPort {
         ContentFetchException.CATALOG_FETCH_TIMEOUT,
         "Timed out fetching " + request.purpose(),
         cause,
-        callback.termination());
+        callback.termination(),
+        true);
   }
 
   /**

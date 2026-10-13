@@ -18,20 +18,27 @@ import time
 
 import restricted_workload as workload
 from restricted_workload_storage import copy_tree
-from restricted_workload_launcher import launcher_policy, verify_wrapper_options
+from restricted_workload_launcher import (budget_launcher_policy, launcher_policy,
+                                           verify_wrapper_options)
 from restricted_native_launcher import tree_identity
 
 
 MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
 MAIL_EXPERIMENT = 'pr316-installed-mail-runtime'
+BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
+BUDGET_EXPERIMENT = 'pr317-namespace-bound-composed-budget'
+BUDGET_APP_IDS = ('feed-reader', 'budget-importer', 'budget-no-trust', 'budget-no-fetch')
 
 
 def valid_execution_selection(plan, private, authorization):
-    """Recognize only the legacy selection or the fixed PR-316 Mail execution class."""
+    """Recognize legacy, fixed PR-316 Mail, or the distinct PR-317 budget class."""
     execution_class = authorization.get('executionClass')
     if execution_class is None:
         return ('executionClass' not in authorization
                 and 'selectionDigest' not in authorization)
+    if execution_class == BUDGET_EXECUTION_CLASS:
+        import pr317_budget_contract
+        return pr317_budget_contract.verify_selection_contract(plan, private, authorization)
     selected_digest = 'sha256:' + hashlib.sha256(json.dumps({
         'executionClass': execution_class,
         'planDigest': authorization.get('planDigest')}, sort_keys=True,
@@ -108,12 +115,18 @@ def configuration(role):
             .replace('End\n', 'fproxy.hasCompletedWizard=true\nEnd\n'))
 
 
-def configuration_identity(role, trust_digest):
+def configuration_identity(role, trust_digest, execution_class=None):
     text = configuration(role)
     from cross_version_runtime import canonical_digest
-    return canonical_digest({'profile': workload.PROFILE, 'role': role,
-                             'configuration': text, 'appTrustDigest': trust_digest,
-                             'launcherPolicy': launcher_policy()})
+    value = {'profile': workload.PROFILE, 'role': role,
+             'configuration': text, 'appTrustDigest': trust_digest,
+             'launcherPolicy': launcher_policy()}
+    if execution_class == BUDGET_EXECUTION_CLASS:
+        value['budgetLauncherPolicy'] = budget_launcher_policy()
+    elif execution_class is not None:
+        if execution_class != MAIL_EXECUTION_CLASS:
+            workload.reject('profile-execution-class-unsupported')
+    return canonical_digest(value)
 
 
 def prepare(plan, private, authorization):
@@ -127,11 +140,15 @@ def prepare(plan, private, authorization):
     from restricted_workload_network import setup, FNP_PORT, FCP_PORT, HTTP_PORT
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
     import cross_version_runtime as runtime
+    execution_class = authorization.get('executionClass')
+    budget_class = execution_class == BUDGET_EXECUTION_CLASS
     if (plan.get('provenanceClass') != 'source-build-comparison'
-            or set(private) != {'root', 'nodes'} or plan.get('workloadInputs')
+            or set(private) != {'root', 'nodes'}
+            or (not budget_class and plan.get('workloadInputs'))
             or set(private['nodes']) != set(workload.ROLES)
             or [row['role'] for row in plan['nodes']] != list(workload.ROLES)
-            or plan.get('cohorts') or plan.get('composedBudgetInputs')
+            or plan.get('cohorts')
+            or (not budget_class and plan.get('composedBudgetInputs'))
             or authorization.get('syntheticContent') is not True
             or authorization.get('planDigest') != runtime.canonical_digest(plan)
             or authorization.get('experimentId') != plan.get('experimentId')
@@ -141,20 +158,26 @@ def prepare(plan, private, authorization):
             or not 1 <= authorization['maxOperations'] <= 10000
             or not valid_execution_selection(plan, private, authorization)):
         workload.reject('profile-selection-unsupported')
-    execution_class = authorization.get('executionClass')
     for index, role in enumerate(workload.ROLES):
         selected = plan['nodes'][index]
         row = private['nodes'][role]
         app_ids = [app.get('appId') for app in row.get('apps', [])] if isinstance(row.get('apps'), list) else []
+        expected_row = {'archivePath', 'javaHome', 'fnpPort', 'fcpPort', 'httpPort',
+                        'apps', 'trustedKeysPath', 'trustedKeysDigest'}
+        if budget_class and role == 'candidate-sender':
+            expected_row |= {'budgetStatementPath', 'budgetStatementDigest'}
         if (selected.get('product') != 'cryptad'
-                or set(row) != {'archivePath', 'javaHome', 'fnpPort', 'fcpPort', 'httpPort',
-                                'apps', 'trustedKeysPath', 'trustedKeysDigest'}
+                or set(row) != expected_row
                 or (row['fnpPort'], row['fcpPort'], row['httpPort']) != (FNP_PORT, FCP_PORT, HTTP_PORT)
                 or not isinstance(row.get('apps'), list)
                 or execution_class == MAIL_EXECUTION_CLASS and app_ids != {
                     'candidate-sender': ['mail-prototype'],
                     'candidate-recipient': ['mail-prototype'],
                     'previous': [], 'relay-no-apps': []}[role]
+                or budget_class and app_ids != {
+                    'candidate-sender': list(BUDGET_APP_IDS),
+                    'candidate-recipient': [], 'previous': [],
+                    'relay-no-apps': []}[role]
                 or execution_class is None and role == 'candidate-sender' and app_ids not in
                     (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
                 or execution_class is None and role == 'candidate-recipient' and
@@ -176,7 +199,8 @@ def prepare(plan, private, authorization):
     configurations = {}
     for index, role in enumerate(workload.ROLES):
         selected = plan['nodes'][index]
-        if selected['configDigest'] != configuration_identity(role, private['nodes'][role]['trustedKeysDigest']):
+        if selected['configDigest'] != configuration_identity(
+                role, private['nodes'][role]['trustedKeysDigest'], execution_class):
             workload.reject('profile-config-selection-mismatch')
         configurations[role] = configuration(role)
     with workload.locked():
@@ -218,6 +242,10 @@ def prepare(plan, private, authorization):
             'deadlineMonotonicNs': deadline, 'maxOperations': authorization['maxOperations'],
             'selectionDigest': hashlib.sha256(json.dumps(selection, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
             'handles': handles, 'state': 'preparing'}
+        if execution_class is not None:
+            campaign['executionClass'] = execution_class
+        if budget_class:
+            campaign['budgetSelectionDigest'] = authorization['selectionDigest']
         workload.write(workload.ROOT / 'selection.json', selection, create=True)
         workload.write(workload.ROOT / 'campaign.json', campaign, create=True)
         for directory, mode in (('authority', 0o700), ('staging', 0o700), ('roles', 0o711), ('state', 0o711)):
@@ -257,16 +285,20 @@ def prepare(plan, private, authorization):
             if sorted(app['bundleDigest'] for app in row['apps']) != sorted(selected['appDigests']):
                 workload.reject('app-selection-mismatch')
             for app in row['apps']:
-                if (app['appId'] not in ('mail-prototype', 'pr315-probe')
+                allowed = (set(BUDGET_APP_IDS)
+                           if budget_class and role == 'candidate-sender'
+                           else {'mail-prototype', 'pr315-probe'})
+                if (app['appId'] not in allowed
                         or app['appId'] == 'pr315-probe' and role != 'candidate-sender'
                         or role == 'relay-no-apps'):
                     workload.reject('app-adapter-unsupported')
                 workload.secured(Path(app['bundlePath']))
                 runtime.extract_app_bundle(app['bundlePath'], apps / app['appId'], app['bundleDigest'])
-            if (role == 'candidate-sender' and [app['appId'] for app in row['apps']] not in
+            if (not budget_class and (role == 'candidate-sender'
+                    and [app['appId'] for app in row['apps']] not in
                     (['mail-prototype'], ['mail-prototype', 'pr315-probe'])
-                    or role == 'candidate-recipient' and
-                    [app['appId'] for app in row['apps']] != ['mail-prototype']):
+                    or role == 'candidate-recipient'
+                    and [app['appId'] for app in row['apps']] != ['mail-prototype'])):
                 workload.reject('mail-selection-required')
             trust = b''
             if row['apps']:
@@ -276,6 +308,17 @@ def prepare(plan, private, authorization):
                 if len(trust) > 65536 or 'sha256:' + hashlib.sha256(trust).hexdigest() != row['trustedKeysDigest']:
                     workload.reject('trust-selection-mismatch')
             (public / 'trusted-app-keys.properties').write_bytes(trust)
+            if budget_class and role == 'candidate-sender':
+                statement_path = workload.secured(Path(row['budgetStatementPath']))
+                with statement_path.open('rb') as stream:
+                    statement = stream.read(65537)
+                if (not 1 <= len(statement) <= 65536
+                        or 'sha256:' + hashlib.sha256(statement).hexdigest()
+                            != row['budgetStatementDigest']
+                        or row['budgetStatementDigest'] !=
+                            authorization['budgetSelection']['statementDigest']):
+                    workload.reject('budget-statement-selection-mismatch')
+                (public / 'budget-statement.json').write_bytes(statement)
             inputs = workload.ROOT / 'roles' / role
             inputs.mkdir(mode=0o700)
             os.chown(inputs, 0, user.pw_gid)
@@ -311,7 +354,20 @@ def prepare(plan, private, authorization):
             java_digests[role] = runtime.digest_file(inputs / 'jdk/bin/java')
             launch = {'role': role, 'bootId': campaign['bootId'], 'deadlineMonotonicNs': deadline,
                       'javaDigest': java_digests[role], 'inputs': expected}
-            if row['apps']:
+            if budget_class:
+                launch['executionClass'] = BUDGET_EXECUTION_CLASS
+                launch['budgetSelectionDigest'] = authorization['selectionDigest']
+                launch['budgetAppIdentities'] = {}
+                if role == 'candidate-sender':
+                    launch['budgetExecutableDigest'] = runtime.digest_file('/usr/bin/sleep')
+                    launch['budgetStatementDigest'] = row['budgetStatementDigest']
+                    for app_id in BUDGET_APP_IDS:
+                        identity = tree_identity(inputs / 'apps' / app_id)
+                        if (identity['sizeBytes'] > 64 * 1024 * 1024
+                                or identity['fileCount'] > 4095):
+                            workload.reject('app-observation-budget-exceeded')
+                        launch['budgetAppIdentities'][app_id] = identity
+            elif row['apps']:
                 launch['mailIdentity'] = tree_identity(inputs / 'apps/mail-prototype')
                 if launch['mailIdentity']['sizeBytes'] > 64 * 1024 * 1024 or launch['mailIdentity']['fileCount'] > 4095:
                     workload.reject('app-observation-budget-exceeded')

@@ -5,6 +5,7 @@ Only the observer UID can use the private socket. Each request names an already 
 role handle and one fixed method. Service death stops bound role units through systemd.
 """
 import array
+import base64
 from contextlib import contextmanager
 import hashlib
 import http.client
@@ -35,9 +36,10 @@ BOOTSTRAP_STAGES = frozenset({'authority', 'installed-app',
     'session-bootstrap', 'recheck'})
 STARTUP_STAGES = frozenset({'entry', 'installation-verified', 'reconciled', 'listening'})
 METHODS = frozenset({'start', 'observe', 'stop', 'connect-fcp',
-                     'connect-http', 'bootstrap-mail'})
+                     'connect-http', 'bootstrap-mail', 'bootstrap-budget'})
 REQUEST_PHASES = frozenset({'executing', 'replied', 'failed'})
-EXCHANGE_CASES = {'connect-fcp': 'own-management', 'bootstrap-mail': 'dynamic-app-bootstrap'}
+EXCHANGE_CASES = {'connect-fcp': 'own-management', 'bootstrap-mail': 'dynamic-app-bootstrap',
+                  'bootstrap-budget': 'composed-budget-bootstrap'}
 OBSERVER_CONTROL_REQUEST = re.compile(rb'\{"method":"pr315-observer-control","handle":"([0-9a-f]{64})"\}\n')
 OBSERVER_ENDPOINT_REQUEST = re.compile(rb'\{"method":"pr315-arbitrary-endpoint","handle":"([0-9a-f]{64})"\}\n')
 DENIED_RESPONSE = b'{"error":"restricted-workload-request-failed"}\n'
@@ -488,6 +490,119 @@ def bootstrap(handle):
         return {key: value.get(key) for key in ('uiOrigin', 'browserSessionToken', 'browserSessionExpiresAt')}
 
 
+def _budget_statement(launch):
+    """Read only the preparation-copied fixed statement and recheck its selected digest."""
+    path = workload.ROOT / 'roles/candidate-sender/public/budget-statement.json'
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        raw = os.read(descriptor, 65537)
+        if (not 1 <= info.st_size <= 65536 or len(raw) != info.st_size
+                or os.read(descriptor, 1) or os.fstat(descriptor).st_size != info.st_size
+                or 'sha256:' + hashlib.sha256(raw).hexdigest()
+                    != launch.get('budgetStatementDigest')):
+            workload.reject('budget-statement-changed')
+    finally:
+        os.close(descriptor)
+    return {'statementBase64': base64.b64encode(raw).decode('ascii'),
+            'statementDigest': launch['budgetStatementDigest']}
+
+
+def bootstrap_budget(handle):
+    """Bootstrap the exact retained PR-317 roster; request bytes select no app or path."""
+    app_ids = ('feed-reader', 'budget-importer', 'budget-no-trust', 'budget-no-fetch')
+    with workload.locked(), deadline(45):
+        with bootstrap_phase('authority', 'unknown'):
+            campaign, role, record = workload.retained(handle)
+            if (campaign.get('executionClass') !=
+                    'pr317-namespace-bound-composed-budget-v1'
+                    or role != 'candidate-sender'
+                    or campaign.get('budgetSelectionDigest') is None):
+                workload.reject('budget-bootstrap-authority-invalid')
+            workload.admit(campaign)
+            workload.exact(role, record, workload.manager(role, 'show'))
+            launch = workload.read(workload.ROOT / 'roles' / role / 'launch.json')
+            identities = launch.get('budgetAppIdentities')
+            if (launch.get('executionClass') != campaign['executionClass']
+                    or launch.get('budgetSelectionDigest') !=
+                        campaign['budgetSelectionDigest']
+                    or not isinstance(identities, dict)
+                    or set(identities) != set(app_ids)):
+                workload.reject('budget-bootstrap-selection-invalid')
+        contexts = {}
+        for app_id in app_ids:
+            with bootstrap_phase('installed-app', role):
+                from restricted_workload_storage import verify_installed_app
+                verify_installed_app(
+                    workload.ROOT / 'state' / role / 'data/node/apps/installed' / app_id,
+                    identities[app_id],
+                    workload.ROOT / 'authority' / (role + '-' + app_id + '-app-snapshot'),
+                    min(time.monotonic() + 5, campaign['deadlineMonotonicNs'] / 1e9))
+            with bootstrap_phase('launch-redirect', role):
+                from restricted_workload_network import connect, _connect_port, HTTP_PORT
+                status, headers, _body = _http(connect(role, 'http'),
+                    '/apps/' + app_id + '/?cryptadIsolatedLaunch',
+                    {'Accept': 'text/html'})
+                if status not in (301, 302, 303, 307, 308):
+                    workload.reject('app-launch-unavailable')
+            with bootstrap_phase('origin-parse', role):
+                location = next((value for key, value in headers.items()
+                                 if key.lower() == 'location'), '')
+                selected = urllib.parse.urlsplit(location)
+                if (selected.scheme != 'http' or selected.hostname != '127.0.0.1'
+                        or selected.username is not None or selected.password is not None
+                        or selected.port is None or not 1024 <= selected.port <= 65535
+                        or selected.port == HTTP_PORT or selected.path not in ('/', '/static/')
+                        or selected.query):
+                    workload.reject('app-origin-invalid')
+                fragment = urllib.parse.parse_qs(selected.fragment, strict_parsing=True)
+                if (set(fragment) != {'cryptadBootstrapNonce'}
+                        or len(fragment['cryptadBootstrapNonce']) != 1
+                        or re.fullmatch('[A-Za-z0-9_-]{16,512}',
+                                        fragment['cryptadBootstrapNonce'][0]) is None):
+                    workload.reject('app-nonce-invalid')
+            with bootstrap_phase('app-runtime', role):
+                from restricted_workload_app import require_budget_listener
+                runtime_status, _headers, runtime_body = _http(connect(role, 'http'),
+                    '/api/v1/apps/' + app_id + '/runtime',
+                    {'Accept': 'application/json'})
+                if runtime_status != 200:
+                    workload.reject('app-runtime-unavailable')
+                binding = require_budget_listener(
+                    role, app_id, runtime_object(runtime_body), selected.port)
+            with bootstrap_phase('session-bootstrap', role):
+                origin = 'http://127.0.0.1:' + str(selected.port)
+                status, _headers, body = _http(_connect_port(role, selected.port),
+                    '/.well-known/cryptad-bootstrap.json',
+                    {'Accept': 'application/json', 'Origin': origin,
+                     'X-Crypta-App-Bootstrap-Nonce':
+                        fragment['cryptadBootstrapNonce'][0]})
+                value = json.loads(body)
+                if (status != 200 or not isinstance(value, dict)
+                        or value.get('uiOrigin') != origin
+                        or not isinstance(value.get('browserSessionToken'), str)
+                        or not 1 <= len(value['browserSessionToken']) <= 4096):
+                    workload.reject('app-bootstrap-invalid')
+            with bootstrap_phase('recheck', role):
+                workload.current(campaign)
+                workload.exact(role, record, workload.manager(role, 'show'))
+                runtime_status, _headers, runtime_body = _http(connect(role, 'http'),
+                    '/api/v1/apps/' + app_id + '/runtime',
+                    {'Accept': 'application/json'})
+                if (runtime_status != 200
+                        or require_budget_listener(role, app_id,
+                            runtime_object(runtime_body), selected.port) != binding):
+                    workload.reject('app-worker-changed')
+            contexts[app_id] = {'appId': app_id, 'role': role, 'handle': handle,
+                'generation': record['generation'],
+                'managerInvocation': record['managerInvocation'],
+                'bootId': record['bootId'], 'daemonEpoch': binding['daemon'],
+                'worker': binding['worker'], 'origin': origin,
+                'session': value['browserSessionToken'],
+                'sessionExpiresAt': value.get('browserSessionExpiresAt')}
+        return {'apps': contexts, 'corpus': _budget_statement(launch)}
+
+
 def serve(connection, expected_uid, *, revocation_token=None):
     credentials = connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i'))
     pid, uid, _gid = struct.unpack('3i', credentials)
@@ -547,7 +662,8 @@ def serve(connection, expected_uid, *, revocation_token=None):
                 connection.sendmsg([response_raw], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights)])
         else:
             operation = {'start': workload.start, 'stop': workload.stop, 'observe': workload.observe,
-                         'bootstrap-mail': bootstrap}[method]
+                         'bootstrap-mail': bootstrap,
+                         'bootstrap-budget': bootstrap_budget}[method]
             result = operation(handle)
             response_raw = json.dumps(result, separators=(',', ':'), allow_nan=False).encode() + b'\n'
             if len(response_raw) > 1024 * 1024:

@@ -569,20 +569,42 @@ public final class ContentSubscriptionService {
       return success;
     } catch (ContentFetchException exception) {
       if (exception.ownerTermination() != null) {
+        if (exception.ownerCancellationRequested()) {
+          observation.recordEvent(
+              RuntimeWorkObservation.Kind.FETCH_CANCEL_REQUESTED, operation, 0, 0, operationId, 0);
+        }
         observation.recordEvent(
             RuntimeWorkObservation.Kind.FETCH_TERMINATION_UNKNOWN, operation, 0, 0, operationId, 0);
         var terminal =
             exception
                 .ownerTermination()
-                .thenRun(
-                    () ->
+                .whenComplete(
+                    (_, failure) -> {
+                      if (failure == null) {
+                        observation.recordEvent(
+                            RuntimeWorkObservation.Kind.FETCH_OWNER_TERMINATED,
+                            operation,
+                            0,
+                            0,
+                            operationId,
+                            0);
                         observation.recordEvent(
                             RuntimeWorkObservation.Kind.FETCH_FAILED,
                             operation,
                             0,
                             0,
                             operationId,
-                            0));
+                            0);
+                      } else {
+                        observation.recordEvent(
+                            RuntimeWorkObservation.Kind.FETCH_OWNER_TERMINATION_FAILED,
+                            operation,
+                            0,
+                            0,
+                            operationId,
+                            0);
+                      }
+                    });
         budgetReservation.deferUntil(terminal);
       }
       ContentSubscription failed =

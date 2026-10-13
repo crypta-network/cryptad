@@ -19,6 +19,30 @@ LIFECYCLE_PROBE_SOURCE = ROOT / 'probe-source/pr315_lifecycle_role_probe.py'
 PARTIAL_LAUNCH_REQUEST = ROOT / 'probe-requests/previous.json'
 PARTIAL_LAUNCH_RECORD = ROOT / 'state/previous/tmp/pr315-partial-launch-fault.json'
 PARTIAL_LAUNCH_RELEASE = ROOT / 'state/previous/tmp/pr315-partial-launch-release.json'
+BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
+BUDGET_ENVIRONMENT = {
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_ENABLED': 'false',
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_INITIAL_DELAY_SECONDS': '1',
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_POLL_INTERVAL_SECONDS': '1',
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_MINIMUM_POLL_INTERVAL_SECONDS': '2',
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_JITTER_SECONDS': '0',
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_FAILURE_BACKOFF_SECONDS': '2',
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_MAXIMUM_FAILURE_BACKOFF_SECONDS': '2',
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_PRESSURE_MAX_IN_FLIGHT': '1',
+    'CRYPTAD_CONTENT_SUBSCRIPTIONS_PRESSURE_RESUME_AT_OR_BELOW': '0',
+    'CRYPTAD_APP_NETWORK_BUDGET_FOREGROUND_CONTENT_FETCH_CONCURRENT_PER_APP': '2',
+    'CRYPTAD_APP_NETWORK_BUDGET_FOREGROUND_CONTENT_FETCH_CONCURRENT_GLOBAL': '1',
+    'CRYPTAD_APP_NETWORK_BUDGET_FOREGROUND_CONTENT_FETCH_PER_APP_PER_MINUTE': '32',
+    'CRYPTAD_APP_NETWORK_BUDGET_FOREGROUND_CONTENT_FETCH_GLOBAL_PER_MINUTE': '64',
+    'CRYPTAD_APP_NETWORK_BUDGET_TRUST_GRAPH_IMPORT_CONCURRENT_PER_APP': '1',
+    'CRYPTAD_APP_NETWORK_BUDGET_TRUST_GRAPH_IMPORT_CONCURRENT_GLOBAL': '4',
+    'CRYPTAD_APP_NETWORK_BUDGET_TRUST_GRAPH_IMPORT_PER_APP_PER_HOUR': '32',
+    'CRYPTAD_APP_NETWORK_BUDGET_TRUST_GRAPH_IMPORT_GLOBAL_PER_HOUR': '64',
+    'CRYPTAD_APP_NETWORK_BUDGET_SUBSCRIPTION_POLL_PER_APP_PER_HOUR': '48',
+    'CRYPTAD_APP_NETWORK_BUDGET_SUBSCRIPTION_POLL_GLOBAL_PER_HOUR': '1024',
+    'CRYPTAD_APP_NETWORK_BUDGET_SUBSCRIPTION_POLL_CONCURRENT_PER_APP': '1',
+    'CRYPTAD_APP_NETWORK_BUDGET_SUBSCRIPTION_POLL_CONCURRENT_GLOBAL': '8',
+}
 
 
 def launcher_policy():
@@ -63,6 +87,12 @@ def launcher_policy():
             'wrapperStartupTimeoutSeconds': {
                 role: 60 if role in ('candidate-sender', 'previous') else 30
                 for role in ROLES}}
+
+
+def budget_launcher_policy():
+    """Additional class-bound environment; legacy and Mail policy identities stay unchanged."""
+    return {'executionClass': BUDGET_EXECUTION_CLASS,
+            'environment': dict(BUDGET_ENVIRONMENT)}
 
 
 def _trusted_probe_request(spec):
@@ -246,8 +276,8 @@ def verify_wrapper_options(package):
         raise ValueError('workload-wrapper-options-unsupported')
 
 
-def command(role):
-    if role not in ROLES:
+def command(role, execution_class=None):
+    if role not in ROLES or execution_class not in (None, BUDGET_EXECUTION_CLASS):
         raise ValueError('workload-role-invalid')
     inputs, state = ROOT / 'roles' / role, ROOT / 'state' / role
     arguments = ['/usr/bin/bwrap', '--unshare-user', '--unshare-pid', '--unshare-ipc',
@@ -277,6 +307,8 @@ def command(role):
     environment = {'PATH': '/jdk/bin:/usr/bin:/bin', 'JAVA_HOME': '/jdk', 'HOME': '/node',
         'LANG': 'C.UTF-8', 'TMPDIR': '/tmp', 'CRYPTAD_APPHOST_SANDBOX_PROVIDER': 'bubblewrap',
         'CRYPTAD_APPHOST_TRUSTED_KEYS_FILE': '/inputs/public/trusted-app-keys.properties'}
+    if execution_class == BUDGET_EXECUTION_CLASS:
+        environment.update(BUDGET_ENVIRONMENT)
     return arguments + ['--', *child], environment
 
 
@@ -316,7 +348,7 @@ def main():
                 os.close(int(name))
             except OSError:
                 pass
-    arguments, environment = command(role)
+    arguments, environment = command(role, spec.get('executionClass'))
     if spec['deadlineMonotonicNs'] <= time.monotonic_ns():
         raise ValueError('workload-expired')
     # A main-process exit causes systemd to terminate the entire nondelegated role cgroup.

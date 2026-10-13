@@ -43,6 +43,29 @@ def snapshot():
 
 
 class RuntimeInputTest(unittest.TestCase):
+    def test_runtime_evidence_preserves_native_v3_collector_epoch(self):
+        lane = object.__new__(scheduler.SchedulerLane)
+        lane.epochs = ['daemon-epoch']
+        lane.samples = [{'epoch': 'daemon-epoch', 'sequence': 7,
+                         'elapsedMillis': 1000, 'intervalMillis': 1000}]
+        lane.sample_wall_times = ['2026-10-12T19:00:01+00:00']
+        lane.observations = [{'epoch': 'daemon-epoch', 'runtime': {
+            'work': {'version': 3,
+                     'collectorEpoch': '01234567-89ab-cdef-0123-456789abcdef',
+                     'events': [], 'dropped': 0, 'known': True},
+            'contentFetch': {}}}]
+        lane.fingerprint = {'workloadDigest': 'sha256:' + 'a' * 64,
+                            'collectorDigest': 'sha256:' + 'b' * 64,
+                            'configurationDigest': 'sha256:' + 'c' * 64}
+        lane.selection = {}
+        lane.policy = {}
+
+        result = lane.runtime_evidence()
+
+        self.assertEqual(3, result['schemaVersion'])
+        self.assertEqual('01234567-89ab-cdef-0123-456789abcdef',
+                         result['collectorEpoch'])
+
     def test_writable_addition_does_not_change_original_members(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
