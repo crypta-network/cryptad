@@ -514,8 +514,8 @@ def bootstrap_budget(handle):
     with workload.locked(), deadline(45):
         with bootstrap_phase('authority', 'unknown'):
             campaign, role, record = workload.retained(handle)
-            if (campaign.get('executionClass') !=
-                    'pr317-namespace-bound-composed-budget-v1'
+            if (campaign.get('executionClass') not in
+                    ('pr317-namespace-bound-composed-budget-v1', 'pr318-fixed-window-partial-store-v1')
                     or role != 'candidate-sender'
                     or campaign.get('budgetSelectionDigest') is None):
                 workload.reject('budget-bootstrap-authority-invalid')

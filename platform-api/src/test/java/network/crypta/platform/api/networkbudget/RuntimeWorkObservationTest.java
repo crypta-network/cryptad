@@ -149,7 +149,7 @@ class RuntimeWorkObservationTest {
     }
     var snapshot = observation.snapshot();
 
-    assertEquals(3, snapshot.version());
+    assertEquals(4, snapshot.version());
     assertEquals(1, detached.events().size());
     assertEquals(1, detached.lastSequence());
     assertEquals(RuntimeWorkObservation.CAPACITY, snapshot.events().size());

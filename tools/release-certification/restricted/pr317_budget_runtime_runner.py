@@ -35,6 +35,7 @@ import pr317_budget_selection as fixtures
 import cross_version_installed_budgets as installed
 import cryptad_certification as certification_package
 from cryptad_certification import composed_budget_evidence as composed
+from cryptad_certification import composed_budget_storage_evidence as storage
 from cryptad_certification import models as certification_models
 
 
@@ -221,6 +222,8 @@ def _source_modules(args):
     for module, relative in ((installed, "tools/interop/cross_version_installed_budgets.py"),
                              (composed, "tools/release-certification/cryptad_certification/"
                               "composed_budget_evidence.py"),
+                             (storage, "tools/release-certification/cryptad_certification/"
+                              "composed_budget_storage_evidence.py"),
                              (fixtures.contract, "tools/release-certification/protected/"
                               "pr317_budget_contract.py")):
         expected = (args.source / relative).resolve(strict=True)

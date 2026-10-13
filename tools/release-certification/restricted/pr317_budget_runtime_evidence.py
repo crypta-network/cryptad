@@ -245,7 +245,9 @@ def validate_private_observation(value):
         raise ValueError("pr317-private-coverage-invalid")
     native_epoch = _validate_native_window(value["nativeWindow"])
     attachment = value["composedBudgetEvidence"]
-    if (not isinstance(attachment, dict) or attachment.get("schemaVersion") != 3
+    if (not isinstance(attachment, dict) or attachment.get("schemaVersion") not in {3, 4}
+            or attachment.get("schemaVersion") == 4 and attachment.get("storageCases") != []
+            or attachment.get("schemaVersion") == 3 and "storageCases" in attachment
             or attachment.get("collectorEpoch") != native_epoch
             or [row.get("caseId") for row in attachment.get("causalCases", [])]
                != [case for case in CASES if case in observed]):

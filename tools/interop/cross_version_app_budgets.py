@@ -200,12 +200,12 @@ class AppBudgetLane(scheduler.SchedulerLane):
         node = self.nodes['candidate-sender']
         self.require(runtime.process_identity(node.runtime.process.pid) == node.identity,
                      'budget-attachment-process-changed')
-        attachment = {'schemaVersion': 2, 'collectorEpoch': current,
+        attachment = {'schemaVersion': 4, 'collectorEpoch': current,
             'nodeEpoch': self.journal.node_epochs[('', 'candidate-sender')],
             **{key: self.fingerprint[key] for key in
                 ('workloadDigest', 'productDigest', 'sourceCommit', 'appCohortDigest')},
             **self.composed_budget_inputs,
-            'segments': segments}
+            'segments': segments, 'causalCases': [], 'storageCases': []}
         self.journal.append('operation', role='candidate-sender', scenario='app-budgets',
             outcome='partial', operation='composed-budget-attachment', composed_budget_evidence=attachment)
         self.attached_epochs.add(current)

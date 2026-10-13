@@ -183,7 +183,17 @@ public final class RuntimeWorkObservation {
     BUDGET_RELEASED,
     /** Durable usage was read for the specified family, scope and fixed window. */
     RATE_OBSERVED,
-    /** Durable usage was charged in the specified family, scope and fixed window. */
+    /** A rate-increment write is about to run; value is its proposed count, not a receipt. */
+    RATE_WRITE_ATTEMPT,
+    /** A rate-increment write threw I/O; its selected count may or may not have persisted. */
+    RATE_WRITE_UNKNOWN,
+    /** A decision-metadata write is about to run; value is its unchanged logical count. */
+    RATE_METADATA_WRITE_ATTEMPT,
+    /** A decision-metadata write returned; this is not an additional rate charge. */
+    RATE_METADATA_WRITTEN,
+    /** A decision-metadata write threw I/O; record replacement remains uncertain. */
+    RATE_METADATA_WRITE_UNKNOWN,
+    /** The rate write returned successfully; this does not certify power-loss durability. */
     RATE_CHARGED,
     /** Rate capacity was held pending reservation commit. */
     RATE_RESERVED,
@@ -367,7 +377,7 @@ public final class RuntimeWorkObservation {
    * @return detached bounded history, with explicit cumulative truncation count
    */
   public synchronized Snapshot snapshot() {
-    return new Snapshot(3, sequence, dropped, List.copyOf(events), collectorEpoch);
+    return new Snapshot(4, sequence, dropped, List.copyOf(events), collectorEpoch);
   }
 
   /**

@@ -49,6 +49,7 @@ WORKLOAD_GROUPS = (
     'setsid-double-fork', 'observer-death')
 MAIL_EXECUTION_CLASS = mail_evidence.EXECUTION_CLASS
 BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
+STORAGE_EXECUTION_CLASS = 'pr318-fixed-window-partial-store-v1'
 STARTUP_MEASUREMENT_SECONDS = 120
 # Prospective observation budget; production limits and the campaign deadline are unchanged.
 READINESS_SECONDS = 90
@@ -3345,6 +3346,9 @@ class AdministratorFnpSampler:
         message, _ancillary, flags, _address = channel.recvmsg(8193)
         if not message:
             return False
+        if message.startswith(b'K'):
+            from pr318_storage_admin import serve_storage
+            return serve_storage(self, channel, message, flags)
         try:
             readiness_role = (ROLE_NAMES[int(message[1:2])] if len(message) == 3
                               and message[:1] == b'J' and message[1:2] in (b'0', b'1', b'2', b'3')
@@ -3621,42 +3625,7 @@ def controller_startup_snapshot(workload):
         return {'status': 'unavailable-not-quiescence-proof'}
 
 
-def controller_bootstrap_failure_snapshot(workload):
-    """Copy only a closed root-private bootstrap phase before service teardown."""
-    path = Path('/run/cryptad-workload/bootstrap-failure.private.json')
-    try:
-        value = workload.read(path)
-    except FileNotFoundError:
-        return {'status': 'not-observed'}
-    except (OSError, ValueError):
-        return {'status': 'unavailable-or-unsafe'}
-    stages = {'authority', 'installed-app', 'launch-redirect',
-              'origin-parse', 'app-runtime', 'session-bootstrap', 'recheck'}
-    try:
-        if (not isinstance(value, dict) or set(value) != {
-                'schemaVersion', 'kind', 'stage', 'role', 'exceptionType',
-                'errorCode', 'controllerPid', 'bootId',
-                'startedMonotonicNs', 'observedMonotonicNs'}
-                or value['schemaVersion'] != 1
-                or value['kind'] != 'pr315-controller-bootstrap-failure-phase'
-                or value['stage'] not in stages
-                or value['role'] not in (*ROLE_NAMES, 'unknown')
-                or re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,127}',
-                    value['exceptionType']) is None
-                or re.fullmatch(r'[a-z][a-z0-9-]{1,100}',
-                    value['errorCode']) is None
-                or value['bootId'] != workload.boot()
-                or type(value['controllerPid']) is not int
-                or value['controllerPid'] <= 1
-                or type(value['startedMonotonicNs']) is not int
-                or type(value['observedMonotonicNs']) is not int
-                or not 0 < value['startedMonotonicNs'] <
-                    value['observedMonotonicNs'] <= time.monotonic_ns()):
-            raise ValueError('workload-bootstrap-diagnostic-invalid')
-        return {'status': 'captured', 'record': value,
-                'classification': 'private-bootstrap-diagnostic-not-acceptance'}
-    except (KeyError, TypeError, ValueError):
-        return {'status': 'unavailable-or-unsafe'}
+from pr318_storage_admin import controller_bootstrap_failure_snapshot
 
 
 def readiness_deadline(campaign_deadline_ns, started, startup_measurement=False):
@@ -3696,7 +3665,10 @@ def observer_sequence(selected, root, handoff, campaign_deadline, startup_begin,
         diagnostic = ((lambda role, stage: request_administrator_readiness(
             admin_channel, role, stage))
                       if admin_channel is not None else None)
-        if execution_class == BUDGET_EXECUTION_CLASS:
+        if execution_class == STORAGE_EXECUTION_CLASS:
+            from pr318_storage_admin import run_observer
+            result = run_observer(adapter, admin_channel, campaign_deadline, diagnostic)
+        elif execution_class == BUDGET_EXECUTION_CLASS:
             from cross_version_installed_budgets import run_budget_lane
             result = run_budget_lane(adapter, leave_running_for_administrator=True,
                                      on_start_failure=diagnostic)
@@ -4207,7 +4179,7 @@ def retain_volatile(workload, value):
 def _validate_execution_mode(*, startup_measurement, lifecycle_scenario,
                              workload_group, retired_authority_preparation,
                              execution_class):
-    if execution_class not in (None, MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS):
+    if execution_class not in (None, MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS):
         raise ValueError('workload-execution-class-invalid')
     if execution_class is not None:
         if (startup_measurement or lifecycle_scenario != 'none'
@@ -4409,6 +4381,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
             handoff=handoff, observer_root=root,
             lost_start_before=lost_start_before,
             hostile_origin_selected=workload_group == 'authority')
+        from pr318_storage_admin import configure_sampler
+        configure_sampler(sampler, execution_class, handoff)
         sampler.preparation_gate = preparation_gate
         raw, status = collect_child(parent, pid, deadline,
             lambda: sample_memory(diagnostics), admin_channel=admin_parent,
@@ -4442,6 +4416,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if execution_class == MAIL_EXECUTION_CLASS:
             validate_mail_observation(
                 result, selected['authorization']['selectionDigest'])
+        elif execution_class == STORAGE_EXECUTION_CLASS:
+            from cross_version_installed_storage_budgets import validate_guest_observation
+            validate_guest_observation(result, selected['authorization']['selectionDigest'])
         elif execution_class == BUDGET_EXECUTION_CLASS:
             from cross_version_installed_budgets import validate_guest_observation
             validate_guest_observation(result, selected['authorization']['selectionDigest'])
@@ -4466,6 +4443,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         if execution_class == MAIL_EXECUTION_CLASS:
             result = mail_evidence.attach_guest_context(
                 result, identity, launcher_policy(), campaign_deadline)
+        elif execution_class == STORAGE_EXECUTION_CLASS:
+            from cross_version_installed_storage_budgets import attach_guest_context
+            result = attach_guest_context(result, identity, launcher_policy(), campaign_deadline)
         elif execution_class == BUDGET_EXECUTION_CLASS:
             from cross_version_installed_budgets import attach_guest_context
             result = attach_guest_context(
@@ -4835,6 +4815,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 diagnostics['observerDeath'] = {'status': 'unavailable-or-unsafe',
                                                 'exceptionType': type(error).__name__[:128]}
     finally:
+        from pr318_storage_admin import cleanup_sampler
+        cleanup_sampler(locals().get("sampler"), diagnostics)
         try:
             if parent is not None:
                 parent.close()
@@ -4909,7 +4891,9 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                         and volatile['sentinel']['status'] != 'matched'):
                     raise ValueError('workload-retained-sentinel-not-established')
     # No terminal result can exist before owned controller/role/network cleanup succeeds.
-    if execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS):
+    if execution_class == STORAGE_EXECUTION_CLASS and diagnostics.get('storageAccessCleanup') != 'completed':
+        raise ValueError('pr318-storage-restoration-incomplete')
+    if execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS):
         if diagnostics['cleanup'] != 'completed':
             raise ValueError('workload-execution-class-cleanup-incomplete')
         if execution_class == MAIL_EXECUTION_CLASS:
@@ -4960,7 +4944,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                        'positive-sequence-executed'),
             'workloadAcceptance': ('incomplete'
                                    if execution_class in (MAIL_EXECUTION_CLASS,
-                                                          BUDGET_EXECUTION_CLASS) else
+                                                          BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS) else
                                    'not-executed' if workload_group == 'role-readiness-diagnostic'
                                    else 'incomplete'),
             'protectedExecutionEnabled': False}
@@ -4972,7 +4956,7 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,
-                                                      BUDGET_EXECUTION_CLASS))
+                                                      BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS))
     parser.add_argument('--workload-group', choices=WORKLOAD_GROUPS)
     parser.add_argument('--retired-authority-preparation', action='store_true')
     args = parser.parse_args()

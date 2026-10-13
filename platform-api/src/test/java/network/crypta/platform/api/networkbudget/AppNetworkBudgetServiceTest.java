@@ -714,6 +714,14 @@ class AppNetworkBudgetServiceTest {
       AppNetworkBudgetOperation operation)
       throws Exception {
     var durable = new FileAppNetworkBudgetStore(directory);
+    var unrelated =
+        AppNetworkBudgetUsage.empty(
+                "unrelated-app",
+                AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT,
+                START,
+                java.time.Duration.ofHours(1))
+            .allowedAt(START);
+    durable.write(unrelated);
     var fault = new FaultStore(durable, failedWrite, afterWrite);
     var budget = new AppNetworkBudgetService(fault, config(10, 20, 4, 8), new MutableClock(START));
     AppNetworkBudgetDecision decision;
@@ -738,29 +746,9 @@ class AppNetworkBudgetServiceTest {
     assertEquals(0, budget.diagnostics().activeFamilyLeases());
     assertEquals(0, budget.diagnostics().reservedFamilyRates());
     var persisted = new FileAppNetworkBudgetStore(directory);
-    boolean subscription = operation == AppNetworkBudgetOperation.SUBSCRIPTION_MANUAL_REFRESH;
-    boolean fetch = operation == AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI;
-    var family =
-        subscription
-            ? AppNetworkBudgetOperation.SUBSCRIPTION_POLL
-            : fetch ? AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH : operation;
-    var globalFamily = fetch ? AppNetworkBudgetOperation.CONTENT_FETCH_GLOBAL : family;
+    var expectedFamilies = expectedWriteFamilies(operation);
     int prefix = failedWrite - (afterWrite ? 0 : 1);
-    assertEquals(
-        prefix >= 1 ? 1 : 0,
-        persisted.read("trust-graph", family).map(AppNetworkBudgetUsage::count).orElse(0));
-    assertEquals(
-        prefix >= 2 ? 1 : 0,
-        persisted
-            .read(AppNetworkBudgetScope.GLOBAL, globalFamily)
-            .map(AppNetworkBudgetUsage::count)
-            .orElse(0));
-    assertEquals(
-        (subscription && prefix >= 3) || (fetch && prefix >= 2) ? 1 : 0,
-        persisted
-            .read(AppNetworkBudgetScope.GLOBAL, AppNetworkBudgetOperation.CONTENT_FETCH_GLOBAL)
-            .map(AppNetworkBudgetUsage::count)
-            .orElse(0));
+    assertPersistedPrefix(persisted, expectedFamilies, prefix, 0);
     var events = budget.observation().snapshot().events();
     assertEquals(
         failedWrite - 1,
@@ -770,6 +758,109 @@ class AppNetworkBudgetServiceTest {
     assertFalse(
         events.stream().anyMatch(e -> e.kind() == RuntimeWorkObservation.Kind.BUDGET_COMMITTED));
     assertFalse(events.toString().contains("private-write-canary"));
+    assertEquals(unrelated, persisted.read(unrelated.appId(), unrelated.operation()).orElseThrow());
+    var attempts =
+        events.stream()
+            .filter(e -> e.kind() == RuntimeWorkObservation.Kind.RATE_WRITE_ATTEMPT)
+            .toList();
+    assertEquals(
+        expectedFamilies.subList(0, failedWrite),
+        attempts.stream().map(RuntimeWorkObservation.Event::operation).toList());
+    assertEquals(
+        expectedFamilies.subList(0, failedWrite),
+        fault.attempted.stream().map(AppNetworkBudgetUsage::operation).toList());
+    var unknown =
+        events.stream()
+            .filter(e -> e.kind() == RuntimeWorkObservation.Kind.RATE_WRITE_UNKNOWN)
+            .toList();
+    assertEquals(1, unknown.size());
+    assertWriteOutcomes(budget, fault, events, attempts, failedWrite);
+
+    // The fault is one-shot: a new request consumes another charge, never a free replay.
+    assertAllowed(budget.acquire("trust-graph", operation));
+    var recovered = new FileAppNetworkBudgetStore(directory);
+    assertPersistedPrefix(recovered, expectedFamilies, prefix, 1);
+    assertEquals(unrelated, recovered.read(unrelated.appId(), unrelated.operation()).orElseThrow());
+    assertEquals(failedWrite + expectedFamilies.size(), fault.writes);
+    assertEquals(0, budget.diagnostics().activeFamilyLeases());
+  }
+
+  private static List<AppNetworkBudgetOperation> expectedWriteFamilies(
+      AppNetworkBudgetOperation operation) {
+    return switch (operation) {
+      case SUBSCRIPTION_MANUAL_REFRESH ->
+          List.of(
+              AppNetworkBudgetOperation.SUBSCRIPTION_POLL,
+              AppNetworkBudgetOperation.SUBSCRIPTION_POLL,
+              AppNetworkBudgetOperation.CONTENT_FETCH_GLOBAL);
+      case TRUST_GRAPH_IMPORT_URI ->
+          List.of(
+              AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH,
+              AppNetworkBudgetOperation.CONTENT_FETCH_GLOBAL);
+      case TRUST_GRAPH_IMPORT ->
+          List.of(
+              AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT,
+              AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+      default -> throw new IllegalArgumentException("unsupported failure matrix operation");
+    };
+  }
+
+  private static void assertPersistedPrefix(
+      FileAppNetworkBudgetStore store,
+      List<AppNetworkBudgetOperation> families,
+      int prefix,
+      int recoveryCharges)
+      throws IOException {
+    for (int index = 0; index < families.size(); index++) {
+      String scope = index == 0 ? "trust-graph" : AppNetworkBudgetScope.GLOBAL;
+      int initialCharges = index < prefix ? 1 : 0;
+      assertEquals(
+          initialCharges + recoveryCharges,
+          store.read(scope, families.get(index)).map(AppNetworkBudgetUsage::count).orElse(0));
+    }
+    if (!families.contains(AppNetworkBudgetOperation.CONTENT_FETCH_GLOBAL)) {
+      assertTrue(
+          store
+              .read(AppNetworkBudgetScope.GLOBAL, AppNetworkBudgetOperation.CONTENT_FETCH_GLOBAL)
+              .isEmpty());
+    }
+  }
+
+  private static void assertWriteOutcomes(
+      AppNetworkBudgetService budget,
+      FaultStore fault,
+      List<RuntimeWorkObservation.Event> events,
+      List<RuntimeWorkObservation.Event> attempts,
+      int failedWrite) {
+    for (int index = 0; index < attempts.size(); index++) {
+      var attempt = attempts.get(index);
+      assertEquals(
+          index == 0 ? "trust-graph" : AppNetworkBudgetScope.GLOBAL,
+          fault.attempted.get(index).appId());
+      assertEquals(budget.observation().scope(fault.attempted.get(index).appId()), attempt.scope());
+      assertEquals(START.getEpochSecond(), attempt.windowStartEpochSecond());
+      assertEquals(1, attempt.value());
+      assertEquals(attempts.getFirst().operationId(), attempt.operationId());
+      var outcome =
+          events.stream()
+              .filter(e -> e.sequence() > attempt.sequence())
+              .filter(
+                  e ->
+                      e.kind() == RuntimeWorkObservation.Kind.RATE_CHARGED
+                          || e.kind() == RuntimeWorkObservation.Kind.RATE_WRITE_UNKNOWN)
+              .findFirst()
+              .orElseThrow();
+      assertEquals(attempt.operation(), outcome.operation());
+      assertEquals(attempt.scope(), outcome.scope());
+      assertEquals(attempt.operationId(), outcome.operationId());
+      assertEquals(attempt.windowStartEpochSecond(), outcome.windowStartEpochSecond());
+      assertEquals(attempt.value(), outcome.value());
+      assertEquals(
+          index == failedWrite - 1
+              ? RuntimeWorkObservation.Kind.RATE_WRITE_UNKNOWN
+              : RuntimeWorkObservation.Kind.RATE_CHARGED,
+          outcome.kind());
+    }
   }
 
   @Test
@@ -905,11 +996,140 @@ class AppNetworkBudgetServiceTest {
     assertEquals(1, trustGraphImportCount(recovered, "trust-graph"));
   }
 
+  @ParameterizedTest
+  @CsvSource({"false", "true"})
+  void acquire_whenDenialMetadataWriteFails_expectUnknownWithoutExtraCharge(
+      boolean afterWrite, @TempDir Path directory) throws Exception {
+    var durable = new FileAppNetworkBudgetStore(directory);
+    var initial =
+        AppNetworkBudgetUsage.empty(
+                "feed-reader",
+                AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH,
+                START,
+                java.time.Duration.ofMinutes(1))
+            .allowedAt(START);
+    durable.write(initial);
+    var fault = new FaultStore(durable, 1, afterWrite);
+    var budget = new AppNetworkBudgetService(fault, config(1, 20, 4, 8), new MutableClock(START));
+
+    var failed = budget.acquire("feed-reader", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH);
+
+    assertEquals(503, failed.statusCode());
+    var stored =
+        new FileAppNetworkBudgetStore(directory)
+            .read("feed-reader", initial.operation())
+            .orElseThrow();
+    assertEquals(1, stored.count());
+    assertEquals(afterWrite ? "rate_limited" : "allowed", stored.lastDecision());
+    var events = budget.observation().snapshot().events();
+    var attempts =
+        events.stream()
+            .filter(e -> e.kind() == RuntimeWorkObservation.Kind.RATE_METADATA_WRITE_ATTEMPT)
+            .toList();
+    var unknown =
+        events.stream()
+            .filter(e -> e.kind() == RuntimeWorkObservation.Kind.RATE_METADATA_WRITE_UNKNOWN)
+            .toList();
+    assertEquals(1, attempts.size());
+    assertEquals(1, unknown.size());
+    assertEquals(attempts.getFirst().operationId(), unknown.getFirst().operationId());
+    assertEquals(attempts.getFirst().scope(), unknown.getFirst().scope());
+    assertEquals(initial.operation(), unknown.getFirst().operation());
+    assertEquals(START.getEpochSecond(), unknown.getFirst().windowStartEpochSecond());
+    assertEquals(1, unknown.getFirst().value());
+    assertTrue(
+        events.stream()
+            .noneMatch(
+                e ->
+                    e.kind() == RuntimeWorkObservation.Kind.RATE_CHARGED
+                        || e.kind() == RuntimeWorkObservation.Kind.RATE_METADATA_WRITTEN
+                        || e.kind() == RuntimeWorkObservation.Kind.BUDGET_COMMITTED));
+
+    var denied = budget.acquire("feed-reader", initial.operation());
+
+    assertEquals(429, denied.statusCode());
+    assertEquals(
+        1,
+        new FileAppNetworkBudgetStore(directory)
+            .read("feed-reader", initial.operation())
+            .orElseThrow()
+            .count());
+    assertEquals(
+        1,
+        budget.observation().snapshot().events().stream()
+            .filter(e -> e.kind() == RuntimeWorkObservation.Kind.RATE_METADATA_WRITTEN)
+            .count());
+    assertEquals(0, budget.diagnostics().activeFamilyLeases());
+  }
+
+  @Test
+  void commit_whenNewHourHasPendingReservation_expectDeniedUntilNewOwnerCommits() {
+    var clock = new MutableClock(START);
+    var limits = new AppNetworkBudgetConfig(10, 20, 4, 8, 10, 10, 2, 4, 1, 10, 2, 4);
+    var budget = service(limits, clock);
+    var old = budget.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+    clock.set(START.plusSeconds(3600));
+    var current = budget.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+    assertTrue(current.allowed());
+
+    var denied = old.commit();
+    old.close();
+    old.close();
+
+    assertFalse(denied.allowed());
+    assertSame(denied, old.commit());
+    assertEquals(2, budget.diagnostics().reservedFamilyRates());
+    assertEquals(2, budget.diagnostics().activeFamilyLeases());
+    assertTrue(current.commit().allowed());
+    current.close();
+    current.close();
+    assertEquals(0, budget.diagnostics().reservedFamilyRates());
+    assertEquals(0, budget.diagnostics().activeFamilyLeases());
+    assertEquals(1, trustGraphImportCount(budget, "trust-graph"));
+    assertEquals(
+        4,
+        budget.observation().snapshot().events().stream()
+            .filter(e -> e.kind() == RuntimeWorkObservation.Kind.RATE_RESERVATION_RELEASED)
+            .count());
+  }
+
+  @Test
+  void commit_whenClosedBeforeCrossedHourCommit_expectNoWritesAndSingleHoldRelease() {
+    var clock = new MutableClock(START);
+    var budget = service(config(10, 20, 4, 8), clock);
+    var reservation = budget.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+    clock.set(START.plusSeconds(7200));
+
+    reservation.close();
+    reservation.close();
+    assertFalse(reservation.commit().allowed());
+    assertFalse(reservation.commit().allowed());
+
+    assertTrue(budget.diagnostics().usage().isEmpty());
+    assertEquals(0, budget.diagnostics().activeFamilyLeases());
+    assertEquals(0, budget.diagnostics().reservedFamilyRates());
+    var events = budget.observation().snapshot().events();
+    assertEquals(
+        2,
+        events.stream()
+            .filter(e -> e.kind() == RuntimeWorkObservation.Kind.RATE_RESERVATION_RELEASED)
+            .count());
+    assertEquals(
+        2,
+        events.stream()
+            .filter(e -> e.kind() == RuntimeWorkObservation.Kind.CONCURRENCY_RELEASED)
+            .count());
+    assertTrue(
+        events.stream().noneMatch(e -> e.kind() == RuntimeWorkObservation.Kind.RATE_WRITE_ATTEMPT));
+  }
+
   private static class FaultStore implements AppNetworkBudgetStore {
     private final AppNetworkBudgetStore delegate;
     private final int failedWrite;
     private final boolean afterWrite;
     private int writes;
+    private final java.util.ArrayList<AppNetworkBudgetUsage> attempted =
+        new java.util.ArrayList<>();
 
     private FaultStore(AppNetworkBudgetStore delegate, int failedWrite, boolean afterWrite) {
       this.delegate = delegate;
@@ -926,6 +1146,7 @@ class AppNetworkBudgetServiceTest {
     @Override
     public void write(AppNetworkBudgetUsage usage) throws IOException {
       writes++;
+      attempted.add(usage);
       if (writes == failedWrite && !afterWrite) {
         throw new IOException("private-write-canary");
       }

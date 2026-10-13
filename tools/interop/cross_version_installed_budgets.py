@@ -912,7 +912,7 @@ def run_budget_lane(adapter, *, leave_running_for_administrator=False,
             row["nodeEpoch"] = node_epoch
         selected_node = next(row for row in adapter.plan["nodes"] if row["role"] == ROLE)
         final = _snapshot(handles[APP_IDS[0]])
-        attachment = {"schemaVersion": 3,
+        attachment = {"schemaVersion": 4,
             "collectorEpoch": final["work"]["collectorEpoch"],
             "nodeEpoch": node_epoch,
             "workloadDigest": adapter.plan["workloadInputs"]["scheduler"],
@@ -921,7 +921,7 @@ def run_budget_lane(adapter, *, leave_running_for_administrator=False,
             "appCohortDigest": pressure.baseline.digest(selected_node["appDigests"]),
             "collectorDigest": adapter.plan["composedBudgetInputs"]["collectorDigest"],
             "configurationDigest": adapter.plan["composedBudgetInputs"]["configurationDigest"],
-            "segments": [], "causalCases": causal_cases}
+            "segments": [], "causalCases": causal_cases, "storageCases": []}
         adapter.journal.append("operation", role=ROLE, scenario="app-budgets",
             outcome="partial", operation="composed-budget-attachment",
             composed_budget_evidence=attachment)

@@ -40,6 +40,8 @@ TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name
     'pr316_mail_runtime_evidence.py', 'pr316_mail_runtime_runner.py',
     'pr316_pve_vm_inventory.py', 'pr317_budget_selection.py',
     'pr317_budget_runtime_evidence.py', 'pr317_budget_runtime_runner.py',
+    'pr318_storage_admin.py', 'pr318_storage_selection.py',
+    'pr318_storage_runtime_evidence.py', 'pr318_storage_runtime_runner.py',
     'pr315_workload_evidence.py', 'pr315_pve_host_admission.py',
     'pr315_workload_campaign.py', 'pr315_pve_pressure_watch.py',
     'pr315_role_probe.py', 'pr315_lifecycle_role_probe.py',
