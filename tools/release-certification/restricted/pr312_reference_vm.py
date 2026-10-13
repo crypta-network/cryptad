@@ -32,6 +32,7 @@ ACCELERATOR = 'tcg,thread=multi'
 PROFILES = {'tcg-multi': 'tcg,thread=multi', 'tcg-single': 'tcg,thread=single'}
 MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
 BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
+STORAGE_EXECUTION_CLASS = 'pr318-fixed-window-partial-store-v1'
 MAIL_PRIVATE_MAX_BYTES = 512 * 1024
 GUEST_STAGES = frozenset(('installation', 'installation-export',
     'dependency-profile-measurement', 'installation-publication', 'installed-profile-verification',
@@ -145,6 +146,26 @@ def snapshot_file(source, destination, algorithm='sha256'):
         shutil.copyfileobj(incoming, outgoing)
     with Path(destination).open('rb') as retained:
         return hashlib.file_digest(retained, algorithm).hexdigest()
+
+
+def guest_clock_sample(ssh, log, environment):
+    """Bracket one guest UTC sample with independent host wall and monotonic clocks."""
+    host_epoch_before = time.time_ns()
+    host_monotonic_before = time.monotonic_ns()
+    result = subprocess.run(
+        [*ssh, "/usr/bin/python3 -I -S -c 'import time; print(time.time_ns())'"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=log,
+        check=True, timeout=10, env=environment)
+    host_monotonic_after = time.monotonic_ns()
+    host_epoch_after = time.time_ns()
+    raw = result.stdout.strip()
+    if re.fullmatch(rb'[0-9]{16,20}', raw) is None:
+        raise ValueError('guest-clock-sample-invalid')
+    return {'hostEpochBeforeNanos': host_epoch_before,
+            'hostMonotonicBeforeNanos': host_monotonic_before,
+            'guestEpochNanos': int(raw),
+            'hostMonotonicAfterNanos': host_monotonic_after,
+            'hostEpochAfterNanos': host_epoch_after}
 
 
 def snapshot_products(source, clone):
@@ -326,11 +347,11 @@ def workload_guest_command(args):
     scenario = getattr(args, 'lifecycle_scenario', 'cancellation')
     workload_group = getattr(args, 'workload_group', None)
     execution_class = getattr(args, 'execution_class', None)
-    selected_execution = execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS)
+    selected_execution = execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS)
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
             or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
             or execution_class not in (None, MAIL_EXECUTION_CLASS,
-                                       BUDGET_EXECUTION_CLASS)
+                                       BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS)
             or scenario not in ('cancellation', 'controller-restart', 'deadline',
                                 'revocation-running', 'setsid-double-fork',
                                 'observer-death', 'none')
@@ -398,7 +419,7 @@ def run(args, *, before_guest_launch=None):
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
     if args.mode == 'workload-positive':
-        report['workloadPurpose'] = ('budget-lifecycle' if getattr(args, 'execution_class', None) ==
+        report['workloadPurpose'] = ('budget-storage' if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS else 'budget-lifecycle' if getattr(args, 'execution_class', None) ==
                                      BUDGET_EXECUTION_CLASS
                                      else 'mail-runtime' if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
                                      else 'startup-measurement' if getattr(args, 'startup_measurement', False)
@@ -457,6 +478,8 @@ def run(args, *, before_guest_launch=None):
             helper_names.extend(('pr315_workload_fixtures.py', 'pr315_workload_guest.py'))
             if getattr(args, 'execution_class', None) == BUDGET_EXECUTION_CLASS:
                 helper_names.append('pr317_budget_selection.py')
+            if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS:
+                helper_names.append('pr318_storage_selection.py')
         for name in helper_names:
             if sha256(Path(__file__).resolve().parent / name) != sha256(source / 'tools/release-certification/restricted' / name):
                 raise ValueError('executing-reference-source-mismatch')
@@ -473,7 +496,10 @@ def run(args, *, before_guest_launch=None):
         report['productSourceVerification'] = 'local-git-and-embedded-marker-v1'
         if args.prepared_fixtures is not None:
             if args.mode == 'workload-positive':
-                if getattr(args, 'execution_class', None) == BUDGET_EXECUTION_CLASS:
+                if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS:
+                    import pr318_storage_selection as fixture_module
+                    fixtures = clone / 'build/pr318-inputs'
+                elif getattr(args, 'execution_class', None) == BUDGET_EXECUTION_CLASS:
                     import pr317_budget_selection as fixture_module
                     fixtures = clone / 'build/pr317-inputs'
                 else:
@@ -567,8 +593,15 @@ def run(args, *, before_guest_launch=None):
                            else 'installed-pr316-mail-runtime'
                            if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
                            else 'installed-' + args.mode)
+        storage_clock = getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS
+        if storage_clock:
+            report['storageClock'] = {
+                'before': guest_clock_sample(ssh, log, boot.ENVIRONMENT)}
         result = subprocess.run([*ssh, 'bash -s'], input=script.encode(), stdout=log, stderr=log,
                                 timeout=args.timeout, env=boot.ENVIRONMENT)
+        if storage_clock:
+            report['storageClock']['after'] = guest_clock_sample(
+                ssh, log, boot.ENVIRONMENT)
         report['guestExitCode'] = result.returncode
         with (attempt / 'guest-report.private.json').open('xb') as stream:
             command([*ssh, 'cat /home/vmadmin/report.json'], stdout=stream, stderr=log)
@@ -608,6 +641,13 @@ print(json.dumps(records))
                 ('pr313-observation.private.json', '/root/pr313-observation.private.json', 65536),
                 ('pr314-workload-observation.private.json', '/root/pr314-workload-observation.private.json', 65536),
                 ('pr316-selection.private.json', '/root/pr314-workload-selection.json', 131072),
+                ('pr318-selection.private.json', '/root/pr314-workload-selection.json', 262144),
+                ('pr318-storage-attempts.private.jsonl',
+                 '/var/lib/cryptad-cross-version/experiments/pr318-fixed-window-partial-store/'
+                 'pr318-storage-attempts.private.jsonl', 4 * 1024 * 1024),
+                ('pr318-storage-budget.private.json',
+                 '/var/lib/cryptad-cross-version/experiments/pr318-fixed-window-partial-store/'
+                 'pr318-storage-budget.private.json', 4 * 1024 * 1024),
                 ('pr317-selection.private.json', '/root/pr314-workload-selection.json', 262144),
                 ('pr316-mail-flow.private.json',
                  '/var/lib/cryptad-cross-version/experiments/pr316-installed-mail-runtime/'

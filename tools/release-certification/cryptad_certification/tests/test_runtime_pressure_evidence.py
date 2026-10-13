@@ -112,6 +112,27 @@ def derive(value):
 
 
 class RuntimePressureEvidenceTest(unittest.TestCase):
+    def test_storage_vocabulary_is_closed_to_native_v4(self):
+        from cryptad_certification.composed_budget_evidence import STORAGE_KINDS
+        for kind in STORAGE_KINDS:
+            value = evidence_fixture()
+            value.update(schemaVersion=4,
+                         collectorEpoch='01234567-89ab-cdef-0123-456789abcdef')
+            prior = value['workEvents'][-1]
+            value['workEvents'].append(dict(prior, sequence=prior['sequence'] + 1,
+                kind=kind, operation='trust_graph_import', operationId=99, scope=3,
+                windowStartEpochSecond=int(STAMP.timestamp()), value=1))
+            with self.subTest(kind=kind):
+                self.assertEqual('not-observed', derive(value)['fullAppBudgets'])
+                for historical in (2, 3):
+                    value['schemaVersion'] = historical
+                    with self.assertRaises(runtime.RuntimeEvidenceError):
+                        derive(value)
+            value['schemaVersion'] = 4
+            value['workEvents'][-1]['kind'] = 'ARBITRARY_STORE_SUCCESS'
+            with self.assertRaises(runtime.RuntimeEvidenceError):
+                derive(value)
+
     def test_v3_accepts_new_native_vocabulary_without_new_pressure_credit(self):
         value = evidence_fixture()
         value['schemaVersion'] = 3

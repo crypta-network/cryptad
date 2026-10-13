@@ -207,7 +207,7 @@ public final class AppNetworkBudgetService {
           concurrencyDecision(
               normalizedAppId, checkedOperation, now, concurrencyLimits, operationId);
       if (!concurrencyDecision.allowed()) {
-        recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits);
+        recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits, operationId);
         observation.recordEvent(
             RuntimeWorkObservation.Kind.BUDGET_CONCURRENCY_DENIED,
             checkedOperation,
@@ -239,14 +239,7 @@ public final class AppNetworkBudgetService {
             operationId,
             observation.scope(limit.appId()));
         AppNetworkBudgetUsage charged = previous.allowedAt(now);
-        store.write(charged);
-        observation.recordEvent(
-            RuntimeWorkObservation.Kind.RATE_CHARGED,
-            limit.operation(),
-            charged.windowStart().getEpochSecond(),
-            charged.count(),
-            operationId,
-            observation.scope(limit.appId()));
+        writeUsage(charged, operationId, true);
       }
       for (ConcurrencyLimit limit : concurrencyLimits) {
         activeLeases.merge(limit.key(), 1, Integer::sum);
@@ -412,7 +405,7 @@ public final class AppNetworkBudgetService {
           concurrencyDecision(
               normalizedAppId, checkedOperation, now, concurrencyLimits, operationId);
       if (!concurrencyDecision.allowed()) {
-        recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits);
+        recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits, operationId);
         observation.recordEvent(
             RuntimeWorkObservation.Kind.BUDGET_CONCURRENCY_DENIED,
             checkedOperation,
@@ -598,7 +591,7 @@ public final class AppNetworkBudgetService {
             operationId,
             observation.scope(limit.appId()));
         Instant nextAvailableAt = usage.windowStart().plus(usage.window());
-        store.write(usage.deniedAt(now, "rate_limited", nextAvailableAt));
+        writeUsage(usage.deniedAt(now, "rate_limited", nextAvailableAt), operationId, false);
         return AppNetworkBudgetDecision.denied(
             429,
             appId,
@@ -624,11 +617,16 @@ public final class AppNetworkBudgetService {
   }
 
   private void recordConcurrencyDenial(
-      String appId, AppNetworkBudgetOperation operation, Instant now, List<RateLimit> rateLimits)
+      String appId,
+      AppNetworkBudgetOperation operation,
+      Instant now,
+      List<RateLimit> rateLimits,
+      long operationId)
       throws IOException {
     for (RateLimit limit : rateLimits) {
       if (limit.appId().equals(appId) && limit.operation() == operation) {
-        store.write(usage(limit, now).deniedAt(now, "concurrency_limited", null));
+        writeUsage(
+            usage(limit, now).deniedAt(now, "concurrency_limited", null), operationId, false);
         return;
       }
     }
@@ -686,14 +684,7 @@ public final class AppNetworkBudgetService {
             operationId,
             observation.scope(limit.appId()));
         AppNetworkBudgetUsage charged = previous.allowedAt(now);
-        store.write(charged);
-        observation.recordEvent(
-            RuntimeWorkObservation.Kind.RATE_CHARGED,
-            limit.operation(),
-            charged.windowStart().getEpochSecond(),
-            charged.count(),
-            operationId,
-            observation.scope(limit.appId()));
+        writeUsage(charged, operationId, true);
       }
       observation.recordEvent(
           RuntimeWorkObservation.Kind.BUDGET_COMMITTED,
@@ -714,6 +705,45 @@ public final class AppNetworkBudgetService {
           now,
           null);
     }
+  }
+
+  /** Observes the owning I/O boundary without inferring persistence from an exception. */
+  private void writeUsage(AppNetworkBudgetUsage usage, long operationId, boolean charge)
+      throws IOException {
+    recordWrite(
+        charge
+            ? RuntimeWorkObservation.Kind.RATE_WRITE_ATTEMPT
+            : RuntimeWorkObservation.Kind.RATE_METADATA_WRITE_ATTEMPT,
+        usage,
+        operationId);
+    try {
+      store.write(usage);
+    } catch (IOException failure) {
+      recordWrite(
+          charge
+              ? RuntimeWorkObservation.Kind.RATE_WRITE_UNKNOWN
+              : RuntimeWorkObservation.Kind.RATE_METADATA_WRITE_UNKNOWN,
+          usage,
+          operationId);
+      throw failure;
+    }
+    recordWrite(
+        charge
+            ? RuntimeWorkObservation.Kind.RATE_CHARGED
+            : RuntimeWorkObservation.Kind.RATE_METADATA_WRITTEN,
+        usage,
+        operationId);
+  }
+
+  private void recordWrite(
+      RuntimeWorkObservation.Kind kind, AppNetworkBudgetUsage usage, long operationId) {
+    observation.recordEvent(
+        kind,
+        usage.operation(),
+        usage.windowStart().getEpochSecond(),
+        usage.count(),
+        operationId,
+        observation.scope(usage.appId()));
   }
 
   private static AppNetworkBudgetReservation deniedReservation(AppNetworkBudgetDecision decision) {

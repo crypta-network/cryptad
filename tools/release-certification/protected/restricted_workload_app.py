@@ -255,7 +255,8 @@ def require_budget_listener(role, app_id, runtime_dict, port):
         _reject()
     try:
         launch = workload.read(workload.ROOT / 'roles' / role / 'launch.json')
-        if (launch.get('executionClass') != 'pr317-namespace-bound-composed-budget-v1'
+        if (launch.get('executionClass') not in ('pr317-namespace-bound-composed-budget-v1',
+                'pr318-fixed-window-partial-store-v1')
                 or set(launch.get('budgetAppIdentities', {})) != {
                     'feed-reader', 'budget-importer', 'budget-no-trust', 'budget-no-fetch'}):
             _reject()

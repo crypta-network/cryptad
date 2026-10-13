@@ -20,6 +20,10 @@ CAUSAL_KINDS = frozenset({
     'FETCH_OWNER_TERMINATED',
     'FETCH_OWNER_TERMINATION_FAILED',
 })
+STORAGE_KINDS = frozenset({
+    'RATE_WRITE_ATTEMPT', 'RATE_WRITE_UNKNOWN', 'RATE_METADATA_WRITE_ATTEMPT',
+    'RATE_METADATA_WRITTEN', 'RATE_METADATA_WRITE_UNKNOWN',
+})
 CAUSAL_CASES = ('import-concurrency', 'fetch-concurrency', 'timeout', 'cancellation', 'retry')
 # This policy cannot be reduced by a caller choosing an easier subset.
 REQUIRED_CASES = tuple(('direct-valid direct-malformed pasted-preview-valid uri-preview-valid '
@@ -295,7 +299,7 @@ def _causal_snapshot(value, expected_sequence, operation_ids):
     return rates, mapped_holds, value['retainedStatements']
 
 
-def _causal_event_window(case, outer_epoch, outer_node_epoch, epochs, observation_time):
+def _causal_event_window(case, outer_epoch, outer_node_epoch, epochs, observation_time, version=3):
     fields = {'caseId', 'collectorEpoch', 'nodeEpoch', 'scope', 'operationId',
               'sequenceStart', 'sequenceEnd', 'budgetValid', 'droppedEvents',
               'requestOutcome', 'ownerOutcome', 'unresolved', 'censored',
@@ -356,6 +360,7 @@ def _causal_event_window(case, outer_epoch, outer_node_epoch, epochs, observatio
         operation_id = event['operationId']
         row = operation_rows.get(operation_id)
         if (event['kind'] not in pressure.KINDS | COMPOSED_KINDS | CAUSAL_KINDS
+                | (STORAGE_KINDS if version == 4 else frozenset())
                 or event['operation'] not in pressure.OPERATIONS
                 or any(not pressure._number(event[key]) for key in pressure.EVENT_FIELDS -
                        {'observedAt', 'kind', 'operation', 'sourceEpoch'})
@@ -763,7 +768,8 @@ def _derive_causal_cases(value, epochs, observation_time):
     observed, seen_cases, seen_operations = set(), set(), set()
     for case in rows:
         result = _causal_event_window(
-            case, value['collectorEpoch'], value['nodeEpoch'], epochs, observation_time)
+            case, value['collectorEpoch'], value['nodeEpoch'], epochs, observation_time,
+            value['schemaVersion'])
         case_id = case.get('caseId') if isinstance(case, dict) else None
         if case_id in seen_cases:
             raise ComposedEvidenceError('composed-budget-causal-case-replayed')
@@ -780,6 +786,9 @@ def _derive_causal_cases(value, epochs, observation_time):
                        or case['snapshots'][name]['droppedEvents']
                        for name in ('before', 'during', 'after'))):
             continue
+        if value['schemaVersion'] == 4:
+            from .composed_budget_storage_evidence import validate_writes
+            validate_writes(events)
         if case_id == 'import-concurrency':
             valid = _causal_concurrency(case, roles, events, parsed, False)
         elif case_id == 'fetch-concurrency':
@@ -801,23 +810,25 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
     fields = {'schemaVersion', 'workloadDigest', 'productDigest', 'sourceCommit',
               'appCohortDigest', 'collectorDigest', 'configurationDigest', 'segments'}
     version = value.get('schemaVersion') if isinstance(value, dict) else None
-    if version in {2, 3}:
+    if version in {2, 3, 4}:
         fields |= {'collectorEpoch', 'nodeEpoch'}
-    if version == 3:
+    if version in {3, 4}:
         fields.add('causalCases')
+    if version == 4:
+        fields.add('storageCases')
     _closed(value, fields)
-    if version in {2, 3} and (not re.fullmatch('[0-9a-f-]{36}', str(value['collectorEpoch']))
+    if version in {2, 3, 4} and (not re.fullmatch('[0-9a-f-]{36}', str(value['collectorEpoch']))
             or not re.fullmatch('[0-9a-f]{32}', str(value['nodeEpoch']))
             or node_epoch is not None and value['nodeEpoch'] != node_epoch):
         raise ComposedEvidenceError('composed-budget-process-epoch-mismatch')
-    if node_epoch is not None and version not in {2, 3}:
+    if node_epoch is not None and version not in {2, 3, 4}:
         raise ComposedEvidenceError('composed-budget-original-process-binding-required')
     if node_epoch is not None and (collector_digest is None or configuration_digest is None):
         raise ComposedEvidenceError('composed-budget-original-input-binding-required')
     if any(expected is not None and value[key] != expected for key, expected in
            (('collectorDigest', collector_digest), ('configurationDigest', configuration_digest))):
         raise ComposedEvidenceError('composed-budget-original-input-substitution')
-    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2, 3}
+    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2, 3, 4}
             or any(value[key] != expected for key, expected in (
                 ('workloadDigest', workload_digest), ('productDigest', product_digest),
                 ('sourceCommit', source_commit), ('appCohortDigest', app_cohort_digest)))
@@ -839,12 +850,12 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
         if (case not in REQUIRED_CASES or not isinstance(epoch, str)
                 or not re.fullmatch('[0-9a-f-]{36}', epoch)
                 or type(parent) is not int or parent < 1 or type(scope) is not int
-                or scope < (3 if version in {2, 3} else 2)
+                or scope < (3 if version in {2, 3, 4} else 2)
                 or type(segment['budgetValid']) is not bool
                 or not pressure._number(segment['droppedEvents'])
                 or (epoch, parent) in seen):
             raise ComposedEvidenceError('composed-budget-segment-binding-invalid')
-        if version in {2, 3} and epoch != value['collectorEpoch']:
+        if version in {2, 3, 4} and epoch != value['collectorEpoch']:
             raise ComposedEvidenceError('composed-budget-collector-epoch-mismatch')
         seen.add((epoch, parent))
         snapshots = []
@@ -873,7 +884,8 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
         for event in events:
             _closed(event, pressure.EVENT_FIELDS)
             if (event['kind'] not in pressure.KINDS | COMPOSED_KINDS |
-                    (CAUSAL_KINDS if version == 3 else frozenset())
+                    (CAUSAL_KINDS if version in {3, 4} else frozenset()) |
+                    (STORAGE_KINDS if version == 4 else frozenset())
                     or event['operation'] not in pressure.OPERATIONS
                     or any(not pressure._number(event[key]) for key in pressure.EVENT_FIELDS -
                            {'observedAt', 'kind', 'operation', 'sourceEpoch'})
@@ -900,6 +912,9 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
             previous = event
         if not segment['budgetValid'] or segment['droppedEvents']:
             continue
+        if version == 4:
+            from .composed_budget_storage_evidence import validate_writes
+            validate_writes(events)
         if case == 'authorization-denied':
             root = [event for event in events if event['operationId'] == parent]
             kinds = [event['kind'] for event in root]
@@ -1086,8 +1101,11 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
         if graph_delta != (1 if 'GRAPH_STORE_IMPORTED' in kinds else 0):
             continue
         observed.add(case)
-    if version == 3:
+    if version in {3, 4}:
         observed |= _derive_causal_cases(value, epochs, observation_time)
+    if version == 4:
+        from .composed_budget_storage_evidence import derive_cases
+        observed |= derive_cases(value, epochs, observation_time)
     return {'schemaVersion': 1, 'kind': 'composed-budget-coverage',
             'requiredCases': list(REQUIRED_CASES), 'observedCases': sorted(observed),
             'missingCases': sorted(set(REQUIRED_CASES) - observed),

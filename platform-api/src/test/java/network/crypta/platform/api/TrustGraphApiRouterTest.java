@@ -497,7 +497,7 @@ class TrustGraphApiRouterTest {
 
     var history = budgets.observation().snapshot();
     var kinds = history.events().stream().map(event -> event.kind().name()).toList();
-    assertEquals(3, history.version());
+    assertEquals(4, history.version());
     assertTrue(kinds.contains("GRAPH_STORE_IMPORTED"));
     assertTrue(kinds.contains("GRAPH_STORE_DUPLICATE"));
     assertEquals(4, kinds.stream().filter("COMPOSED_CHILD"::equals).count());

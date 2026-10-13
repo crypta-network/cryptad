@@ -66,6 +66,18 @@ class RuntimeInputTest(unittest.TestCase):
         self.assertEqual('01234567-89ab-cdef-0123-456789abcdef',
                          result['collectorEpoch'])
 
+        lane.observations[0]['runtime']['work']['version'] = 4
+        result = lane.runtime_evidence()
+        self.assertEqual(4, result['schemaVersion'])
+        self.assertEqual('01234567-89ab-cdef-0123-456789abcdef',
+                         result['collectorEpoch'])
+        changed = copy.deepcopy(lane.observations[0])
+        changed['runtime']['work']['collectorEpoch'] = 'fedcba98-7654-3210-fedc-ba9876543210'
+        lane.observations.append(changed)
+        with self.assertRaisesRegex(scheduler.runtime.RuntimeFailure,
+                                    'scheduler-native-collector-epoch-substituted'):
+            lane.runtime_evidence()
+
     def test_writable_addition_does_not_change_original_members(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

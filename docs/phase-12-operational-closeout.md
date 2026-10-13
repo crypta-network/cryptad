@@ -1,5 +1,12 @@
 # Phase 12 acceptance audit and operational closeout
 
+The [PR-318 window and storage budget slice](pr-318-fixed-window-partial-store-budget-evidence.md)
+adds operation-correlated write observations, real file-backed handler tests and prospective
+installed representatives for three existing budget cases. The 31-case budget policy and 49
+mandatory Phase 12 requirements remain intact. Installed/protected execution, the contested
+installed hour direction, restart, diagnostics, privacy and native cancellation retain their
+separate missing evidence. The historical tracker and assessment cutoffs below remain unchanged.
+
 The bounded [PR-312 installed/native remediation](pr-312-installed-resolver-keyless-native.md)
 records startup and finite-verifier work separately from the full observer/workload boundary.
 Its local and disposable observations do not change mandatory requirement membership, the

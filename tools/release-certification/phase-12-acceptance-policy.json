@@ -2651,6 +2651,31 @@
             "path": ".github/workflows/runtime-baseline-approval.yml",
             "digest": "sha256:25b667610ff56d742e30b7d08a54e0a543f5ab25be4c342fc6e8bbb18af7d84a",
             "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
+          },
+          {
+            "path": "platform-api/src/main/java/network/crypta/platform/api/networkbudget/AppNetworkBudgetService.java",
+            "digest": "sha256:4a9e80c87fea71dd918423fce3815fad486fdec346cf61c1122c096c34a8295a",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
+          },
+          {
+            "path": "platform-api/src/main/java/network/crypta/platform/api/networkbudget/RuntimeWorkObservation.java",
+            "digest": "sha256:60ddbcc4a3bf173525bbddfff928e933ab89393c3246e6a03cdd02fa5e49a3fb",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
+          },
+          {
+            "path": "tools/release-certification/cryptad_certification/composed_budget_evidence.py",
+            "digest": "sha256:e43235ff6cae2c97791684acd71f913286355da626534da1a10e917c1b2959ff",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
+          },
+          {
+            "path": "tools/release-certification/cryptad_certification/composed_budget_storage_evidence.py",
+            "digest": "sha256:901e3dd6ebb5bbb385c0d6e16868df2daa91a8ab10a37c02d7818867d30d4845",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
+          },
+          {
+            "path": "tools/interop/cross_version_installed_storage_budgets.py",
+            "digest": "sha256:9ac17fca0f0716119cf1ed38daa6d06d66611753c6ebcd500b299d2336b71177",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
           }
         ],
         "state": "partial",
@@ -2744,6 +2769,26 @@
             "path": "tools/release-certification/protected/test_runtime_baseline_consumer.py",
             "digest": "sha256:3b5175bab6ce1cc688cc3a935dbbf49262c0c0cd1614f4a1a3f9a7a0134999d4",
             "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
+          },
+          {
+            "path": "platform-api/src/test/java/network/crypta/platform/api/TrustGraphStorageBudgetTest.java",
+            "digest": "sha256:b3447c855c8422133f32154cdb375bdeabd7ef9310a7cbd09962ad57c81936ce",
+            "assertion": "PR-318 controlled file-backed and causal rejection test source; source pin is not an executed test or installed observation claim."
+          },
+          {
+            "path": "platform-api/src/test/java/network/crypta/platform/api/networkbudget/AppNetworkBudgetServiceTest.java",
+            "digest": "sha256:8a5254e70cfbe22ef1bd69b9e8dcd93afd29ef81489b6a9d11ae13c71b6156a5",
+            "assertion": "PR-318 controlled file-backed and causal rejection test source; source pin is not an executed test or installed observation claim."
+          },
+          {
+            "path": "tools/release-certification/cryptad_certification/tests/test_composed_budget_storage_evidence.py",
+            "digest": "sha256:0bf4040ef08bcd98286365a44cf6aff97dbf018f095821f1ae0e2245f3f55c6a",
+            "assertion": "PR-318 controlled file-backed and causal rejection test source; source pin is not an executed test or installed observation claim."
+          },
+          {
+            "path": "tools/release-certification/restricted/test_pr318_storage_installed.py",
+            "digest": "sha256:abbb0824632d2d119e625f6c2555dac6502f7402eb51ec65da72ae7869dd42ea",
+            "assertion": "PR-318 controlled file-backed and causal rejection test source; source pin is not an executed test or installed observation claim."
           }
         ]
       },
@@ -2940,6 +2985,31 @@
             "path": ".github/workflows/runtime-baseline-approval.yml",
             "digest": "sha256:25b667610ff56d742e30b7d08a54e0a543f5ab25be4c342fc6e8bbb18af7d84a",
             "assertion": "PR-308 finite original reference ledger, exact private proposal and actual review verification, preselection and recomputed scoped consumer. Source is implementation evidence only; no actual approval, protected execution, complete app budgets or Phase 12 acceptance is supplied."
+          },
+          {
+            "path": "platform-api/src/main/java/network/crypta/platform/api/networkbudget/AppNetworkBudgetService.java",
+            "digest": "sha256:4a9e80c87fea71dd918423fce3815fad486fdec346cf61c1122c096c34a8295a",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
+          },
+          {
+            "path": "platform-api/src/main/java/network/crypta/platform/api/networkbudget/RuntimeWorkObservation.java",
+            "digest": "sha256:60ddbcc4a3bf173525bbddfff928e933ab89393c3246e6a03cdd02fa5e49a3fb",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
+          },
+          {
+            "path": "tools/release-certification/cryptad_certification/composed_budget_evidence.py",
+            "digest": "sha256:e43235ff6cae2c97791684acd71f913286355da626534da1a10e917c1b2959ff",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
+          },
+          {
+            "path": "tools/release-certification/cryptad_certification/composed_budget_storage_evidence.py",
+            "digest": "sha256:901e3dd6ebb5bbb385c0d6e16868df2daa91a8ab10a37c02d7818867d30d4845",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
+          },
+          {
+            "path": "tools/interop/cross_version_installed_storage_budgets.py",
+            "digest": "sha256:9ac17fca0f0716119cf1ed38daa6d06d66611753c6ebcd500b299d2336b71177",
+            "assertion": "PR-318 bounded fixed-window and storage accounting implementation; preserves all 31 budget requirements, original evidence and remaining installed variants."
           }
         ],
         "state": "partial",
@@ -3033,6 +3103,26 @@
             "path": "tools/release-certification/protected/test_runtime_baseline_consumer.py",
             "digest": "sha256:3b5175bab6ce1cc688cc3a935dbbf49262c0c0cd1614f4a1a3f9a7a0134999d4",
             "assertion": "PR-308 positive and adversarial tests for original reference, reviewer, private-context and scoped consumer semantics. Synthetic provider seams and local execution are not independent reviewers or protected operational approval."
+          },
+          {
+            "path": "platform-api/src/test/java/network/crypta/platform/api/TrustGraphStorageBudgetTest.java",
+            "digest": "sha256:b3447c855c8422133f32154cdb375bdeabd7ef9310a7cbd09962ad57c81936ce",
+            "assertion": "PR-318 controlled file-backed and causal rejection test source; source pin is not an executed test or installed observation claim."
+          },
+          {
+            "path": "platform-api/src/test/java/network/crypta/platform/api/networkbudget/AppNetworkBudgetServiceTest.java",
+            "digest": "sha256:8a5254e70cfbe22ef1bd69b9e8dcd93afd29ef81489b6a9d11ae13c71b6156a5",
+            "assertion": "PR-318 controlled file-backed and causal rejection test source; source pin is not an executed test or installed observation claim."
+          },
+          {
+            "path": "tools/release-certification/cryptad_certification/tests/test_composed_budget_storage_evidence.py",
+            "digest": "sha256:0bf4040ef08bcd98286365a44cf6aff97dbf018f095821f1ae0e2245f3f55c6a",
+            "assertion": "PR-318 controlled file-backed and causal rejection test source; source pin is not an executed test or installed observation claim."
+          },
+          {
+            "path": "tools/release-certification/restricted/test_pr318_storage_installed.py",
+            "digest": "sha256:abbb0824632d2d119e625f6c2555dac6502f7402eb51ec65da72ae7869dd42ea",
+            "assertion": "PR-318 controlled file-backed and causal rejection test source; source pin is not an executed test or installed observation claim."
           }
         ]
       },
@@ -3793,7 +3883,7 @@
         "sourceEvidence": [
           {
             "assertion": "Account for mandatory requirements and retained residuals, execute fixed verifiers and preserve tool/product identities; complete-as-of requires every applicable dimension.",
-            "digest": "sha256:d01ffc7fe8411dce4b81f7ec0d9e40daea7ba16301aa6353fdfcebd53e471a69",
+            "digest": "sha256:1e8dca9bdafe1b1c8c7573a069ac9328427c86c5c5c75974b9b25e05e95ed24b",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {
@@ -3975,7 +4065,7 @@
         "sourceEvidence": [
           {
             "assertion": "Verify assessment then export only closed public fields, preserve reviewed history and prevent site feedback or circular phase authority.",
-            "digest": "sha256:d01ffc7fe8411dce4b81f7ec0d9e40daea7ba16301aa6353fdfcebd53e471a69",
+            "digest": "sha256:1e8dca9bdafe1b1c8c7573a069ac9328427c86c5c5c75974b9b25e05e95ed24b",
             "path": "tools/release-certification/cryptad_certification/phase_12_closeout.py"
           },
           {

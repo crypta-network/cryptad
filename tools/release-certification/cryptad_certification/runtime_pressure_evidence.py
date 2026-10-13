@@ -60,16 +60,18 @@ def validate(value, *, workload_digest, observation_time=None):
         fields.add('baseline')
     version = value.get('schemaVersion') if isinstance(value, dict) else None
     kinds = KINDS
-    if version in {2, 3}:
-        from .composed_budget_evidence import CAUSAL_KINDS, COMPOSED_KINDS
+    if version in {2, 3, 4}:
+        from .composed_budget_evidence import CAUSAL_KINDS, COMPOSED_KINDS, STORAGE_KINDS
         fields.add('collectorEpoch')
         kinds = KINDS | COMPOSED_KINDS
-        if version == 3:
+        if version in {3, 4}:
             kinds |= CAUSAL_KINDS
+        if version == 4:
+            kinds |= STORAGE_KINDS
         if not re.fullmatch('[0-9a-f-]{36}', str(value.get('collectorEpoch'))):
             raise RuntimeEvidenceError('runtime-evidence-collector-epoch-invalid')
     _closed(value, fields, 'runtime-evidence-fields-invalid')
-    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2, 3}
+    if (type(value['schemaVersion']) is not int or value['schemaVersion'] not in {1, 2, 3, 4}
             or value['workloadDigest'] != workload_digest
             or any(not baseline.DIGEST.fullmatch(str(value[key])) for key in ('workloadDigest', 'collectorDigest', 'configurationDigest'))
             or type(value['budgetValid']) is not bool or not _number(value['droppedEvents'])):
@@ -149,7 +151,16 @@ def derive(value, *, workload_digest, observation_time=None):
     validate(value, workload_digest=workload_digest, observation_time=observation_time)
     events = value['workEvents']
     valid = value['budgetValid'] and value['droppedEvents'] == 0 and (not events or events[0]['sequence'] == 1)
-    valid = valid and not any(event['kind'] == 'STORE_UNAVAILABLE' for event in events)
+    valid = valid and not any(event['kind'] in {
+        'STORE_UNAVAILABLE', 'RATE_WRITE_UNKNOWN', 'RATE_METADATA_WRITE_UNKNOWN'}
+        for event in events)
+    if value['schemaVersion'] == 4 and valid:
+        from .composed_budget_evidence import ComposedEvidenceError
+        from .composed_budget_storage_evidence import validate_writes
+        try:
+            validate_writes(events)
+        except ComposedEvidenceError:
+            valid = False
     ticks, tick, executor_pending = [], None, False
     for event in events:
         if event['kind'] == 'EXECUTOR_TICK':
