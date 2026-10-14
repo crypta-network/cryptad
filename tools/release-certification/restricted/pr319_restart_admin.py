@@ -390,7 +390,11 @@ def _store_capture(workload, uid):
 
 
 class FixedRestartFaults:
-    def __init__(self, workload, sender_handle):
+    def __init__(self, workload, sender_handle, *, execution_class=EXECUTION_CLASS):
+        from pr320_budget_contract import RESTART_EXECUTION_CLASS as prospective_class
+        if execution_class not in (EXECUTION_CLASS, prospective_class):
+            raise ValueError('pr319-admin-class-invalid')
+        self.execution_class = execution_class
         self.workload, self.sender_handle = workload, sender_handle
         self.receipts, self.completed = [], set()
         self.attempted = set()
@@ -401,7 +405,7 @@ class FixedRestartFaults:
         workload = self.workload
         campaign, role, record = workload.retained(self.sender_handle)
         if (os.geteuid() != 0 or role != ROLE
-                or campaign.get("executionClass") != EXECUTION_CLASS
+                or campaign.get("executionClass") != self.execution_class
                 or campaign.get("budgetSelectionDigest") is None):
             raise ValueError("pr319-admin-selection-invalid")
         if not cleanup:

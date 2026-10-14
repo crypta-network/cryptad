@@ -29,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -52,6 +53,7 @@ class PlatformApiToadletTest {
   @Mock private AppHost appHost;
   @Mock private AppBrowserSessionVerifier appBrowserSessionVerifier;
   @Mock private ToadletContext ctx;
+  @Mock private ToadletContainer container;
   @Mock private HTTPRequest request;
   @Mock private Bucket requestBody;
 
@@ -60,12 +62,100 @@ class PlatformApiToadletTest {
   @BeforeEach
   void setUp() {
     toadlet = new PlatformApiToadlet(router);
+    lenient().when(ctx.getContainer()).thenReturn(container);
     lenient().when(request.getHeader("x-crypta-app-token")).thenReturn(null);
     lenient().when(request.getHeader("x-crypta-app-session")).thenReturn(null);
     lenient().when(request.getHeader("authorization")).thenReturn(null);
     lenient().when(request.getHeader("origin")).thenReturn(null);
     lenient().when(request.getHeader("access-control-request-method")).thenReturn(null);
     lenient().when(request.getHeader("access-control-request-headers")).thenReturn(null);
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "https://hostile.invalid",
+        "null",
+        "http://localhost:8889",
+        "http://user@localhost",
+        "http://localhost/private",
+        "http://localhost?token=private"
+      })
+  void handleMethodGET_whenHostOriginIsForeign_expectDeniedBeforeComposition(String origin)
+      throws Exception {
+    when(request.getHeader("origin")).thenReturn(origin);
+
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/api/v1/operator/support-bundle"), request, ctx);
+
+    assertEquals(403, captureReplyHeaders().statusCode());
+    verifyNoInteractions(router);
+    verify(ctx, never()).isAllowedFullAccess();
+    assertFalse(captureBodyWrite().bodyText().contains("private"));
+  }
+
+  @Test
+  void handleMethodGET_whenHostOriginMatches_expectNormalOperatorRoute() throws Exception {
+    when(request.getHeader("origin")).thenReturn("http://localhost");
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(
+        URI.create("http://localhost/api/v1/operator/support-bundle"), request, ctx);
+
+    verify(router).route(any(PlatformApiRequest.class));
+    assertEquals(200, captureReplyHeaders().statusCode());
+  }
+
+  @Test
+  void handleMethodGET_whenRelativeTargetHasHostHeader_expectSameOriginOperatorRoute()
+      throws Exception {
+    when(request.getHeader("origin")).thenReturn("http://localhost:8888");
+    when(request.getHeader("host")).thenReturn("localhost:8888");
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
+    when(request.getParameterNames()).thenReturn(List.of());
+    when(router.route(any(PlatformApiRequest.class)))
+        .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+
+    toadlet.handleMethodGET(URI.create("/api/v1/operator/support-bundle"), request, ctx);
+
+    verify(router).route(any(PlatformApiRequest.class));
+    assertEquals(200, captureReplyHeaders().statusCode());
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "false, http://localhost:8888, 200",
+    "true, https://localhost:8888, 200",
+    "true, http://localhost:8888, 403",
+    "false, https://localhost:8888, 403",
+    "true, https://localhost:8889, 403"
+  })
+  void handleMethodPOST_whenRelativeTargetUsesServerTransport_expectMatchingOriginOnly(
+      boolean ssl, String origin, int status) throws Exception {
+    when(request.getHeader("origin")).thenReturn(origin);
+    when(request.getHeader("host")).thenReturn("localhost:8888");
+    when(container.isSSL()).thenReturn(ssl);
+    if (status == 200) {
+      when(ctx.isAllowedFullAccess()).thenReturn(true);
+      when(ctx.hasFormPassword(request)).thenReturn(true);
+      when(request.getParameterNames()).thenReturn(List.of());
+      when(router.route(any(PlatformApiRequest.class)))
+          .thenReturn(PlatformApiResponse.ok(Map.of("ok", true)));
+    }
+
+    toadlet.handleMethodPOST(URI.create("/api/v1/apps/feed-reader/start"), request, ctx);
+
+    assertEquals(status, captureReplyHeaders().statusCode());
+    if (status == 200) {
+      verify(router).route(any(PlatformApiRequest.class));
+      verify(ctx).hasFormPassword(request);
+    } else {
+      verifyNoInteractions(router);
+      verify(ctx, never()).hasFormPassword(request);
+    }
   }
 
   @Test

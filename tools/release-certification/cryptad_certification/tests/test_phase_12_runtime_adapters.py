@@ -193,6 +193,67 @@ def supervisor_fixture(plan, events, checkpoint):
 
 
 class Phase12RuntimeAdapterTest(unittest.TestCase):
+    def test_schema_v8_maintenance_finish_preserves_historical_version_and_authenticated_bindings(self):
+        from test_maintenance_runtime_projection import MaintenanceRuntimeProjectionTest
+        projection = runtime._protected('maintenance_runtime_projection')
+        supervisor = runtime._protected('cross_version_supervisor_authority')
+        fixtures = MaintenanceRuntimeProjectionTest()
+        for version in (2, 3, 6):
+            plan, events, checkpoint, products = (
+                fixtures.runtime_fixture() if version == 2 else fixtures.scheduler_fixture())
+            if version == 6:
+                event = next(row for row in events if 'runtimeEvidence' in row)
+                node = next(row for row in plan['nodes'] if row['role'] == event['role'])
+                event['composedBudgetEvidence'] = dict(schemaVersion=2,
+                    collectorEpoch='12345678-1234-1234-1234-123456789012', nodeEpoch=event['nodeEpoch'],
+                    workloadDigest=plan['workloadInputs']['scheduler'], sourceCommit=node['sourceCommit'],
+                    productDigest=node['artifactDigest'], appCohortDigest=runtime.soak.digest(node['appDigests']),
+                    collectorDigest='sha256:' + '5' * 64, configurationDigest='sha256:' + '6' * 64, segments=[])
+                plan['composedBudgetInputs'] = {key: event['composedBudgetEvidence'][key]
+                    for key in ('collectorDigest', 'configurationDigest')}
+                for row in events:
+                    row['planDigest'] = runtime.soak.digest(plan)
+                rechain(events)
+                checkpoint = checkpoint_for(plan, events)
+            measured = projection.project(plan, events, checkpoint, products,
+                                          now=dt.datetime.fromisoformat(AS_OF))
+            self.assertEqual(version, measured['schemaVersion'])
+            payloads = {name: raw(value) for name, value in (
+                ('plan.json', plan), ('events.json', events), ('checkpoint.json', checkpoint),
+                ('products.json', products))}
+            chain = supervisor_fixture(plan, events, checkpoint)
+            final, start, authorization = (row['report'] for row in chain)
+            final.update(schemaVersion=version + 1, maintenanceMeasurements=measured,
+                         admittedProductsDigest=runtime.soak.digest(products))
+            start.update(schemaVersion=runtime._budget_base_report(final),
+                         admittedProductsDigest=final['admittedProductsDigest'])
+            final['previousReportDigest'] = runtime.soak.digest(start)
+            supervisor.validate_report(final)
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as temporary, \
+                    mock.patch('socket.create_connection', side_effect=AssertionError('network forbidden')):
+                scratch = Path(temporary).resolve()
+                authority = runtime._AuthenticatedSupervisor(chain, runtime._ORIGINAL_SUPERVISOR)
+                historical = runtime.verify_authenticated('maintenance-measurements', payloads, AS_OF, scratch, authority)
+                wrapped = copy.deepcopy(chain)
+                wrapped_final = wrapped[0]['report']
+                wrapped_final.update(schemaVersion=8, budgetCampaignBaseVersion=version + 1,
+                    budgetCampaignReceipt={'schemaVersion': 1, 'kind': 'pr320-original-budget-member-receipt',
+                                           'receiptId': 'a' * 32})
+                supervisor.validate_report(wrapped_final)
+                result = runtime.verify_authenticated('maintenance-measurements', payloads, AS_OF, scratch,
+                    runtime._AuthenticatedSupervisor(wrapped, runtime._ORIGINAL_SUPERVISOR))
+                self.assertEqual(historical, result)
+                self.assertEqual('authenticated', result['dimensions']['originalProvenance'])
+                for fault in ('base', 'products', 'measurement'):
+                    changed = copy.deepcopy(wrapped)
+                    finish = changed[0]['report']
+                    if fault == 'base': finish['budgetCampaignBaseVersion'] = 2
+                    elif fault == 'products': finish['admittedProductsDigest'] = 'sha256:' + 'f' * 64
+                    else: finish['maintenanceMeasurements']['evaluationCutoff'] = '2026-09-10T12:01:00+00:00'
+                    with self.subTest(version=version, fault=fault), self.assertRaises(ValueError):
+                        runtime.verify_authenticated('maintenance-measurements', payloads, AS_OF, scratch,
+                            runtime._AuthenticatedSupervisor(changed, runtime._ORIGINAL_SUPERVISOR))
+
     def run_adapter(self, adapter, payloads):
         with tempfile.TemporaryDirectory() as temporary:
             with mock.patch("socket.create_connection", side_effect=AssertionError("network forbidden")):

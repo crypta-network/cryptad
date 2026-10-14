@@ -10,6 +10,30 @@ import pr315_pve_pressure_watch as watch
 
 
 class PressureWatchTest(unittest.TestCase):
+    def test_prospective_privacy_watcher_cannot_be_substituted_for_default_or_relabelled(self):
+        ready = {'observedMonotonicNs': 100, **watch._profile_fields(watch.PRIVACY_EXECUTION_CLASS)}
+        with patch.object(watch, 'verify_ready', return_value=ready), patch.object(watch.time, 'monotonic_ns', return_value=101), \
+                patch.object(watch, '_ct_record', side_effect=FileNotFoundError()):
+            self.assertEqual(ready, watch.verify_launch_ready('suite-111', 'a' * 40, execution_class=watch.PRIVACY_EXECUTION_CLASS))
+            with self.assertRaisesRegex(ValueError, 'profile-mismatch'):
+                watch.verify_launch_ready('suite-111', 'a' * 40)
+        with self.assertRaisesRegex(ValueError, 'profile-substituted'):
+            watch._record_profile({**ready, 'maxSeconds': 999999})
+        with self.assertRaisesRegex(ValueError, 'profile-unapproved'):
+            watch._profile_fields('pr320-arbitrary-long-watch-v1')
+
+    def test_privacy_finished_receipt_must_keep_actual_long_watch_profile(self):
+        ready = {'observedMonotonicNs': 100, **watch._profile_fields(watch.PRIVACY_EXECUTION_CLASS)}
+        finished = {'schemaVersion': 1, 'kind': 'pr315-pve-watch-finished', 'suite': 'suite-111',
+            'sourceCommit': 'a' * 40, 'moduleDigest': 'b' * 64, 'action': 'completed', 'seenTaskQemu': True,
+            'finishedMonotonicNs': 7000 * 10**9, **watch._profile_fields(watch.PRIVACY_EXECUTION_CLASS)}
+        with patch.object(watch, '_ct_record', return_value=finished):
+            self.assertEqual(finished, watch.verify_finished('suite-111', 'a' * 40, ready))
+        del finished['executionClass']
+        del finished['maxSeconds']
+        with patch.object(watch, '_ct_record', return_value=finished), self.assertRaisesRegex(ValueError, 'finished-invalid'):
+            watch.verify_finished('suite-111', 'a' * 40, ready)
+
     def test_watch_deadline_includes_the_pr316_launch_lifecycle(self):
         self.assertEqual(5700, watch.MAX_SECONDS)
 

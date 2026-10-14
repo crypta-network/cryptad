@@ -76,7 +76,7 @@ def _number(value, minimum, maximum, label):
 
 def validate_plan(plan):
     """Validate public identities and workload policy without admitting executable bytes."""
-    _closed(plan, {"schemaVersion", "kind", "experimentId", "profile", "topologyClass", "provenanceClass", "requestedSeconds", "probeIntervalSeconds", "policy", "requiredScenarios", "producer", "nodes"} | ({key for key in ("cohorts", "workloadInputs", "composedBudgetInputs") if key in plan} if isinstance(plan, dict) else set()), "plan")
+    _closed(plan, {"schemaVersion", "kind", "experimentId", "profile", "topologyClass", "provenanceClass", "requestedSeconds", "probeIntervalSeconds", "policy", "requiredScenarios", "producer", "nodes"} | ({key for key in ("cohorts", "workloadInputs", "composedBudgetInputs", "budgetCampaignInputs") if key in plan} if isinstance(plan, dict) else set()), "plan")
     if type(plan["schemaVersion"]) is not int or plan["schemaVersion"] != 1 or plan["kind"] != KIND or not isinstance(plan["profile"], str) or plan["profile"] not in PROFILES:
         raise EvidenceError("plan-version-or-profile-invalid")
     if not isinstance(plan["experimentId"], str) or not IDENTIFIER.fullmatch(plan["experimentId"]) or plan["topologyClass"] != "single-host-independent-processes":
@@ -118,6 +118,12 @@ def validate_plan(plan):
         _closed(inputs, {'collectorDigest', 'configurationDigest'}, 'composed-budget-inputs')
         if 'scheduler' not in workload or any(not DIGEST.fullmatch(str(value)) for value in inputs.values()):
             raise EvidenceError('composed-budget-input-binding-invalid')
+    if 'budgetCampaignInputs' in plan:
+        from .composed_budget_journal_member import validate_inputs
+        try:
+            validate_inputs(plan)
+        except (ValueError, TypeError, KeyError):
+            raise EvidenceError('budget-campaign-plan-contract-invalid') from None
     cohorts = plan.get("cohorts", [])
     if not isinstance(cohorts, list) or len(cohorts) > 1:
         raise EvidenceError("recovery-cohort-roster-invalid")
@@ -161,8 +167,8 @@ def validate_plan(plan):
         raise EvidenceError("candidate-artifacts-differ")
     if previous["artifactDigest"] == sender["artifactDigest"] or previous["sourceCommit"] == sender["sourceCommit"]:
         raise EvidenceError("previous-relabels-current")
-    budget_profile = (plan["experimentId"] in {
-        "pr317-namespace-bound-composed-budget", "pr319-composed-budget-restart-diagnostics"}
+    from .composed_budget_cohort_contract import BUDGET_EXPERIMENTS
+    budget_profile = (plan["experimentId"] in BUDGET_EXPERIMENTS
         and set(workload) == {"scheduler"}
         and set(plan.get("composedBudgetInputs", {})) == {
             "collectorDigest", "configurationDigest"}
@@ -333,7 +339,7 @@ class Journal:
             finally:
                 os.close(self._lock)
 
-    def append(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, prior_checkpoint=None, peer_role="", node_epoch=None, cohort="", runtime_evidence=None, composed_budget_evidence=None):
+    def append(self, kind, role="", scenario="", operation="", outcome="pass", counters=None, prior_checkpoint=None, peer_role="", node_epoch=None, cohort="", runtime_evidence=None, composed_budget_evidence=None, composed_budget_campaign_member=None):
         if self.finished or len(self.events) >= self.plan["policy"]["maxEvents"]:
             raise EvidenceError("journal-closed-or-budget-exhausted")
         scope = (cohort, role)
@@ -360,6 +366,8 @@ class Journal:
             event["runtimeEvidence"] = runtime_evidence
         if composed_budget_evidence is not None:
             event["composedBudgetEvidence"] = composed_budget_evidence
+        if composed_budget_campaign_member is not None:
+            event['composedBudgetCampaignMember'] = composed_budget_campaign_member
         _validate_event(event, self.plan)
         if "scheduler" in self.plan.get("workloadInputs", {}) and self._stream.tell() > 16 * 1024 * 1024 - event_byte_limit(self.plan):
             raise EvidenceError("journal-total-byte-budget-exceeded")
@@ -441,6 +449,18 @@ def _validate_event(event, plan):
                    configuration_digest=inputs["configurationDigest"])
         except (ValueError, TypeError, KeyError):
             raise EvidenceError("composed-budget-journal-contract-invalid") from None
+    if isinstance(event, dict) and 'composedBudgetCampaignMember' in event:
+        fields.add('composedBudgetCampaignMember')
+        if set(event) & {'composedBudgetEvidence', 'runtimeEvidence'}:
+            raise EvidenceError('budget-campaign-event-mixed-owners')
+        from .composed_budget_journal_member import validate_reference, resolve_journal_members
+        try:
+            validate_reference(plan, event)
+            # Inline members are original bytes, so validate their actual native
+            # owners now. A reference-only event grants no locally observed credit.
+            resolve_journal_members(plan, [event])
+        except (ValueError, TypeError, KeyError):
+            raise EvidenceError('budget-campaign-journal-contract-invalid') from None
     _closed(event, fields, "event")
     if any(not isinstance(event[k], str) for k in ("kind", "outcome", "role", "scenario", "peerRole", "operation")):
         raise EvidenceError("event-enum-type-invalid")

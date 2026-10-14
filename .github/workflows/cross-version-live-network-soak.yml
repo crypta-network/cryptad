@@ -6,7 +6,7 @@ on:
         description: Fixed operation against the environment-selected disposable supervisor.
         type: choice
         required: true
-        options: [authorize, start, checkpoint, finish]
+        options: [authorize, start, checkpoint, finish, budget-prepare, budget-collect]
       operation-handle:
         description: Opaque operation registered by the restricted host administrator for this exact job.
         type: string
@@ -45,11 +45,16 @@ jobs:
           set -euo pipefail
           umask 077
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          case "$SELECTED_OPERATION" in authorize|start|checkpoint|finish) ;; *) exit 2 ;; esac
+          case "$SELECTED_OPERATION" in
+            authorize|start|checkpoint|finish) selected_method="supervisor-$SELECTED_OPERATION" ;;
+            budget-prepare) selected_method="budget-acquisition-prepare" ;;
+            budget-collect) selected_method="budget-acquisition-collect" ;;
+            *) exit 2 ;;
+          esac
           public_root="$(mktemp -d "$RUNNER_TEMP/cross-version-public.XXXXXX")"
           echo "CROSS_VERSION_PUBLIC_ROOT=$public_root" >> "$GITHUB_ENV"
           /usr/bin/python3 -I -S /opt/cryptad-cross-version/current/tools/release-certification/protected/restricted_client.py \
-            "supervisor-$SELECTED_OPERATION" "$REGISTERED_HANDLE" > "$public_root/cross-version-supervisor.json"
+            "$selected_method" "$REGISTERED_HANDLE" > "$public_root/cross-version-supervisor.json"
       - name: Attest exact bounded public observation
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

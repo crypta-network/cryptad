@@ -66,6 +66,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String APP_SESSION_HEADER = "x-crypta-app-session";
   private static final String AUTHORIZATION_HEADER = "authorization";
   private static final String ORIGIN_HEADER = "origin";
+  private static final String ORIGIN_MISMATCH_CODE = "origin_mismatch";
   private static final String ACCESS_CONTROL_REQUEST_METHOD_HEADER =
       "access-control-request-method";
   private static final String ACCESS_CONTROL_REQUEST_HEADERS_HEADER =
@@ -496,8 +497,8 @@ public final class PlatformApiToadlet extends Toadlet {
               400, "invalid_path", "Request path contains malformed percent-encoding.");
     } catch (PlatformApiException e) {
       response = PlatformApiResponse.error(e.statusCode(), e.errorCode(), e.getMessage());
-    } catch (RuntimeException e) {
-      LOG.error("Platform API request failed for path {}", requestPath(uri), e);
+    } catch (RuntimeException _) {
+      LOG.error("Platform API request failed [internal_error]");
       response =
           PlatformApiResponse.error(500, "internal_error", "Unexpected platform API failure.");
     }
@@ -533,6 +534,10 @@ public final class PlatformApiToadlet extends Toadlet {
     }
     PlatformApiPrincipal principal = principalResolution.principal();
 
+    if (!principal.isApp() && !hostOriginMatches(uri, request, cors.origin(), ctx)) {
+      return PlatformApiResponse.error(
+          403, ORIGIN_MISMATCH_CODE, "Host browser origin does not match the request origin.");
+    }
     if (!principal.isApp() && !ctx.isAllowedFullAccess()) {
       return PlatformApiResponse.error(403, "forbidden", "Full access is required.");
     }
@@ -1030,6 +1035,40 @@ public final class PlatformApiToadlet extends Toadlet {
         method, relativeApiPath(requestPath(uri)), queryParameters, principal);
   }
 
+  private static boolean hostOriginMatches(
+      URI target, HTTPRequest request, String origin, ToadletContext ctx) {
+    if (origin == null) return true;
+    try {
+      URI claimed = URI.create(origin);
+      ToadletContainer container = ctx.getContainer();
+      if (container == null) return false;
+      String authority =
+          target.getHost() == null ? request.getHeader("host") : target.getRawAuthority();
+      if (authority == null || authority.isBlank()) return false;
+      URI effective = URI.create((container.isSSL() ? "https://" : "http://") + authority);
+      return claimed.getUserInfo() == null
+          && effective.getUserInfo() == null
+          && claimed.getRawQuery() == null
+          && claimed.getRawFragment() == null
+          && (claimed.getRawPath() == null || claimed.getRawPath().isEmpty())
+          && claimed.getHost() != null
+          && claimed.getHost().equalsIgnoreCase(effective.getHost())
+          && ("http".equalsIgnoreCase(claimed.getScheme())
+              || "https".equalsIgnoreCase(claimed.getScheme()))
+          && claimed.getScheme().equalsIgnoreCase(effective.getScheme())
+          && originPort(claimed) == originPort(effective);
+    } catch (IllegalArgumentException _) {
+      return false;
+    }
+  }
+
+  private static int originPort(URI uri) {
+    if (uri.getPort() >= 0) {
+      return uri.getPort();
+    }
+    return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+  }
+
   private PrincipalResolution resolvePrincipal(HTTPRequest request, CorsRequest cors) {
     String directToken = directAppTokenFromHeader(request);
     if (directToken != null) {
@@ -1189,7 +1228,7 @@ public final class PlatformApiToadlet extends Toadlet {
 
   private static PrincipalResolution originMismatch(String message) {
     return new PrincipalResolution(
-        null, PlatformApiResponse.error(403, "origin_mismatch", message));
+        null, PlatformApiResponse.error(403, ORIGIN_MISMATCH_CODE, message));
   }
 
   private static String directAppTokenFromHeader(HTTPRequest request) {
@@ -1360,7 +1399,9 @@ public final class PlatformApiToadlet extends Toadlet {
       writeJsonReply(
           ctx,
           PlatformApiResponse.error(
-              403, "origin_mismatch", "App browser origin is not allowed for Platform API CORS."),
+              403,
+              ORIGIN_MISMATCH_CODE,
+              "App browser origin is not allowed for Platform API CORS."),
           true);
       return;
     }

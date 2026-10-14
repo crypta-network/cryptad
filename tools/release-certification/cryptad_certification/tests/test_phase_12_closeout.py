@@ -89,10 +89,10 @@ class CloseoutTest(unittest.TestCase):
                       [row["path"] for row in products["implementation"]["sourceEvidence"]])
         self.assertFalse(self.evaluate()["phaseComplete"])
 
-    def test_pr308_scoped_baseline_preserves_every_parent_obligation_and_clock(self):
+    def test_pr320_budget_successor_preserves_every_parent_obligation_and_clock(self):
         prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr307.json").read_bytes())
         current, _ = audit.policy()
-        self.assertEqual(5, current["version"])
+        self.assertEqual(6, current["version"])
         self.assertEqual(49, len(current["requirements"]))
         for old, new in zip(prior["requirements"], current["requirements"], strict=True):
             for field in ("id", "assertion", "dimensions", "subjects", "prerequisites", "mandatory",

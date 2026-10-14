@@ -1,6 +1,7 @@
 """Finite installed dispatch separated from the capped PR-314 campaign driver."""
 from __future__ import annotations
 import time
+from pr320_installed_dispatch import EXECUTION_CLASSES as COMPLETE_STORAGE_CLASSES
 
 def observer_sequence(driver, selected, root, handoff, campaign_deadline, startup_begin, startup_measurement=False, *, admin_channel=None, workload_group=None, execution_class=None):
     """Observe controller readiness, then run the selected finite installed path."""
@@ -13,7 +14,10 @@ def observer_sequence(driver, selected, root, handoff, campaign_deadline, startu
         journal.append('start')
         adapter = InstalledWorkloadAdapter(selected['plan'], selected['private'], selected['authorization'], journal, handoff, counter_sampler=(lambda phase: driver.request_administrator_fnp(admin_channel, phase, campaign_deadline)) if admin_channel is not None else None, lost_start_sampler=(lambda phase: driver.request_administrator_lost_start(admin_channel, phase, campaign_deadline)) if admin_channel is not None and workload_group == 'lost-start-response' else None, origin_handoff=(lambda session, origin: driver.request_administrator_hostile_origin(admin_channel, session, origin, campaign_deadline)) if admin_channel is not None and workload_group == 'authority' else None)
         diagnostic = (lambda role, stage: driver.request_administrator_readiness(admin_channel, role, stage)) if admin_channel is not None else None
-        if execution_class == 'pr319-composed-budget-restart-diagnostics-v1':
+        if execution_class in COMPLETE_STORAGE_CLASSES:
+            from pr320_installed_dispatch import observe
+            result = observe(adapter, execution_class, admin_channel, campaign_deadline, diagnostic)
+        elif execution_class == 'pr319-composed-budget-restart-diagnostics-v1':
             from cross_version_installed_restart_budgets import run_observer
             result = run_observer(adapter, admin_channel, campaign_deadline, diagnostic)
         elif execution_class == driver.STORAGE_EXECUTION_CLASS:

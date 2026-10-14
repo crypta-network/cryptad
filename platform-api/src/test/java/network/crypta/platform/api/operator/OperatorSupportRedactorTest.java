@@ -36,6 +36,26 @@ class OperatorSupportRedactorTest {
   private static final String USERS_PATH_ELEMENT = "Users";
 
   @Test
+  void redact_whenPrivateFieldNamesAreNested_expectFixedOmissionLabels() {
+    var result =
+        OperatorSupportRedactor.redact(
+            Map.of(
+                "nested",
+                List.of(
+                    Map.of(
+                        "/private/scope/token", "sensitive-value",
+                        "privateSelectionCanaryToken", "other-sensitive-value",
+                        "CHK@private-selection", "harmless-count"))));
+
+    String rendered = result.toString();
+    assertFalse(rendered.contains("/private/scope"));
+    assertFalse(rendered.contains("privateSelectionCanary"));
+    assertFalse(rendered.contains("CHK@private-selection"));
+    assertFalse(rendered.contains("sensitive-value"));
+    assertTrue(result.omittedFields().contains("unsafeFieldName"));
+  }
+
+  @Test
   void redact_whenNestedSecretsPathsAndContentUrisPresent_expectUnsafeValuesRemoved() {
     LinkedHashMap<String, Object> input = new LinkedHashMap<>();
     input.put(TOKEN_FIELD, "operator-token-value");

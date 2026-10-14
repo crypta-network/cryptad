@@ -33,11 +33,15 @@ dependencies {
 }
 
 val restartNativeExports = layout.buildDirectory.dir("test-results/pr319-native")
+val privacyNativeExports = layout.buildDirectory.dir("test-results/pr320-native")
+val storageNativeExports = layout.buildDirectory.dir("test-results/pr318-native")
 
 tasks.named<Test>("test") {
   // Export files belong to this execution, including when a producer skips or fails.
   outputs.dir(restartNativeExports)
-  doFirst { delete(restartNativeExports) }
+  outputs.dir(privacyNativeExports)
+  outputs.dir(storageNativeExports)
+  doFirst { delete(restartNativeExports, privacyNativeExports, storageNativeExports) }
 }
 
 // Native packaged-export tests live with the devtools historical bridge and execute this module.

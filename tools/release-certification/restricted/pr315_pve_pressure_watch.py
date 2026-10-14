@@ -27,6 +27,8 @@ SAMPLE_SECONDS = 2
 # Cover the longest fixed PR-316 lifecycle: prelaunch, boot, input transfer,
 # the 4,200-second guest command, bounded evidence collection and shutdown.
 MAX_SECONDS = 5700
+PRIVACY_EXECUTION_CLASS = 'pr320-installed-budget-privacy-v1'
+PRIVACY_MAX_SECONDS = 10500
 PRELAUNCH_SECONDS = 30
 LAUNCH_HEADROOM_SECONDS = 5
 LIMITS = {'physical': 5, 'swap': 2, 'memoryPressure': 15, 'ioPressure': 15}
@@ -161,7 +163,24 @@ def _write_once(path: Path, value: dict, mode: int) -> None:
         os.close(directory)
 
 
-def watch(suite: str, source_commit: str) -> int:
+def _profile_fields(execution_class):
+    if execution_class is None:
+        return {}
+    if execution_class != PRIVACY_EXECUTION_CLASS:
+        raise ValueError('pr315-pressure-watch-profile-unapproved')
+    return {'executionClass': PRIVACY_EXECUTION_CLASS, 'maxSeconds': PRIVACY_MAX_SECONDS}
+
+
+def _record_profile(record):
+    fields = {key: record[key] for key in ('executionClass', 'maxSeconds') if key in record}
+    if fields != _profile_fields(fields.get('executionClass')):
+        raise ValueError('pr315-pressure-watch-profile-substituted')
+    return fields
+
+
+def watch(suite: str, source_commit: str, *, execution_class=None) -> int:
+    profile = _profile_fields(execution_class)
+    maximum_seconds = profile.get('maxSeconds', MAX_SECONDS)
     if (os.geteuid() != 0 or re.fullmatch(r'suite-[1-9][0-9]*', suite) is None
             or re.fullmatch(r'[0-9a-f]{40}', source_commit) is None
             or not hasattr(os, 'pidfd_open') or not hasattr(signal, 'pidfd_send_signal')):
@@ -191,13 +210,13 @@ def watch(suite: str, source_commit: str) -> int:
         _write_once(ready, {'schemaVersion': 1, 'kind': 'pr315-pve-watch-ready',
                             'suite': suite, 'sourceCommit': source_commit,
                             'moduleDigest': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-                            'observedMonotonicNs': time.monotonic_ns()}, 0o444)
+                            'observedMonotonicNs': time.monotonic_ns(), **profile}, 0o444)
         counters = {name: 0 for name in LIMITS}
         tracked = None
         seen = False
         absent_since = None
         action = 'not-started'
-        while time.monotonic() - started < MAX_SECONDS:
+        while time.monotonic() - started < maximum_seconds:
             processes = _processes(suite)
             if len(processes) > 1:
                 action = 'ambiguous-task-process'
@@ -259,7 +278,7 @@ def watch(suite: str, source_commit: str) -> int:
                                'suite': suite, 'sourceCommit': source_commit,
                                'moduleDigest': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                                'action': action, 'seenTaskQemu': seen,
-                               'finishedMonotonicNs': time.monotonic_ns()}, 0o444)
+                               'finishedMonotonicNs': time.monotonic_ns(), **profile}, 0o444)
     return 0 if action == 'completed' else 2
 
 
@@ -295,8 +314,9 @@ def verify_ready(suite: str, source_commit: str) -> dict:
     record = _ct_record(Path('/work/pr315-task/host-monitor') /
                         (suite + '.ready.json'), suite, 'pr315-pve-watch-ready')
     ns = record.get('observedMonotonicNs')
+    profile = _record_profile(record)
     if (set(record) != {'schemaVersion', 'kind', 'suite', 'sourceCommit',
-                        'moduleDigest', 'observedMonotonicNs'}
+                        'moduleDigest', 'observedMonotonicNs'} | set(profile)
             or record['sourceCommit'] != source_commit or type(ns) is not int
             or not 0 <= time.monotonic_ns() - ns <= 120_000_000_000):
         raise ValueError('pr315-pressure-watch-ready-invalid')
@@ -316,9 +336,11 @@ def wait_ready(suite: str, source_commit: str) -> dict:
             time.sleep(min(.05, remaining))
 
 
-def verify_launch_ready(suite: str, source_commit: str) -> dict:
+def verify_launch_ready(suite: str, source_commit: str, *, execution_class=None) -> dict:
     """Require a fresh active watcher with headroom for the immediate QEMU launch."""
     ready = verify_ready(suite, source_commit)
+    if _record_profile(ready) != _profile_fields(execution_class):
+        raise ValueError('pr315-pressure-watch-profile-mismatch')
     age = time.monotonic_ns() - ready['observedMonotonicNs']
     if (age < 0 or age >
             (PRELAUNCH_SECONDS - LAUNCH_HEADROOM_SECONDS) * 1_000_000_000):
@@ -337,8 +359,10 @@ def verify_launch_ready(suite: str, source_commit: str) -> dict:
 def verify_finished(suite: str, source_commit: str, ready: dict) -> dict:
     record = _ct_record(Path('/work/pr315-task/host-monitor') /
                         (suite + '.finished.json'), suite, 'pr315-pve-watch-finished')
+    profile = _record_profile(ready)
     if (set(record) != {'schemaVersion', 'kind', 'suite', 'sourceCommit',
-                        'moduleDigest', 'action', 'seenTaskQemu', 'finishedMonotonicNs'}
+                        'moduleDigest', 'action', 'seenTaskQemu', 'finishedMonotonicNs'} | set(profile)
+            or _record_profile(record) != profile
             or record['sourceCommit'] != source_commit or record['action'] != 'completed'
             or record['seenTaskQemu'] is not True
             or type(record['finishedMonotonicNs']) is not int
@@ -352,24 +376,26 @@ def verify_stopped_before_launch(suite: str, source_commit: str,
     """Authenticate a watcher closed before any task QEMU was observed."""
     observed_ready = _ct_record(Path('/work/pr315-task/host-monitor') /
         (suite + '.ready.json'), suite, 'pr315-pve-watch-ready')
+    profile = _record_profile(ready)
     if (observed_ready != ready
             or set(observed_ready) != {'schemaVersion', 'kind', 'suite',
                                       'sourceCommit', 'moduleDigest',
-                                      'observedMonotonicNs'}
+                                      'observedMonotonicNs'} | set(profile)
             or observed_ready['sourceCommit'] != source_commit
             or type(observed_ready['observedMonotonicNs']) is not int):
         raise ValueError('pr315-pressure-watch-ready-changed')
     record = _ct_record(Path('/work/pr315-task/host-monitor') /
                         (suite + '.finished.json'), suite, 'pr315-pve-watch-finished')
     if (set(record) != {'schemaVersion', 'kind', 'suite', 'sourceCommit',
-                        'moduleDigest', 'action', 'seenTaskQemu', 'finishedMonotonicNs'}
+                        'moduleDigest', 'action', 'seenTaskQemu', 'finishedMonotonicNs'} | set(profile)
+            or _record_profile(record) != profile
             or record['sourceCommit'] != source_commit
             or record['action'] != 'stopped-before-launch'
             or record['seenTaskQemu'] is not False
             or type(record['finishedMonotonicNs']) is not int
             or not ready['observedMonotonicNs'] <
                 record['finishedMonotonicNs'] <=
-                ready['observedMonotonicNs'] + MAX_SECONDS * 1_000_000_000):
+                ready['observedMonotonicNs'] + profile.get('maxSeconds', MAX_SECONDS) * 1_000_000_000):
         raise ValueError('pr315-pressure-watch-prelaunch-stop-invalid')
     return record
 
@@ -378,8 +404,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--suite', required=True)
     parser.add_argument('--source-commit', required=True)
+    parser.add_argument('--execution-class', choices=(PRIVACY_EXECUTION_CLASS,))
     args = parser.parse_args()
-    return watch(args.suite, args.source_commit)
+    return watch(args.suite, args.source_commit, execution_class=args.execution_class)
 
 
 if __name__ == '__main__':

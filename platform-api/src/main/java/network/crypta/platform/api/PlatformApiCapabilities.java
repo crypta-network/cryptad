@@ -168,6 +168,38 @@ final class PlatformApiCapabilities {
     return endpoint == null ? null : endpoint.toAction();
   }
 
+  /** Returns a closed route-family label without retaining caller-supplied unknown path text. */
+  static String auditEndpointFamily(List<String> segments) {
+    if (segments.isEmpty()) return "unknown";
+    return switch (segments.getFirst()) {
+      case "platform",
+          "app-catalogs",
+          "app-review",
+          "apps",
+          "mail",
+          "app-vault",
+          "identity-vault",
+          "queue",
+          "content",
+          "app-data",
+          "app-services",
+          "consent",
+          "operator",
+          "trust-graph",
+          "node",
+          "connectivity",
+          "diagnostics",
+          "updates",
+          "wizard",
+          "alerts",
+          "peers",
+          "config",
+          "security-levels" ->
+          segments.getFirst();
+      default -> "unknown";
+    };
+  }
+
   /**
    * Builds the synthetic action used for default-deny app routes.
    *
@@ -175,12 +207,13 @@ final class PlatformApiCapabilities {
    * provide audit entries with an endpoint family and an {@code unmapped} capability label when an
    * app principal attempts a route that the contract does not intentionally expose.
    *
-   * @param request request whose first path segment identifies the attempted endpoint family
+   * @param request request whose recognized first path segment identifies the attempted endpoint
+   *     family
    * @return synthetic unmapped action for denied app-principal audit events
    */
   private static PlatformApiAction unknownAction(PlatformApiRequest request) {
     List<String> segments = request.pathSegments();
-    String endpointFamily = segments.isEmpty() ? "unknown" : segments.getFirst();
+    String endpointFamily = auditEndpointFamily(segments);
     String label = segments.isEmpty() ? "unmapped" : endpointFamily + ".unmapped";
     return PlatformApiAction.of(endpointFamily, label, List.of("unmapped"));
   }

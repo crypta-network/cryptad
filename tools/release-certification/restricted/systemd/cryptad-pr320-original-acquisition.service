@@ -1,0 +1,33 @@
+[Unit]
+Description=Fixed PR320 root acquisition of four-role budget originals
+After=network.target
+
+[Service]
+Type=exec
+User=root
+Group=root
+ExecStart=/usr/bin/python3 -I -S -B /opt/cryptad-cross-version/current/tools/release-certification/protected/pr320_original_acquisition.py
+WorkingDirectory=/opt/cryptad-cross-version/current
+UMask=0077
+StandardOutput=null
+StandardError=null
+Restart=no
+# Long work belongs to this unit, never to the restricted worker's 900-second RPC.
+# The root start record supplies a shorter fixed profile deadline and an alarm;
+# SIGTERM raises through the existing driver's finally/role teardown path.
+RuntimeMaxSec=9000
+TimeoutStopSec=240
+KillMode=control-group
+LimitCORE=0
+LimitNOFILE=512
+TasksMax=512
+MemoryMax=4G
+CPUQuota=200%
+IOWeight=50
+NoNewPrivileges=yes
+# This measured administrator invokes the existing shared tmpfs preparer and
+# then PID1's separately isolated controller/role units. Keep PID1's mount
+# namespace so those units see the actual prepared mounts. The child verifies
+# that namespace identity before running; filesystem sandbox directives here
+# would create a different namespace and break the native authority contract.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

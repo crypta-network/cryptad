@@ -54,12 +54,12 @@ def canonical_digest(value):
     return contract.canonical_digest(value)
 
 
-def tool_identities(source):
+def tool_identities(source, *, installed_source=None):
     """Measure only the closed reviewed tool roster used by this execution class."""
     source = Path(source)
     values = {}
     for name, relative in TOOL_PATHS.items():
-        path = source / relative
+        path = source / relative if installed_source is None else installed_source.tool_path(relative)
         if not path.is_file() or path.is_symlink():
             raise ValueError('pr318-storage-tool-unavailable')
         values[name] = runtime.digest_file(path)
@@ -73,19 +73,27 @@ def _property(text, name):
     return values[0]
 
 
-def _verify_app(extracted, app_id):
+def _verify_app(extracted, app_id, permissions=None, process_client=None):
     """Bind identity, permissions and the exact non-Java fixture process shape."""
+    allowed = PERMISSIONS if permissions is None else permissions
     manifest = (Path(extracted) / 'cryptad-app.properties').read_text()
     permissions = tuple(value for value in _property(manifest, 'app.permissions').split(',') if value)
+    start_bytes = b'#!/bin/sh\nset -eu\nexec sleep 600\n'
+    if process_client is not None and app_id in ('feed-reader', 'budget-importer'):
+        from pr320_budget_contract import PROCESS_START_BYTES
+        start_bytes = PROCESS_START_BYTES
+        if (not isinstance(process_client, bytes)
+                or (Path(extracted) / 'lib/pr320-budget-process-client.py').read_bytes() != process_client):
+            raise ValueError('pr320-storage-process-client-invalid')
     if (_property(manifest, 'app.id') != app_id
             or _property(manifest, 'app.exec') != 'bin/start.sh'
-            or permissions != PERMISSIONS[app_id]
+            or permissions != allowed[app_id]
             or _property(manifest, 'sandbox.mode') != 'restricted-process'
             or _property(manifest, 'sandbox.required') != 'true'
             or _property(manifest, 'api.targetStability') != 'experimental'
             or _property(manifest, 'api.experimentalCapabilitiesAccepted') != 'true'
             or (Path(extracted) / 'bin/start.sh').read_bytes()
-                != b'#!/bin/sh\nset -eu\nexec sleep 600\n'):
+                != start_bytes):
         raise ValueError('pr318-storage-app-manifest-invalid')
 
 
@@ -122,7 +130,7 @@ def _verify_statement(path):
         raise ValueError('pr318-storage-statement-invalid')
 
 
-def _verify_statement_signature(root, source, selected):
+def _verify_statement_signature(root, source, selected, *, verifier_root=None):
     """Verify exact selected bytes and return their product-defined document fingerprint."""
     from bounded_process import run
     root, source = Path(root), Path(source)
@@ -135,7 +143,8 @@ def _verify_statement_signature(root, source, selected):
         classes = stage / 'classes'
         classes.mkdir()
         java_home = root / 'jdk'
-        classpath = (str(source / 'platform-devtools/build/install/crypta-app/lib/*')
+        verifier = source / 'platform-devtools/build/install/crypta-app' if verifier_root is None else Path(verifier_root)
+        classpath = (str(verifier / 'lib/*')
                      + os.pathsep + str(package / 'lib/*'))
         source_file = source / TOOL_PATHS['statementVerifier']
         environment = {'PATH': str(java_home / 'bin') + ':/usr/bin:/bin',
@@ -153,9 +162,9 @@ def _verify_statement_signature(root, source, selected):
         return fingerprint
 
 
-def _verify_bundles(root, source, selected):
+def _verify_bundles(root, source, selected, permissions=None, process_client=None, *, verifier_root=None):
     """Run the normal signed-bundle verifier and then constrain the synthetic subjects."""
-    tool = Path(source) / 'platform-devtools/build/install/crypta-app'
+    tool = Path(source) / 'platform-devtools/build/install/crypta-app' if verifier_root is None else Path(verifier_root)
     from bounded_process import run
     with tempfile.TemporaryDirectory(prefix='pr318-storage-verify-', dir=Path(root).parent) as temporary:
         stage = Path(temporary)
@@ -169,12 +178,13 @@ def _verify_bundles(root, source, selected):
                  str(Path(root) / 'publisher-keys.properties')],
                 environment={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'},
                 timeout=60, output_limit=65536)
-            _verify_app(extracted, app_id)
+            _verify_app(extracted, app_id, permissions, process_client)
 
 
-def prepare(args):
-    """Create a new PR-318 fixture root without changing PR-315 fixture bytes."""
-    if (type(args.max_seconds) is not int or not 60 <= args.max_seconds <= 3600
+def prepare(args, *, permissions=None, process_client=None, maximum_seconds=3600):
+    """Create signed fixture inputs under an owning fixed permission roster."""
+    permissions = PERMISSIONS if permissions is None else permissions
+    if (maximum_seconds not in (3600, 7200) or type(args.max_seconds) is not int or not 60 <= args.max_seconds <= maximum_seconds
             or type(args.max_operations) is not int or not 1 <= args.max_operations <= 10000
             or not re.fullmatch('[0-9a-f]{40}', args.candidate_commit)
             or not re.fullmatch('[0-9a-f]{40}', args.previous_commit)
@@ -237,7 +247,7 @@ def prepare(args):
     base.copy_input(args.statement, output / 'statement.json', 65536)
     tools = tool_identities(args.source)
     selected = {'apps': apps}
-    _verify_bundles(output, args.source, selected)
+    _verify_bundles(output, args.source, selected, permissions, process_client)
     _verify_statement(output / 'statement.json')
     statement_fingerprint = _verify_statement_signature(
         output, args.source, {'products': products})
@@ -256,7 +266,7 @@ def prepare(args):
         'statementDigest': runtime.digest_file(output / 'statement.json'),
         'statementFingerprint': statement_fingerprint,
         'verifierDigest': runtime.tree_digest(verifier, require_java=False),
-        'toolIdentities': tools, 'permissions': {key: list(value) for key, value in PERMISSIONS.items()},
+        'toolIdentities': tools, 'permissions': {key: list(value) for key, value in permissions.items()},
         'caseIds': list(CASES), 'environment': dict(ENVIRONMENT),
         'normalizedConfiguration': NORMALIZED_CONFIGURATION,
         'failurePolicy': dict(FAILURE_POLICY), 'maxSeconds': args.max_seconds,
@@ -265,8 +275,21 @@ def prepare(args):
     return base.digest(output / MANIFEST)
 
 
-def verify(root, expected_manifest_digest, source, product_source_commit):
+def _source_verifier_identity(source, root, verifier_digest, installed_source=None):
+    """Historical Git identity or a separately sealed prospective installed source."""
+    if installed_source is None:
+        commit = subprocess.check_output(['git', '-c', 'safe.directory=' + str(source), '-C',
+            str(source), 'rev-parse', 'HEAD'], text=True, timeout=10).strip()
+        return commit, source / 'platform-devtools/build/install/crypta-app'
+    from pr320_original_acquisition import InstalledFixtureSource
+    if not isinstance(installed_source, InstalledFixtureSource):
+        raise ValueError('pr318-installed-fixture-source-authority-required')
+    return installed_source.require(source, root, verifier_digest)
+
+
+def verify(root, expected_manifest_digest, source, product_source_commit, *, permissions=None, process_client=None, maximum_seconds=3600, installed_source=None):
     """Verify every prospective fixture, signer registry and current fixed tool byte."""
+    permissions = PERMISSIONS if permissions is None else permissions
     root, source = Path(root), Path(source)
     path = root / MANIFEST
     if (expected_manifest_digest is None or product_source_commit is None
@@ -289,17 +312,17 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
             or value['runtimePolicy'] != {
                 'launcher': preparation.launcher_policy(),
                 'budget': preparation.budget_launcher_policy(EXECUTION_CLASS)}
-            or value['permissions'] != {key: list(entry) for key, entry in PERMISSIONS.items()}
+            or value['permissions'] != {key: list(entry) for key, entry in permissions.items()}
             or value['caseIds'] != list(CASES) or value['environment'] != ENVIRONMENT
             or value['normalizedConfiguration'] != NORMALIZED_CONFIGURATION
             or value['failurePolicy'] != FAILURE_POLICY
-            or type(value['maxSeconds']) is not int or not 60 <= value['maxSeconds'] <= 3600
+            or maximum_seconds not in (3600, 7200)
+            or type(value['maxSeconds']) is not int or not 60 <= value['maxSeconds'] <= maximum_seconds
             or type(value['maxOperations']) is not int or not 1 <= value['maxOperations'] <= 10000
             or value['members'] != base.inventory(root)):
         raise ValueError('pr318-storage-fixture-manifest-invalid')
     base.validate_roster(value['products'])
-    commit = subprocess.check_output(['git', '-c', 'safe.directory=' + str(source), '-C',
-        str(source), 'rev-parse', 'HEAD'], text=True, timeout=10).strip()
+    commit, verifier_root = _source_verifier_identity(source, root, value['verifierDigest'], installed_source)
     if value['sourceCommit'] != commit or value['products']['candidate']['sourceCommit'] != product_source_commit:
         raise ValueError('pr318-storage-fixture-source-mismatch')
     for name, product in value['products'].items():
@@ -315,13 +338,18 @@ def verify(root, expected_manifest_digest, source, product_source_commit):
             or runtime.digest_file(root / 'publisher-keys.properties') != value['trustDigest']
             or runtime.digest_file(root / 'statement.json') != value['statementDigest']
             or re.fullmatch('[0-9a-f]{64}', str(value['statementFingerprint'])) is None
-            or runtime.tree_digest(source / 'platform-devtools/build/install/crypta-app',
+            or runtime.tree_digest(verifier_root,
                                    require_java=False) != value['verifierDigest']
-            or tool_identities(source) != value['toolIdentities']):
+            or tool_identities(source, **({} if installed_source is None else {'installed_source': installed_source})) != value['toolIdentities']):
         raise ValueError('pr318-storage-runtime-or-app-mismatch')
-    _verify_bundles(root, source, value)
+    if installed_source is None:
+        _verify_bundles(root, source, value, permissions, process_client)
+    else:
+        _verify_bundles(root, source, value, permissions, process_client, verifier_root=verifier_root)
     _verify_statement(root / 'statement.json')
-    if _verify_statement_signature(root, source, value) != value['statementFingerprint']:
+    fingerprint = (_verify_statement_signature(root, source, value) if installed_source is None else
+                   _verify_statement_signature(root, source, value, verifier_root=verifier_root))
+    if fingerprint != value['statementFingerprint']:
         raise ValueError('pr318-storage-statement-fingerprint-mismatch')
     return value
 
@@ -351,7 +379,17 @@ def materialize_selection(root, source, expected_manifest_digest=None,
     if root != FIXED_GUEST_ROOT or os.geteuid() != 0:
         raise ValueError('pr318-storage-fixed-guest-root-required')
     selected = verify(root, expected_manifest_digest, source, product_source_commit)
-    private = {'root': '/var/lib/cryptad-cross-version/experiments/' + EXPERIMENT,
+    return materialize_verified(root, selected)
+
+
+def materialize_verified(root, selected, profile=None):
+    """Assemble immutable inputs using the owning finite execution profile."""
+    profile = profile or {"executionClass": EXECUTION_CLASS, "experiment": EXPERIMENT,
+        "cases": CASES, "environment": ENVIRONMENT,
+        "normalizedConfiguration": NORMALIZED_CONFIGURATION, "toolPaths": TOOL_PATHS}
+    execution_class, experiment = profile['executionClass'], profile['experiment']
+    environment, normalized = profile['environment'], profile['normalizedConfiguration']
+    private = {'root': '/var/lib/cryptad-cross-version/experiments/' + experiment,
                'nodes': {}}
     nodes = []
     for role in ROLES:
@@ -375,17 +413,17 @@ def materialize_selection(root, source, expected_manifest_digest=None,
             'artifactSize', 'packageTarget', 'contractVersion')}
         node.update(role=role, product='cryptad', runtimeDigest=selected['runtimeDigest'],
             configDigest=preparation.configuration_identity(
-                role, trust_digest, EXECUTION_CLASS),
+                role, trust_digest, execution_class),
             appDigests=[app['bundleDigest'] for app in apps])
         nodes.append(node)
     workload_digest = selected['toolIdentities']['installedDriver']
     collector_digest = canonical_digest({key: selected['toolIdentities'][key] for key in
-        ('installedDriver', 'localBudgetAdapter', 'schedulerRuntime', 'evidenceOracle',
-         'storageOracle', 'administrator', 'roleClients', 'runtimeEvidence')})
+        profile.get('collectorTools', ('installedDriver', 'localBudgetAdapter', 'schedulerRuntime', 'evidenceOracle',
+         'storageOracle', 'administrator', 'roleClients', 'runtimeEvidence'))})
     configuration_digest = canonical_digest({
-        'nodeConfigDigest': nodes[0]['configDigest'], 'environment': ENVIRONMENT,
-        'normalizedConfiguration': NORMALIZED_CONFIGURATION})
-    plan = {'schemaVersion': 1, 'kind': evidence.KIND, 'experimentId': EXPERIMENT,
+        'nodeConfigDigest': nodes[0]['configDigest'], 'environment': environment,
+        'normalizedConfiguration': normalized})
+    plan = {'schemaVersion': 1, 'kind': evidence.KIND, 'experimentId': experiment,
         'profile': 'bounded-live', 'topologyClass': 'single-host-independent-processes',
         'provenanceClass': 'source-build-comparison',
         'requestedSeconds': selected['maxSeconds'], 'probeIntervalSeconds': 1,
@@ -395,14 +433,20 @@ def materialize_selection(root, source, expected_manifest_digest=None,
         'nodes': nodes, 'workloadInputs': {'scheduler': workload_digest},
         'composedBudgetInputs': {'collectorDigest': collector_digest,
                                  'configurationDigest': configuration_digest}}
+    if 'campaignJournal' in profile['toolPaths']:
+        from cryptad_certification.composed_budget_journal_member import campaign_inputs
+        plan['budgetCampaignInputs'] = campaign_inputs(plan, selected['toolIdentities'])
     evidence.validate_plan(plan)
     budget_selection = _budget_selection(selected, plan, private)
-    authorization = {'syntheticContent': True, 'executionClass': EXECUTION_CLASS,
-        'experimentId': EXPERIMENT, 'root': private['root'],
+    budget_selection.update(caseIds=list(profile['cases']), environment=dict(environment),
+        permissions={key: list(value) for key, value in profile.get('permissions', PERMISSIONS).items()},
+        normalizedConfiguration=normalized, privateRootClass='controller-derived-' + experiment)
+    authorization = {'syntheticContent': True, 'executionClass': execution_class,
+        'experimentId': experiment, 'root': private['root'],
         'planDigest': runtime.canonical_digest(plan), 'maxSeconds': selected['maxSeconds'],
         'maxOperations': selected['maxOperations'], 'budgetSelection': budget_selection}
     authorization['selectionDigest'] = runtime.canonical_digest({
-        'executionClass': EXECUTION_CLASS, 'planDigest': authorization['planDigest'],
+        'executionClass': execution_class, 'planDigest': authorization['planDigest'],
         'budgetSelection': budget_selection})
     return {'plan': plan, 'private': private, 'authorization': authorization}
 

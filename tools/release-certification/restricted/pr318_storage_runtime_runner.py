@@ -273,7 +273,34 @@ def _attempt_projection(args, attempt, report, fixture, source_commit,
 
 
 def _scan_budget_privacy(root):
-    """Scan every bounded retained text/JSON surface collected for public assessment."""
+    return scan_retained_surfaces(root, private_name='pr318-storage-budget.private.json',
+        decode_private=evidence.decode_private, decode_checkpoints=evidence.decode_checkpoints)
+
+
+def scan_retained_surfaces(root, *, private_name, decode_private, decode_checkpoints,
+                          checkpoint_name='pr318-storage-attempts.private.jsonl', private_readers=None):
+    """Scan bounded surfaces; only owning typed readers may admit fixed private members."""
+    if private_name not in {'pr318-storage-budget.private.json', 'pr320-storage-budget.private.json',
+                            'pr320-owner-budget.private.json', 'pr320-route-budget.private.json',
+                            'pr320-privacy-native.private.json'}:
+        raise ValueError('pr318-private-member-unselected')
+    if checkpoint_name not in {'pr318-storage-attempts.private.jsonl', 'pr320-storage-attempts.private.jsonl',
+                               'pr320-owner-checkpoints.private.jsonl', 'pr320-route-attempts.private.jsonl',
+                               'pr320-privacy-checkpoints.private.jsonl'}:
+        raise ValueError('pr318-private-member-unselected')
+    allowed_extra = {'pr320-public-artifact.private.json': 2 * 1024 * 1024,
+                     'pr320-route-root-native.private.json': 4 * 1024 * 1024,
+        'pr320-campaign-original-inputs.private.json': 16 * 1024 * 1024,
+        'pr320-campaign-root-originals.private.json': 16 * 1024 * 1024,
+        'pr320-owner-root-native.private.json': 4 * 1024 * 1024,
+        'pr320-privacy-originals.private.json': 8 * 1024 * 1024,
+        'pr320-privacy-browser.private.json': 4 * 1024 * 1024}
+    private_readers = private_readers or {}
+    if (set(private_readers) - set(allowed_extra)
+            or any(not isinstance(reader, tuple) or len(reader) != 2
+                   or reader[0] != allowed_extra[name] or not callable(reader[1])
+                   for name, reader in private_readers.items())):
+        raise ValueError('pr318-private-member-unselected')
     exclude_source_clone = True
     root = Path(root).absolute()
     source_clone = root / 'attempt-01' / 'cryptad'
@@ -285,23 +312,29 @@ def _scan_budget_privacy(root):
             raise ValueError('pr318-retained-source-clone-invalid')
     binary_suffixes = {'.qcow2', '.img', '.iso', '.jar', '.zip', '.gz', '.class',
                        '.so', '.dll', '.exe', '.bin', '.db'}
-    count = total = 0
+    count = total = private_total = 0
     for path in sorted(root.rglob('*')):
         if exclude_source_clone and path.is_relative_to(source_clone):
             continue
         if path.is_symlink():
             raise ValueError('pr318-retained-surface-link-invalid')
-        if path in {root / 'attempt-01/pr318-storage-budget.private.json',
-                    root / 'attempt-01/pr318-storage-attempts.private.jsonl'}:
+        private_member = path.is_relative_to(root / 'attempt-01') and path.parent == root / 'attempt-01'
+        if private_member and path.name in {private_name, checkpoint_name, *private_readers}:
             private_info = path.lstat()
             if (not stat.S_ISREG(private_info.st_mode) or private_info.st_nlink != 1
                     or private_info.st_uid != os.geteuid() or private_info.st_mode & 0o077):
                 raise ValueError('pr318-private-graph-file-unsafe')
-            if path.suffix == '.jsonl':
+            private_total += private_info.st_size
+            if private_total > 24 * 1024 * 1024:
+                raise ValueError('pr318-private-total-budget')
+            if path.name in private_readers:
+                maximum, decoder = private_readers[path.name]
+                decoder(shared._private_bytes(path, maximum))
+            elif path.suffix == '.jsonl':
                 raw_private = shared._private_bytes(path, evidence.MAX_PRIVATE_BYTES)
-                evidence.decode_checkpoints(raw_private)
+                decode_checkpoints(raw_private)
             else:
-                _private_evidence(path)
+                decode_private(shared._private_bytes(path, evidence.MAX_PRIVATE_BYTES))
             continue
         if not path.is_file() or path.suffix.lower() in binary_suffixes:
             continue
@@ -375,9 +408,27 @@ def _source_modules(args):
 
 
 def run(args):
+    return run_fixed_suite(args, SimpleNamespace(
+        execution_class=evidence.EXECUTION_CLASS, source_modules=_source_modules,
+        failed_projection=evidence.failed_projection, verify_fixture=fixtures.verify,
+        scan=_scan_budget_privacy, attempt_projection=_attempt_projection,
+        closed_public=_closed_public))
+
+
+def run_fixed_suite(args, suite):
+    """Shared one-attempt mechanics; the caller supplies an owning closed finite suite."""
+    timeout_seconds = getattr(suite, 'timeout_seconds', TIMEOUT_SECONDS)
+    privacy_class = pressure_watch.PRIVACY_EXECUTION_CLASS
+    if (timeout_seconds != TIMEOUT_SECONDS and
+            (suite.execution_class != privacy_class or timeout_seconds != 8100)):
+        raise ValueError('pr318-suite-timeout-unapproved')
+    required_seconds = pressure_watch.PRELAUNCH_SECONDS + 180 + 180 + timeout_seconds + 900
+    watcher_seconds = pressure_watch.PRIVACY_MAX_SECONDS if timeout_seconds == 8100 else pressure_watch.MAX_SECONDS
+    if watcher_seconds < required_seconds:
+        raise ValueError('pr318-suite-watcher-duration-insufficient')
     if os.geteuid() == 0:
         raise ValueError("reference-unprivileged-host-required")
-    _source_modules(args)
+    suite.source_modules(args)
     os.umask(0o077)
     output = args.output.absolute()
     root = retained_runner.storage_policy(args, output)
@@ -430,28 +481,29 @@ def run(args):
         retained_runner._save(output / "capacity.private.json", capacity)
         retained_runner._save(output / "plan.private.json", {
             "schemaVersion": 1, "kind": "pr318-budget-runtime-host-plan",
-            "executionClass": evidence.EXECUTION_CLASS, "sourceCommit": source_commit,
+            "executionClass": suite.execution_class, "sourceCommit": source_commit,
             "productSourceCommit": args.product_source_commit,
             "preparedImageDigest": args.prepared_image_digest,
             "fixtureManifestDigest": args.fixture_manifest_digest,
-            "profile": PROFILE, "port": PORT, "timeoutSeconds": TIMEOUT_SECONDS,
+            "profile": PROFILE, "port": PORT, "timeoutSeconds": timeout_seconds,
+            "watcherRequiredSeconds": required_seconds,
             "storageBudgetBytes": args.storage_budget_bytes,
             "minimumFreeBytes": args.min_free_bytes,
             "memoryBudgetBytes": args.memory_budget_bytes,
             "minimumHostMemoryBytes": args.min_host_memory_bytes,
             "retention": "one-attempt-private-no-automatic-deletion"})
         if reasons:
-            result, code = evidence.failed_projection(reasons[0]), 78
+            result, code = suite.failed_projection(reasons[0]), 78
         elif args.probe:
-            result, code = evidence.failed_projection("prerequisites-present-not-executed"), 78
+            result, code = suite.failed_projection("prerequisites-present-not-executed"), 78
         else:
-            fixture = fixtures.verify(args.prepared_fixtures,
+            fixture = suite.verify_fixture(args.prepared_fixtures,
                 args.fixture_manifest_digest, args.source, args.product_source_commit)
             selected = SimpleNamespace(**vars(args), attempt=output / "attempt-01",
                 mode="workload-positive", profile=PROFILE, port=PORT,
-                timeout=TIMEOUT_SECONDS, development_snapshot=False,
+                timeout=timeout_seconds, development_snapshot=False,
                 host_key_pin_origin="preselected-host-key",
-                execution_class=evidence.EXECUTION_CLASS, workload_group=None,
+                execution_class=suite.execution_class, workload_group=None,
                 lifecycle_scenario="none", startup_measurement=False,
                 retired_authority_preparation=False, case_group=None, fault_case=None,
                 retired_authority_input=None, retired_authority_input_digest=None)
@@ -465,7 +517,8 @@ def run(args):
                 prepared = retained_runner.allocated_bytes(selected.attempt)
                 remaining = shared.launch_remaining_bytes(required, prepared)
                 watch_ready = shared.wait_pressure_watcher(
-                    args, root, output, output.name, source_commit, prepared, remaining)
+                    args, root, output, output.name, source_commit, prepared, remaining,
+                    **({'execution_class': privacy_class} if timeout_seconds == 8100 else {}))
 
             with (output / "transport.private.log").open("x") as log, redirect_stdout(log):
                 reference.workload_guest_command(selected)
@@ -483,12 +536,15 @@ def run(args):
             report = shared._private_json(
                 selected.attempt / "attempt.private.json", 1024 * 1024)
             privacy = {"privateGraphEvidence": "retained-private-not-public"}
-            privacy["budgetSurfaces"] = _scan_budget_privacy(output)
+            privacy["budgetSurfaces"] = suite.scan(output)
             retained_runner._save(output / "privacy-scan.private.json", privacy)
-            result = _attempt_projection(args, selected.attempt, report,
+            result = suite.attempt_projection(args, selected.attempt, report,
                                          fixture, source_commit, True)
+            if getattr(suite, 'capture_originals', None) is not None:
+                suite.capture_originals(args, selected.attempt, report)
+                suite.scan(output)
             code = 0
-        result = _closed_public(result)
+        result = suite.closed_public(result)
         retained_runner._save(output / "assessment.json", result)
         print(json.dumps(result, sort_keys=True))
         return code
@@ -511,9 +567,11 @@ def parser():
     return value
 
 
-def _retain_failure(args, error):
+def _retain_failure(args, error, suite=None):
     """Best-effort watcher reconciliation and privacy scan after any launched-run failure."""
     output = args.output.absolute()
+    scan = _scan_budget_privacy if suite is None else suite.scan
+    execution_class = evidence.EXECUTION_CLASS if suite is None else suite.execution_class
     if not output.is_dir() or output.is_symlink():
         return
     watcher = {"status": "not-ready-or-unavailable"}
@@ -525,7 +583,7 @@ def _retain_failure(args, error):
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     try:
-        privacy = {"status": "passed", **_scan_budget_privacy(output)}
+        privacy = {"status": "passed", **scan(output)}
     except (OSError, ValueError):
         privacy = {"status": "failed"}
     detail = str(error)
@@ -533,7 +591,7 @@ def _retain_failure(args, error):
         else "execution-failed-private-reconciliation-required"
     retained_runner._save(output / "failure.private.json", {
         "schemaVersion": 1, "kind": "pr318-private-host-execution-failure",
-        "executionClass": evidence.EXECUTION_CLASS,
+        "executionClass": execution_class,
         "exceptionType": type(error).__name__[:128], "reason": reason,
         "watcher": watcher, "privacy": privacy,
         "releaseEligible": False, "phaseComplete": False})

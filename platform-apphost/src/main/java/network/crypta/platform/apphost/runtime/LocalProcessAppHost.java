@@ -165,6 +165,12 @@ public final class LocalProcessAppHost implements AppHost {
   private boolean persistentMutationsRecovered;
   private final Map<String, RunningProcess> runningApps = new ConcurrentHashMap<>();
   private final Map<String, String> launchIds = new ConcurrentHashMap<>();
+  private static final int MAX_REQUEST_OWNERS_PER_APP = 256;
+  private static final int MAX_REQUEST_OWNERS_TOTAL = 4096;
+  // Exit observation must not acquire the lifecycle monitor while stop waits for exit cleanup.
+  private final Object requestOwnersLock = new Object();
+  private final Map<String, Set<RequestOwnerRegistration>> requestOwners = new LinkedHashMap<>();
+  private int requestOwnerCount;
   private java.net.URI mailPlatformApiEndpoint;
 
   /**
@@ -199,6 +205,87 @@ public final class LocalProcessAppHost implements AppHost {
             snapshot.manifest().permissions(),
             launchIds.get(appId),
             snapshot.manifest().appVersion()));
+  }
+
+  @Override
+  @SuppressWarnings(
+      "ReferenceEquality") // Cancellation binds the exact Process object, never PID/value aliases.
+  public synchronized Optional<AppHost.RequestOwner> registerRequestOwner(
+      String appId, String expectedLaunchId) throws IOException {
+    String normalized = InstalledAppPaths.normalizeAppId(appId);
+    RunningProcess process = liveRunningProcess(normalized);
+    if (process == null
+        || expectedLaunchId == null
+        || expectedLaunchId.isBlank()
+        || !expectedLaunchId.equals(launchIds.get(normalized))
+        || explicitStopRequests.contains(normalized)) return Optional.empty();
+    synchronized (requestOwnersLock) {
+      RunningProcess current = runningApps.get(normalized);
+      if (current == null || current.process() != process.process() || !current.isAlive())
+        return Optional.empty();
+      Set<RequestOwnerRegistration> owners =
+          requestOwners.computeIfAbsent(normalized, _ -> new java.util.HashSet<>());
+      if (owners.size() >= MAX_REQUEST_OWNERS_PER_APP
+          || requestOwnerCount >= MAX_REQUEST_OWNERS_TOTAL) {
+        if (owners.isEmpty()) requestOwners.remove(normalized);
+        throw new AppHostException("request owner capacity is unavailable");
+      }
+      var owner =
+          new RequestOwnerRegistration(normalized, process.process(), Thread.currentThread());
+      owners.add(owner);
+      requestOwnerCount++;
+      return Optional.of(owner);
+    }
+  }
+
+  @SuppressWarnings(
+      "ReferenceEquality") // A replaced process generation must not inherit cancellation.
+  private void cancelRequestOwners(String appId, Process process) {
+    synchronized (requestOwnersLock) {
+      var owners = requestOwners.get(appId);
+      if (owners == null) return;
+      for (var owner : owners) {
+        if (owner.process == process && !owner.cancelled && !owner.closed) {
+          owner.cancelled = true;
+          owner.thread.interrupt();
+        }
+      }
+    }
+  }
+
+  private final class RequestOwnerRegistration implements AppHost.RequestOwner {
+    private final String appId;
+    private final Process process;
+    private final Thread thread;
+    private boolean cancelled;
+    private boolean closed;
+
+    private RequestOwnerRegistration(String appId, Process process, Thread thread) {
+      this.appId = appId;
+      this.process = process;
+      this.thread = thread;
+    }
+
+    @Override
+    public boolean cancellationRequested() {
+      synchronized (requestOwnersLock) {
+        return cancelled;
+      }
+    }
+
+    @Override
+    public void close() {
+      synchronized (requestOwnersLock) {
+        if (closed) return;
+        closed = true;
+        var owners = requestOwners.get(appId);
+        if (owners != null && owners.remove(this)) {
+          requestOwnerCount--;
+          if (owners.isEmpty()) requestOwners.remove(appId);
+        }
+      }
+      // Request threads are dedicated; never clear an interrupt on a reusable HTTP executor.
+    }
   }
 
   private final Map<String, RuntimeRecord> runtimeRecords = new ConcurrentHashMap<>();
@@ -1287,6 +1374,7 @@ public final class LocalProcessAppHost implements AppHost {
       return false;
     }
     explicitStopRequests.add(normalizedAppId);
+    cancelRequestOwners(normalizedAppId, runningProcess.process());
 
     RunningProcess trackedRunningProcess =
         trackRunningProcessForStop(normalizedAppId, runningProcess);
@@ -1776,6 +1864,7 @@ public final class LocalProcessAppHost implements AppHost {
   }
 
   private void recordExitAndScheduleRestartIfNeeded(String appId, RunningProcess runningProcess) {
+    cancelRequestOwners(appId, runningProcess.process());
     boolean explicitStop = explicitStopRequests.contains(appId);
     Integer exitCode = trackedAppExitCode(runningProcess);
     Instant exitAt = Instant.now();

@@ -44,6 +44,18 @@ TEST_SEAMS = frozenset('tools/release-certification/restricted/' + name for name
     'pr319_restart_runtime_evidence.py', 'pr319_restart_runtime_runner.py',
     'pr318_storage_admin.py', 'pr318_storage_selection.py',
     'pr318_storage_runtime_evidence.py', 'pr318_storage_runtime_runner.py',
+    'pr320_storage_selection.py', 'pr320_storage_admin.py', 'pr320_installed_dispatch.py',
+    'pr320_storage_runtime_evidence.py', 'pr320_storage_runtime_runner.py',
+    'pr320_budget_process_client.py', 'pr320_owner_admin.py', 'pr320_owner_selection.py',
+    'pr320_owner_runtime_evidence.py', 'pr320_owner_runtime_runner.py',
+    'pr320_restart_selection.py', 'pr320_restart_admin.py',
+    'pr320_restart_runtime_evidence.py', 'pr320_restart_runtime_runner.py',
+    'pr320_campaign_capture.py',
+    'pr320_privacy_admin.py', 'pr320_privacy_selection.py', 'pr320_privacy_runtime_evidence.py',
+    'pr320_privacy_runtime_runner.py', 'pr320_privacy_browser_admin.py',
+    'pr320_privacy_artifact_producer.py',
+    'pr320_route_admin.py', 'pr320_route_selection.py', 'pr320_route_runtime_evidence.py',
+    'pr320_route_runtime_runner.py',
     'pr315_workload_evidence.py', 'pr315_pve_host_admission.py',
     'pr315_workload_campaign.py', 'pr315_pve_pressure_watch.py',
     'pr315_role_probe.py', 'pr315_lifecycle_role_probe.py',
@@ -690,6 +702,7 @@ HOST_ASSETS = (
     ('cryptad-restricted-native.service', '/etc/systemd/system/cryptad-restricted-native.service'),
     ('cryptad-restricted.socket', '/etc/systemd/system/cryptad-restricted.socket'),
     ('cryptad-cross-version-soak.service', '/etc/systemd/system/cryptad-cross-version-soak.service'),
+    ('cryptad-pr320-original-acquisition.service', '/etc/systemd/system/cryptad-pr320-original-acquisition.service'),
 )
 
 

@@ -217,10 +217,11 @@ public final class OperatorSupportRedactor {
    * Redacts one JSON-compatible object tree.
    *
    * <p>The input may be a nested combination of maps, lists, strings, numbers, booleans, and {@code
-   * null}. Map entries with sensitive field names are omitted entirely and their original keys are
-   * recorded in the result. String values that remain in the tree are pattern-scrubbed for content
-   * URIs, PEM private-key blocks, local paths, credential headers, secret assignments, and
-   * sensitive query parameters. The input object is not mutated.
+   * null}. Map entries with sensitive field names are omitted entirely and bounded identifier keys
+   * are recorded in the result. Arbitrary unsafe keys use a fixed category label. String values
+   * that remain in the tree are pattern-scrubbed for content URIs, PEM private-key blocks, local
+   * paths, credential headers, secret assignments, and sensitive query parameters. The input object
+   * is not mutated.
    *
    * @param value JSON-compatible value to sanitize before export
    * @return redacted value plus the structural field names omitted during traversal
@@ -251,13 +252,47 @@ public final class OperatorSupportRedactor {
     LinkedHashMap<String, Object> redacted = LinkedHashMap.newLinkedHashMap(map.size());
     for (Map.Entry<?, ?> entry : map.entrySet()) {
       String key = String.valueOf(entry.getKey());
-      if (isSensitiveFieldName(key, entry.getValue())) {
-        omittedFields.add(key);
+      if (!safeStructuralFieldName(key) || isSensitiveFieldName(key, entry.getValue())) {
+        omittedFields.add(safeOmittedFieldName(key));
         continue;
       }
       redacted.put(key, redactValue(entry.getValue(), omittedFields));
     }
     return redacted;
+  }
+
+  private static boolean safeStructuralFieldName(String key) {
+    return key.length() <= 96
+        && key.matches("[A-Za-z][A-Za-z0-9_-]*")
+        && key.equals(redactString(key));
+  }
+
+  private static String safeOmittedFieldName(String key) {
+    String normalized = normalizeFieldName(key);
+    boolean known =
+        SENSITIVE_FIELD_NAMES.contains(normalized)
+            || PATH_LABEL_FIELD_NAMES.contains(normalized)
+            || Set.of(
+                    "apikey",
+                    "signature",
+                    "signaturebase64",
+                    "signaturevalue",
+                    "rawsignaturevalue",
+                    "signaturepayload",
+                    "signaturedocument",
+                    "seedphrase",
+                    "mnemonic",
+                    "mnemonicphrase",
+                    "rawappdatavalues",
+                    "rawappdatapayload",
+                    "rawappdatapayloadbase64",
+                    "rawappdatastatus",
+                    "rawappdatasource",
+                    "securityincidentrawappdata",
+                    "apprawappdatapayload",
+                    "rawappdataredacted")
+                .contains(normalized);
+    return safeStructuralFieldName(key) && known ? key : "unsafeFieldName";
   }
 
   private static boolean isBackupPayloadMap(Map<?, ?> map) {
@@ -792,12 +827,13 @@ public final class OperatorSupportRedactor {
    * Redacted payload and the structural fields omitted during redaction.
    *
    * <p>The {@code value} component preserves the original JSON-compatible shape as closely as the
-   * redaction rules allow. The {@code omittedFields} component records field names removed because
-   * their keys matched sensitive categories such as tokens, raw bodies, local paths, command lines,
-   * or private key material.
+   * redaction rules allow. The {@code omittedFields} component records recognized bounded field
+   * labels removed because their keys matched sensitive categories such as tokens, raw bodies,
+   * local paths, command lines, or private key material. Unknown or unsafe names use the fixed
+   * {@code unsafeFieldName} label.
    *
    * @param value sanitized value tree safe for the operator support-bundle envelope
-   * @param omittedFields copied field names that were removed during structural redaction
+   * @param omittedFields safe field labels that were removed during structural redaction
    */
   public record RedactionResult(Object value, List<String> omittedFields) {
     /** Creates an immutable redaction result. */

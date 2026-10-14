@@ -304,11 +304,15 @@ assert sys.path == before
         self.assertEqual(0, result.returncode, result.stderr)
         selected = re.search(r'--execution-class\s+\{([^}]+)\}', result.stdout)
         self.assertIsNotNone(selected)
+        from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES
+        actual_classes = tuple(value.strip() for value in selected.group(1).split(','))
         self.assertEqual(('pr316-installed-mail-runtime-v1',
                           'pr317-namespace-bound-composed-budget-v1',
                           'pr318-fixed-window-partial-store-v1',
                           'pr319-composed-budget-restart-diagnostics-v1'),
-                         tuple(value.strip() for value in selected.group(1).split(',')))
+                         actual_classes[:4])
+        self.assertEqual(PROSPECTIVE_EXECUTION_CLASSES, actual_classes[4:])
+        self.assertEqual(len(actual_classes), len(set(actual_classes)))
         self.assertNotIn('--kill-pid', result.stdout)
         self.assertNotIn('--chmod-path', result.stdout)
 

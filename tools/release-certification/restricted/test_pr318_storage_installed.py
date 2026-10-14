@@ -80,6 +80,21 @@ def host_selection():
 
 
 class SelectionTest(unittest.TestCase):
+    def test_historical_materialization_retains_its_tools_without_campaign_inputs(self):
+        _value, fixture = host_selection()
+        with patch.object(selection.os, 'geteuid', return_value=0), \
+                patch.object(selection, 'verify', return_value=fixture), \
+                patch.object(selection.preparation, 'configuration_identity',
+                    side_effect=lambda role, trust, execution_class:
+                        'sha256:' + str(selection.ROLES.index(role) + 4) * 64), \
+                patch.object(selection.runtime, 'runner_identity', return_value={
+                    'sourceCommit': fixture['sourceCommit'], 'runnerDigest': 'sha256:' + 'e' * 64,
+                    'adapterDigest': 'sha256:' + 'f' * 64}):
+            result = selection.materialize_selection(selection.FIXED_GUEST_ROOT,
+                Path('/owned/source'), 'sha256:' + 'f' * 64, fixture['sourceCommit'])
+        self.assertTrue(selection.verify_selection_contract(**result))
+        self.assertNotIn('budgetCampaignInputs', result['plan'])
+
     def test_statement_verifier_returns_one_product_fingerprint(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "fixtures"

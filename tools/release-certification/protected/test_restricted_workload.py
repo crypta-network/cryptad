@@ -27,6 +27,57 @@ import restricted_workload_network as network
 import restricted_workload_prepare as preparation
 
 
+class IsolatedEntryPointTest(unittest.TestCase):
+    def test_configured_entry_points_reject_invalid_arguments_without_import_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # Neither the working directory nor PYTHONPATH may supply a contract.
+            (root / 'pr320_budget_contract.py').write_text("raise RuntimeError('untrusted-module-loaded')\n")
+            environment = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'PYTHONPATH': str(root)}
+            for module in (controller, launcher):
+                with self.subTest(entry=module.__name__):
+                    result = subprocess.run(['/usr/bin/python3', '-I', '-S', module.__file__, 'invalid-entry'],
+                        cwd=root, env=environment, capture_output=True, timeout=15)
+                    self.assertEqual(1, result.returncode)
+                    self.assertEqual(b'', result.stdout)
+                    self.assertEqual(b'', result.stderr)
+
+    def test_fresh_isolated_imports_build_all_legacy_and_prospective_role_commands(self):
+        probe = r'''
+import json
+from pathlib import Path
+import runpy
+import sys
+
+assert sys.flags.isolated and sys.flags.no_site
+assert 'pr320_budget_contract' not in sys.modules
+controller = runpy.run_path(sys.argv[1], run_name='controller_import_probe')
+launcher = runpy.run_path(sys.argv[2], run_name='launcher_import_probe')
+assert controller['COMPLETE_STORAGE_CLASSES'] == launcher['COMPLETE_STORAGE_CLASSES']
+assert Path(sys.modules['pr320_budget_contract'].__file__).parent == Path(sys.argv[1]).parent
+legacy = (None, launcher['BUDGET_EXECUTION_CLASS'], launcher['STORAGE_EXECUTION_CLASS'],
+          launcher['RESTART_EXECUTION_CLASS'])
+profiles = legacy + launcher['COMPLETE_STORAGE_CLASSES']
+commands = 0
+for profile in profiles:
+    for role in launcher['ROLES']:
+        arguments, environment = launcher['command'](role, profile)
+        assert arguments[0] == '/usr/bin/bwrap'
+        assert environment['JAVA_HOME'] == '/jdk'
+        commands += 1
+print(json.dumps({'profiles': len(profiles), 'roleCommands': commands}))
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'pr320_budget_contract.py').write_text("raise RuntimeError('untrusted-module-loaded')\n")
+            result = subprocess.run(['/usr/bin/python3', '-I', '-S', '-c', probe,
+                controller.__file__, launcher.__file__], cwd=root,
+                env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'PYTHONPATH': str(root)},
+                capture_output=True, text=True, timeout=15)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertEqual({'profiles': 21, 'roleCommands': 84}, json.loads(result.stdout))
+
+
 class ControllerStartupDiagnosticsTest(unittest.TestCase):
     def setUp(self):
         self.boot_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -1555,6 +1606,7 @@ class PreparationTest(unittest.TestCase):
                 os.chown(node, user.pw_uid, user.pw_gid)
                 node.chmod(0o700)
             stack.enter_context(patch.object(preparation.subprocess, 'run', side_effect=mount))
+            stack.enter_context(patch('pr320_role_lifetime.configure'))
             plan = dict(provenanceClass='source-build-comparison', experimentId='synthetic',
                         producer={'sourceCommit': 'source'}, nodes=[])
             private = dict(root='/private', nodes={})

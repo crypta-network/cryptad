@@ -117,6 +117,48 @@ class AppAuditLogTest {
     assertEquals(PlatformApiAuthSource.APP_TOKEN, events.getFirst().authSource());
   }
 
+  @Test
+  void appendDecision_whenUnmappedPathContainsPrivateText_expectFixedAuditLabels() {
+    var log = new AppAuditLog();
+    var request =
+        new PlatformApiRequest(
+            "GET",
+            List.of("private-selection-token"),
+            java.util.Map.of(),
+            PlatformApiPrincipal.appToken("demo-app", List.of()));
+    var decision = PlatformApiCapabilities.authorize(request);
+
+    log.appendDecision(request, decision, AppAuditDecision.DENIED, 403, decision.reasonCode());
+
+    var event = log.recentForApp("demo-app", 1).getFirst();
+    assertTrue("unknown".equals(event.endpointFamily()), "audit_family_not_scoped");
+    assertTrue("unknown.unmapped".equals(event.action()), "audit_action_not_scoped");
+    assertEquals("unmapped_route", event.reasonCode());
+    assertEquals(AppAuditDecision.DENIED, event.decision());
+  }
+
+  @Test
+  void appendDecision_whenActionMissing_expectSameFixedFallbackLabels() {
+    var log = new AppAuditLog();
+    var request =
+        new PlatformApiRequest(
+            "GET",
+            List.of("private-selection-token"),
+            java.util.Map.of(),
+            PlatformApiPrincipal.appToken("demo-app", List.of()));
+
+    log.appendDecision(
+        request,
+        PlatformApiAuthorizationDecision.hostAllowed(),
+        AppAuditDecision.DENIED,
+        403,
+        "unmapped_route");
+
+    assertTrue(
+        "unknown".equals(log.recentForApp("demo-app", 1).getFirst().endpointFamily()),
+        "audit_fallback_family_not_scoped");
+  }
+
   private static AppAuditEvent event(
       String appId, String action, AppAuditDecision decision, int statusCode) {
     return new AppAuditEvent(

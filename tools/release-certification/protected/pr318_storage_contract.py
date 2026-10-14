@@ -90,12 +90,24 @@ def canonical_digest(value):
 
 
 def verify_selection_contract(plan, private, authorization):
-    """Validate the full class member without importing a runner or mutating state."""
+    """Validate historical PR-318 without accepting prospective PR-320 profiles."""
+    return verify_profile_selection(plan, private, authorization, {
+        "executionClass": EXECUTION_CLASS, "experiment": EXPERIMENT,
+        "cases": CASES, "environment": ENVIRONMENT,
+        "normalizedConfiguration": NORMALIZED_CONFIGURATION, "toolPaths": TOOL_PATHS})
+
+
+def verify_profile_selection(plan, private, authorization, profile):
+    """Reuse exact bindings for a code-owned finite profile; callers cannot select policy."""
+    execution_class, experiment = profile['executionClass'], profile['experiment']
+    cases, environment = profile['cases'], profile['environment']
+    normalized, tool_paths = profile['normalizedConfiguration'], profile['toolPaths']
+    permissions = profile.get('permissions', PERMISSIONS)
     try:
-        if (authorization.get('executionClass') != EXECUTION_CLASS
-                or plan.get('experimentId') != EXPERIMENT
-                or private.get('root') != '/var/lib/cryptad-cross-version/experiments/' + EXPERIMENT
-                or authorization.get('experimentId') != EXPERIMENT
+        if (authorization.get('executionClass') != execution_class
+                or plan.get('experimentId') != experiment
+                or private.get('root') != '/var/lib/cryptad-cross-version/experiments/' + experiment
+                or authorization.get('experimentId') != experiment
                 or authorization.get('root') != private.get('root')):
             return False
         budget = authorization.get('budgetSelection')
@@ -115,17 +127,20 @@ def verify_selection_contract(plan, private, authorization):
             'candidate-sender': [bundles[app_id] for app_id in APP_IDS],
             'candidate-recipient': [], 'previous': [], 'relay-no-apps': []}
         tools = budget['toolIdentities']
+        if 'campaignJournal' in tool_paths:
+            from cryptad_certification.composed_budget_journal_member import validate_selected_sources
+            validate_selected_sources(plan, tools)
         composed = plan.get('composedBudgetInputs')
         expected_collector = canonical_digest({key: tools[key] for key in
-            ('installedDriver', 'localBudgetAdapter', 'schedulerRuntime', 'evidenceOracle',
-             'storageOracle', 'administrator', 'roleClients', 'runtimeEvidence')})
+            profile.get('collectorTools', ('installedDriver', 'localBudgetAdapter', 'schedulerRuntime', 'evidenceOracle',
+             'storageOracle', 'administrator', 'roleClients', 'runtimeEvidence'))})
         expected_configuration = canonical_digest({
-            'nodeConfigDigest': plan['nodes'][0]['configDigest'], 'environment': ENVIRONMENT,
-            'normalizedConfiguration': NORMALIZED_CONFIGURATION})
-        return (budget['schemaVersion'] == 1 and valid_time_plan(budget['timePlan']) and budget['caseIds'] == list(CASES)
+            'nodeConfigDigest': plan['nodes'][0]['configDigest'], 'environment': environment,
+            'normalizedConfiguration': normalized})
+        return (budget['schemaVersion'] == 1 and valid_time_plan(budget['timePlan']) and budget['caseIds'] == list(cases)
             and authorization.get('planDigest') == canonical_digest(plan)
             and budget['appRoster'] == roster
-            and budget['permissions'] == {key: list(value) for key, value in PERMISSIONS.items()}
+            and budget['permissions'] == {key: list(value) for key, value in permissions.items()}
             and [row['appId'] for row in apps] == list(APP_IDS)
             and bundles == budget['appBundleDigests'] and set(bundles) == set(APP_IDS)
             and [row['role'] for row in nodes] == list(ROLES)
@@ -136,17 +151,17 @@ def verify_selection_contract(plan, private, authorization):
                 'budgetStatementDigest')
             and re.fullmatch(r'sha256:[0-9a-f]{64}', str(budget['statementDigest'])) is not None
             and re.fullmatch(r'[0-9a-f]{64}', str(budget['statementFingerprint'])) is not None
-            and budget['environment'] == ENVIRONMENT and budget['failurePolicy'] == FAILURE_POLICY
-            and budget['normalizedConfiguration'] == NORMALIZED_CONFIGURATION
-            and set(tools) == set(TOOL_PATHS)
+            and budget['environment'] == environment and budget['failurePolicy'] == FAILURE_POLICY
+            and budget['normalizedConfiguration'] == normalized
+            and set(tools) == set(tool_paths)
             and all(re.fullmatch(r'sha256:[0-9a-f]{64}', str(value)) for value in tools.values())
-            and budget['privateRootClass'] == 'controller-derived-' + EXPERIMENT
+            and budget['privateRootClass'] == 'controller-derived-' + experiment
             and composed == budget['composedBudgetInputs']
             and composed == {'collectorDigest': expected_collector,
                              'configurationDigest': expected_configuration}
             and plan.get('workloadInputs') == {'scheduler': tools['installedDriver']}
             and authorization.get('selectionDigest') == canonical_digest({
-                'executionClass': EXECUTION_CLASS,
+                'executionClass': execution_class,
                 'planDigest': authorization.get('planDigest'),
                 'budgetSelection': budget}))
     except (KeyError, TypeError, ValueError):
