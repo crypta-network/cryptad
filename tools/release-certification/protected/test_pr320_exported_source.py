@@ -261,11 +261,13 @@ class PhysicalExportTests(unittest.TestCase):
     def test_fresh_isolated_browser_helper_loads_product_dependencies_and_kit_helpers(self):
         child = self.root / 'browser-import-child.py'
         child.write_text(r'''
+import builtins
 import json
+import pathlib
 from pathlib import Path
 import runpy
 import sys
-from unittest.mock import patch
+from types import SimpleNamespace
 
 root = Path(sys.argv[1])
 product, kit = root / 'product', root / 'kit'
@@ -275,28 +277,25 @@ assert not any(name.startswith(('pr320_', 'cryptad_certification')) for name in 
 
 # Replace only the fixed installed directory provider with the physical export.
 # The helper's exact source and its startup imports execute in this fresh child.
-class InstalledPath(type(Path())):
-    def __init__(self, *arguments, **kwargs):
-        if len(arguments) == 1:
-            mapped = {'/opt/cryptad-cross-version/current': product,
-                      '/opt/cryptad-restricted-test-kit': kit}.get(str(arguments[0]))
-            if mapped is not None:
-                arguments = (mapped,)
-        if Path.__init__ is object.__init__:
-            super().__init__()
-        else:
-            super().__init__(*arguments, **kwargs)
+def installed_path(*arguments, **kwargs):
+    if len(arguments) == 1:
+        mapped = {'/opt/cryptad-cross-version/current': product,
+                  '/opt/cryptad-restricted-test-kit': kit}.get(str(arguments[0]))
+        if mapped is not None:
+            arguments = (mapped,)
+    return Path(*arguments, **kwargs)
 
-    def __new__(cls, *arguments, **kwargs):
-        if len(arguments) == 1:
-            mapped = {'/opt/cryptad-cross-version/current': product,
-                      '/opt/cryptad-restricted-test-kit': kit}.get(str(arguments[0]))
-            if mapped is not None:
-                arguments = (mapped,)
-        return super().__new__(cls, *arguments, **kwargs)
+def helper_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if (name == 'pathlib' and level == 0 and fromlist == ('Path',)
+            and globals is not None and globals.get('__file__') == str(helper)):
+        return SimpleNamespace(Path=installed_path)
+    return builtins.__import__(name, globals, locals, fromlist, level)
 
-with patch('pathlib.Path', InstalledPath):
-    namespace = runpy.run_path(str(helper), run_name='browser_import_probe')
+# Only this helper receives the mapping. Imported modules and pathlib internals
+# use their normal builtins and concrete path constructors.
+namespace = runpy.run_path(str(helper), run_name='browser_import_probe',
+    init_globals={'__builtins__': dict(vars(builtins), __import__=helper_import)})
+assert pathlib.Path is Path
 assert namespace['PRODUCT'] == product and namespace['ROOT'] == kit
 assert namespace['COLLECTOR'] == product / 'tools/interop/pr320_installed_privacy_browser.cjs'
 assert namespace['COLLECTOR'].is_file()

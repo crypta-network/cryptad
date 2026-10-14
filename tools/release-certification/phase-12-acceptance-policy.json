@@ -3412,7 +3412,7 @@
           },
           {
             "path": "tools/release-certification/protected/test_pr320_exported_source.py",
-            "digest": "sha256:fcea4cb491c1b9f9be620e1c988675f98cd7f496a125f01f6ed212091db38177",
+            "digest": "sha256:178065ec100c72fa9eeaea395316ce2344f2cb8c194c5bce7cbc1a635c870c1e",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion. PR-320 second integration review binds every route campaign journal, resolves isolated browser imports across the verified product and kit, independently pins served-script and collector bytes, and verifies bounded support exports without Web Crypto. Offline checks grant no installed observation or original authority; acceptance obligations and historical bytes remain unchanged."
           },
           {
@@ -4456,7 +4456,7 @@
           },
           {
             "path": "tools/release-certification/protected/test_pr320_exported_source.py",
-            "digest": "sha256:fcea4cb491c1b9f9be620e1c988675f98cd7f496a125f01f6ed212091db38177",
+            "digest": "sha256:178065ec100c72fa9eeaea395316ce2344f2cb8c194c5bce7cbc1a635c870c1e",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion. PR-320 second integration review binds every route campaign journal, resolves isolated browser imports across the verified product and kit, independently pins served-script and collector bytes, and verifies bounded support exports without Web Crypto. Offline checks grant no installed observation or original authority; acceptance obligations and historical bytes remain unchanged."
           },
           {
