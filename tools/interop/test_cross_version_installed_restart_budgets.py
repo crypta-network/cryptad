@@ -270,6 +270,36 @@ class NativeSamplingTests(unittest.TestCase):
 
 
 class ClosedDriverSurfaceTests(unittest.TestCase):
+    def test_fresh_process_resolves_both_contracts_and_restores_path_before_selection_denial(self):
+        script = '''import sys
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+sys.path.insert(0, sys.argv[1])
+before = list(sys.path)
+import cross_version_installed_restart_budgets as driver
+assert not any(name in sys.modules for name in ('pr319_restart_contract', 'pr320_budget_contract', 'pr320_restart_contract'))
+for execution_class in (driver.EXECUTION_CLASS, 'pr320-installed-restart-diagnostics-v1', 'unknown-class'):
+    adapter = SimpleNamespace(plan={}, private={}, authorization={'executionClass': execution_class}, start=Mock())
+    try:
+        driver.run_restart_lane(adapter, Mock(), execution_class=execution_class)
+    except driver.runtime.RuntimeFailure as error:
+        expected = 'restart-class-invalid' if execution_class == 'unknown-class' else 'restart-selection-invalid'
+        assert str(error) == 'installed-budget-' + expected
+    else:
+        raise AssertionError('invalid selection was accepted')
+    adapter.start.assert_not_called()
+    assert sys.path == before
+protected = Path(driver.__file__).resolve().parents[1] / 'release-certification/protected'
+for name in ('pr319_restart_contract', 'pr320_budget_contract', 'pr320_restart_contract'):
+    assert Path(sys.modules[name].__file__).parent == protected
+'''
+        with tempfile.TemporaryDirectory() as root:
+            result = subprocess.run([sys.executable, '-I', '-S', '-B', '-c', script,
+                                     str(Path(driver.__file__).resolve().parent)], cwd=root,
+                                    capture_output=True, text=True, timeout=15, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_import_is_independent_of_checkout_cwd_and_keeps_sys_path_unchanged(self):
         script = '''import sys
 sys.path.insert(0, sys.argv[1])
@@ -304,7 +334,8 @@ assert sys.path == before
         self.assertEqual(0, result.returncode, result.stderr)
         selected = re.search(r'--execution-class\s+\{([^}]+)\}', result.stdout)
         self.assertIsNotNone(selected)
-        from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES
+        with driver.runtime.fixed_helper_imports():
+            from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES
         actual_classes = tuple(value.strip() for value in selected.group(1).split(','))
         self.assertEqual(('pr316-installed-mail-runtime-v1',
                           'pr317-namespace-bound-composed-budget-v1',

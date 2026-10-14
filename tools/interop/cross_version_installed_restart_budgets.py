@@ -247,14 +247,15 @@ def _diagnostic_case(adapter, handles, statement, administrator, state, variant,
 
 def run_restart_lane(adapter, administrator, *, leave_running_for_administrator=False, on_start_failure=None,
                      execution_class=EXECUTION_CLASS):
-    from pr319_restart_contract import verify_selection_contract
-    from pr320_budget_contract import RESTART_EXECUTION_CLASS as prospective_class
-    if execution_class == prospective_class:
-        from pr320_restart_contract import verify_selection_contract
-    elif execution_class != EXECUTION_CLASS:
-        transport.fail('restart-class-invalid')
-    if not verify_selection_contract(adapter.plan, adapter.private, adapter.authorization):
-        transport.fail('restart-selection-invalid')
+    with runtime.fixed_helper_imports():
+        from pr319_restart_contract import verify_selection_contract
+        from pr320_budget_contract import RESTART_EXECUTION_CLASS as prospective_class
+        if execution_class == prospective_class:
+            from pr320_restart_contract import verify_selection_contract
+        elif execution_class != EXECUTION_CLASS:
+            transport.fail('restart-class-invalid')
+        if not verify_selection_contract(adapter.plan, adapter.private, adapter.authorization):
+            transport.fail('restart-selection-invalid')
     state = {'bindings': [], 'phaseReceipts': [], 'epochContexts': []}
     completed = False
     try:

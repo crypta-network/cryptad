@@ -2684,7 +2684,7 @@
           },
           {
             "path": "tools/interop/cross_version_installed_restart_budgets.py",
-            "digest": "sha256:273327a7f033c4ff45135ad60134285b6be69c5e323b74d5ad035412e1e973f2",
+            "digest": "sha256:371d71f3f7e98b666ceb7d93d3037a3ab6810833a86a55aa76c93b2bc2ce1593",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion. PR-320 successor review preserves the historical contract while adding the scoped budget path; original observations remain required."
           },
           {
@@ -3312,7 +3312,7 @@
           },
           {
             "path": "tools/interop/test_cross_version_installed_restart_budgets.py",
-            "digest": "sha256:909c6a570a7282b48d799f7979aa26149b9cd95d4e6efbc9720d02fc41dec46b",
+            "digest": "sha256:f0856cd7216e15feaf21fd6c618e0aa7604c35948bd6e8a196698d4bd2762173",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion. PR-320 successor review preserves the historical contract while adding the scoped budget path; original observations remain required."
           },
           {
@@ -3728,7 +3728,7 @@
           },
           {
             "path": "tools/interop/cross_version_installed_restart_budgets.py",
-            "digest": "sha256:273327a7f033c4ff45135ad60134285b6be69c5e323b74d5ad035412e1e973f2",
+            "digest": "sha256:371d71f3f7e98b666ceb7d93d3037a3ab6810833a86a55aa76c93b2bc2ce1593",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion. PR-320 successor review preserves the historical contract while adding the scoped budget path; original observations remain required."
           },
           {
@@ -4356,7 +4356,7 @@
           },
           {
             "path": "tools/interop/test_cross_version_installed_restart_budgets.py",
-            "digest": "sha256:909c6a570a7282b48d799f7979aa26149b9cd95d4e6efbc9720d02fc41dec46b",
+            "digest": "sha256:f0856cd7216e15feaf21fd6c618e0aa7604c35948bd6e8a196698d4bd2762173",
             "assertion": "PR-319 bounded process restart and unavailable diagnostic implementation and real-file producer/consumer test source; preserves all 31 budget cases, 49 Phase 12 requirements, unknown crash tails and original operational authority. Source pins do not establish test execution, installed acceptance, privacy, full app budgets, independent review or protected completion. PR-320 successor review preserves the historical contract while adding the scoped budget path; original observations remain required."
           },
           {
