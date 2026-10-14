@@ -161,7 +161,8 @@ def validate_plan(plan):
         raise EvidenceError("candidate-artifacts-differ")
     if previous["artifactDigest"] == sender["artifactDigest"] or previous["sourceCommit"] == sender["sourceCommit"]:
         raise EvidenceError("previous-relabels-current")
-    budget_profile = (plan["experimentId"] == "pr317-namespace-bound-composed-budget"
+    budget_profile = (plan["experimentId"] in {
+        "pr317-namespace-bound-composed-budget", "pr319-composed-budget-restart-diagnostics"}
         and set(workload) == {"scheduler"}
         and set(plan.get("composedBudgetInputs", {})) == {
             "collectorDigest", "configurationDigest"}

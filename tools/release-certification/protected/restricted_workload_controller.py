@@ -515,7 +515,7 @@ def bootstrap_budget(handle):
         with bootstrap_phase('authority', 'unknown'):
             campaign, role, record = workload.retained(handle)
             if (campaign.get('executionClass') not in
-                    ('pr317-namespace-bound-composed-budget-v1', 'pr318-fixed-window-partial-store-v1')
+                    ('pr317-namespace-bound-composed-budget-v1', 'pr318-fixed-window-partial-store-v1', 'pr319-composed-budget-restart-diagnostics-v1')
                     or role != 'candidate-sender'
                     or campaign.get('budgetSelectionDigest') is None):
                 workload.reject('budget-bootstrap-authority-invalid')
@@ -600,6 +600,28 @@ def bootstrap_budget(handle):
                 'worker': binding['worker'], 'origin': origin,
                 'session': value['browserSessionToken'],
                 'sessionExpiresAt': value.get('browserSessionExpiresAt')}
+        if campaign.get('executionClass') == 'pr319-composed-budget-restart-diagnostics-v1':
+            def digest(value):
+                return 'sha256:' + hashlib.sha256(json.dumps(value, sort_keys=True,
+                    separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+            original = {'generation': record['generation'],
+                'managerInvocation': record['managerInvocation'], 'bootId': record['bootId'],
+                'handle': handle, 'apps': {}}
+            for app_id, context in contexts.items():
+                original['apps'][app_id] = {'appId': app_id, 'role': role,
+                    'roleEpochDigest': digest({key: context[key] for key in
+                        ('handle', 'generation', 'managerInvocation', 'bootId')}),
+                    'daemonEpochDigest': digest(context['daemonEpoch']),
+                    'workerEpochDigest': digest(context['worker']),
+                    'originDigest': digest(context['origin']), 'sessionDigest': digest(context['session']),
+                    'sessionExpiryDigest': digest(context['sessionExpiresAt'])}
+            target = workload.ROOT / 'authority' / (
+                'candidate-sender-budget-bootstrap-' + record['generation'] + '.json')
+            if os.path.lexists(target):
+                if workload.read(target) != original:
+                    workload.reject('budget-bootstrap-original-changed')
+            else:
+                workload.write(target, original, create=True)
         return {'apps': contexts, 'corpus': _budget_statement(launch)}
 
 

@@ -33,6 +33,7 @@ PROFILES = {'tcg-multi': 'tcg,thread=multi', 'tcg-single': 'tcg,thread=single'}
 MAIL_EXECUTION_CLASS = 'pr316-installed-mail-runtime-v1'
 BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
 STORAGE_EXECUTION_CLASS = 'pr318-fixed-window-partial-store-v1'
+RESTART_EXECUTION_CLASS = 'pr319-composed-budget-restart-diagnostics-v1'
 MAIL_PRIVATE_MAX_BYTES = 512 * 1024
 GUEST_STAGES = frozenset(('installation', 'installation-export',
     'dependency-profile-measurement', 'installation-publication', 'installed-profile-verification',
@@ -347,11 +348,11 @@ def workload_guest_command(args):
     scenario = getattr(args, 'lifecycle_scenario', 'cancellation')
     workload_group = getattr(args, 'workload_group', None)
     execution_class = getattr(args, 'execution_class', None)
-    selected_execution = execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS)
+    selected_execution = execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS)
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
             or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
             or execution_class not in (None, MAIL_EXECUTION_CLASS,
-                                       BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS)
+                                       BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS)
             or scenario not in ('cancellation', 'controller-restart', 'deadline',
                                 'revocation-running', 'setsid-double-fork',
                                 'observer-death', 'none')
@@ -419,7 +420,7 @@ def run(args, *, before_guest_launch=None):
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
     if args.mode == 'workload-positive':
-        report['workloadPurpose'] = ('budget-storage' if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS else 'budget-lifecycle' if getattr(args, 'execution_class', None) ==
+        report['workloadPurpose'] = ('budget-restart' if getattr(args, 'execution_class', None) == RESTART_EXECUTION_CLASS else 'budget-storage' if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS else 'budget-lifecycle' if getattr(args, 'execution_class', None) ==
                                      BUDGET_EXECUTION_CLASS
                                      else 'mail-runtime' if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
                                      else 'startup-measurement' if getattr(args, 'startup_measurement', False)
@@ -478,6 +479,8 @@ def run(args, *, before_guest_launch=None):
             helper_names.extend(('pr315_workload_fixtures.py', 'pr315_workload_guest.py'))
             if getattr(args, 'execution_class', None) == BUDGET_EXECUTION_CLASS:
                 helper_names.append('pr317_budget_selection.py')
+            if getattr(args, 'execution_class', None) == RESTART_EXECUTION_CLASS:
+                helper_names.append('pr319_restart_selection.py')
             if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS:
                 helper_names.append('pr318_storage_selection.py')
         for name in helper_names:
@@ -496,7 +499,10 @@ def run(args, *, before_guest_launch=None):
         report['productSourceVerification'] = 'local-git-and-embedded-marker-v1'
         if args.prepared_fixtures is not None:
             if args.mode == 'workload-positive':
-                if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS:
+                if getattr(args, 'execution_class', None) == RESTART_EXECUTION_CLASS:
+                    import pr319_restart_selection as fixture_module
+                    fixtures = clone / 'build/pr319-inputs'
+                elif getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS:
                     import pr318_storage_selection as fixture_module
                     fixtures = clone / 'build/pr318-inputs'
                 elif getattr(args, 'execution_class', None) == BUDGET_EXECUTION_CLASS:
@@ -593,7 +599,7 @@ def run(args, *, before_guest_launch=None):
                            else 'installed-pr316-mail-runtime'
                            if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
                            else 'installed-' + args.mode)
-        storage_clock = getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS
+        storage_clock = getattr(args, 'execution_class', None) in (STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS)
         if storage_clock:
             report['storageClock'] = {
                 'before': guest_clock_sample(ssh, log, boot.ENVIRONMENT)}
@@ -641,6 +647,13 @@ print(json.dumps(records))
                 ('pr313-observation.private.json', '/root/pr313-observation.private.json', 65536),
                 ('pr314-workload-observation.private.json', '/root/pr314-workload-observation.private.json', 65536),
                 ('pr316-selection.private.json', '/root/pr314-workload-selection.json', 131072),
+                ('pr319-selection.private.json', '/root/pr314-workload-selection.json', 262144),
+                ('pr319-restart-budget.private.json',
+                 '/var/lib/cryptad-cross-version/experiments/pr319-composed-budget-restart-diagnostics/'
+                 'pr319-restart-budget.private.json', 4 * 1024 * 1024),
+                ('pr319-restart-attempts.private.jsonl',
+                 '/var/lib/cryptad-cross-version/experiments/pr319-composed-budget-restart-diagnostics/'
+                 'pr319-restart-attempts.private.jsonl', 4 * 1024 * 1024),
                 ('pr318-selection.private.json', '/root/pr314-workload-selection.json', 262144),
                 ('pr318-storage-attempts.private.jsonl',
                  '/var/lib/cryptad-cross-version/experiments/pr318-fixed-window-partial-store/'
@@ -655,7 +668,8 @@ print(json.dumps(records))
                 ('pr317-budget-lifecycle.private.json',
                  '/var/lib/cryptad-cross-version/experiments/pr317-namespace-bound-composed-budget/'
                  'pr317-composed-budget-lifecycle.private.json', 4 * 1024 * 1024),
-                ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json', 65536),
+                ('pr315-workload-memory.private.json', '/root/pr315-workload-memory.private.json',
+                 262144 if getattr(args, 'execution_class', None) == RESTART_EXECUTION_CLASS else 65536),
                 ('pr315-workload-volatile.private.json', '/root/pr315-workload-volatile.private.json', 262144),
                 ('pr315-retired-authority.private.json', '/root/pr315-retired-authority.private.json', 8192),
                 ('pr315-resource-children.private.json', '/root/pr315-resource-children.private.json', 131072),

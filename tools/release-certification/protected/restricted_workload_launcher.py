@@ -21,6 +21,7 @@ PARTIAL_LAUNCH_RECORD = ROOT / 'state/previous/tmp/pr315-partial-launch-fault.js
 PARTIAL_LAUNCH_RELEASE = ROOT / 'state/previous/tmp/pr315-partial-launch-release.json'
 BUDGET_EXECUTION_CLASS = 'pr317-namespace-bound-composed-budget-v1'
 STORAGE_EXECUTION_CLASS = 'pr318-fixed-window-partial-store-v1'
+RESTART_EXECUTION_CLASS = 'pr319-composed-budget-restart-diagnostics-v1'
 BUDGET_ENVIRONMENT = {
     'CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_ENABLED': 'false',
     'CRYPTAD_CONTENT_SUBSCRIPTIONS_SCHEDULER_INITIAL_DELAY_SECONDS': '1',
@@ -92,7 +93,7 @@ def launcher_policy():
 
 def budget_launcher_policy(execution_class=BUDGET_EXECUTION_CLASS):
     """Additional class-bound environment; legacy and Mail policy identities stay unchanged."""
-    if execution_class not in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS):
+    if execution_class not in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
         raise ValueError('workload-budget-class-invalid')
     return {'executionClass': execution_class,
             'environment': dict(BUDGET_ENVIRONMENT)}
@@ -280,7 +281,7 @@ def verify_wrapper_options(package):
 
 
 def command(role, execution_class=None):
-    if role not in ROLES or execution_class not in (None, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS):
+    if role not in ROLES or execution_class not in (None, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
         raise ValueError('workload-role-invalid')
     inputs, state = ROOT / 'roles' / role, ROOT / 'state' / role
     arguments = ['/usr/bin/bwrap', '--unshare-user', '--unshare-pid', '--unshare-ipc',
@@ -310,7 +311,7 @@ def command(role, execution_class=None):
     environment = {'PATH': '/jdk/bin:/usr/bin:/bin', 'JAVA_HOME': '/jdk', 'HOME': '/node',
         'LANG': 'C.UTF-8', 'TMPDIR': '/tmp', 'CRYPTAD_APPHOST_SANDBOX_PROVIDER': 'bubblewrap',
         'CRYPTAD_APPHOST_TRUSTED_KEYS_FILE': '/inputs/public/trusted-app-keys.properties'}
-    if execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS):
+    if execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
         environment.update(BUDGET_ENVIRONMENT)
     return arguments + ['--', *child], environment
 

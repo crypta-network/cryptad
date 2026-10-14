@@ -807,6 +807,39 @@ def _derive_causal_cases(value, epochs, observation_time):
 def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_digest,
            observation_time=None, node_epoch=None, collector_digest=None, configuration_digest=None):
     """Recompute observed route accounting; missing hard cases remain explicitly missing."""
+    if isinstance(value, dict) and value.get('schemaVersion') == 5:
+        fields = {'schemaVersion', 'workloadDigest', 'productDigest', 'sourceCommit',
+            'appCohortDigest', 'collectorDigest', 'configurationDigest', 'collectorEpoch',
+            'nodeEpoch', 'segments', 'causalCases', 'storageCases', 'restartCases', 'diagnosticsCases'}
+        _closed(value, fields)
+        if (type(value['schemaVersion']) is not int or value['segments'] != []
+                or value['causalCases'] != [] or value['storageCases'] != []
+                or not re.fullmatch('[0-9a-f-]{36}', str(value['collectorEpoch']))
+                or not re.fullmatch('[0-9a-f]{32}', str(value['nodeEpoch']))
+                or node_epoch is not None and value['nodeEpoch'] != node_epoch
+                or node_epoch is not None and (collector_digest is None or configuration_digest is None)
+                or any(value[key] != expected for key, expected in (
+                    ('workloadDigest', workload_digest), ('productDigest', product_digest),
+                    ('sourceCommit', source_commit), ('appCohortDigest', app_cohort_digest)))
+                or any(expected is not None and value[key] != expected for key, expected in (
+                    ('collectorDigest', collector_digest), ('configurationDigest', configuration_digest)))
+                or any(not pressure.baseline.DIGEST.fullmatch(str(value[key])) for key in (
+                    'workloadDigest', 'productDigest', 'appCohortDigest', 'collectorDigest', 'configurationDigest'))
+                or not re.fullmatch('[0-9a-f]{40}', str(source_commit))):
+            raise ComposedEvidenceError('composed-budget-restart-binding-invalid')
+        if len(json.dumps(value, allow_nan=False).encode()) > 1024 * 1024:
+            raise ComposedEvidenceError('composed-budget-byte-limit')
+        rows = value['restartCases'] + value['diagnosticsCases']
+        if rows and value['collectorEpoch'] != rows[-1]['recovery']['collectorEpoch']:
+            raise ComposedEvidenceError('composed-budget-collector-epoch-mismatch')
+        from .composed_budget_restart_evidence import derive_cases
+        observed = derive_cases(value, observation_time=observation_time)
+        return {'schemaVersion': 1, 'kind': 'composed-budget-coverage',
+            'requiredCases': list(REQUIRED_CASES), 'observedCases': sorted(observed),
+            'missingCases': sorted(set(REQUIRED_CASES) - observed),
+            'evidenceClass': 'native-observation-local-consistency',
+            'originalAuthentication': 'not-established', 'fullAppBudgets': 'not-observed',
+            'releaseEligible': False}
     fields = {'schemaVersion', 'workloadDigest', 'productDigest', 'sourceCommit',
               'appCohortDigest', 'collectorDigest', 'configurationDigest', 'segments'}
     version = value.get('schemaVersion') if isinstance(value, dict) else None

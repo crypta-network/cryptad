@@ -1,0 +1,330 @@
+"""Prospective clocks, budget admission and legacy dispatch retain installed boundaries."""
+import copy
+import hashlib
+import json
+import tempfile
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+import unittest
+from unittest.mock import Mock, patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import pr319_restart_runtime_runner as runner
+import pr319_installed_dispatch as dispatch
+import pr319_restart_selection as selection
+import restricted_workload_prepare as preparation
+import test_pr317_budget_selection as legacy_fixture
+import cross_version_installed_restart_budgets as collector
+
+
+class RuntimeBoundaryTests(unittest.TestCase):
+    def test_invalid_diagnostic_interval_is_inside_same_selected_hour(self):
+        phase = {'diagnostics': {'observedAt': '2026-10-13T19:10:00Z'}}
+        row = {'caseId': 'diagnostics-unavailable', **{k: copy.deepcopy(phase)
+               for k in ('before', 'during', 'after', 'recovery')}}
+        value = {'restartCases': [], 'diagnosticsCases': [row]}
+        authorization = {'budgetSelection': {'timePlan': {'boundaryEpochSecond': 1791921600}}}
+        runner._selected_time_plan(value, authorization)
+        row['during']['diagnostics']['observedAt'] = '2026-10-13T18:59:59Z'
+        with self.assertRaisesRegex(ValueError, 'selected-hour-missed'):
+            runner._selected_time_plan(value, authorization)
+
+    def test_host_clock_bracket_includes_actual_invalid_sample(self):
+        second = 1791918000
+        def clock(offset):
+            ns = (second + offset) * 10**9
+            return {'hostEpochBeforeNanos': ns, 'hostEpochAfterNanos': ns + 1000000,
+                'guestEpochNanos': ns, 'hostMonotonicBeforeNanos': (offset + 1) * 10**9,
+                'hostMonotonicAfterNanos': (offset + 1) * 10**9 + 1000000}
+        phase = {'diagnostics': {'observedAt': '2026-10-13T19:00:10Z'}}
+        row = {'caseId': 'diagnostics-unavailable', **{k: copy.deepcopy(phase)
+               for k in ('before', 'during', 'after', 'recovery')}}
+        attachment = {'restartCases': [], 'diagnosticsCases': [row]}
+        report = {'storageClock': {'before': clock(0), 'after': clock(60)}}
+        runner._clock_binding(report, attachment, {})
+        row['during']['diagnostics']['observedAt'] = '2026-10-13T19:02:00Z'
+        with self.assertRaisesRegex(ValueError, 'observation-clock-substituted'):
+            runner._clock_binding(report, attachment, {})
+
+    def test_historical_startup_measurement_never_runs_new_lane(self):
+        called = []
+        driver = SimpleNamespace(controller_ready=lambda x: called.append(x),
+            readiness_deadline=lambda *a: 123, STARTUP_MEASUREMENT_SECONDS=45)
+        result = dispatch.observer_sequence(driver, None, None, None, 0, 0, True)
+        self.assertEqual([123], called)
+        self.assertFalse(result['installedPositiveExecuted'])
+        self.assertEqual('startup-measurement-not-workload-acceptance', result['classification'])
+
+
+def selected(max_operations, max_seconds=600):
+    with patch.object(legacy_fixture, 'selection', selection):
+        plan, private, authorization = legacy_fixture.closed_selection()
+    budget = authorization['budgetSelection']
+    tools = budget['toolIdentities']
+    plan['composedBudgetInputs']['collectorDigest'] = selection.canonical_digest({key: tools[key] for key in
+        ('installedDriver', 'localBudgetAdapter', 'schedulerRuntime', 'evidenceOracle',
+         'restartOracle', 'administrator', 'roleClients', 'runtimeEvidence',
+         'storageAdapter', 'storageOracle', 'transitionDispatch', 'hostRunner')})
+    budget['composedBudgetInputs'] = dict(plan['composedBudgetInputs'])
+    budget['timePlan'] = {'boundaryEpochSecond': 36000, 'selectedAtEpochSecond': 35500,
+                          'startMarginSeconds': 10, 'requestDeadlineMillis': 45000}
+    budget['statementFingerprint'] = 'c' * 64
+    authorization['maxOperations'] = max_operations
+    plan['requestedSeconds'] = max_seconds
+    authorization['maxSeconds'] = max_seconds
+    authorization['planDigest'] = selection.canonical_digest(plan)
+    authorization['selectionDigest'] = selection.canonical_digest({
+        'executionClass': authorization['executionClass'], 'planDigest': authorization['planDigest'],
+        'maxSeconds': authorization['maxSeconds'],
+        'maxOperations': authorization['maxOperations'],
+        'budgetSelection': budget})
+    return plan, private, authorization
+
+
+def manifest(max_operations):
+    contract = selection.contract
+    return {'schemaVersion': 1, 'kind': selection.KIND, 'executionClass': selection.EXECUTION_CLASS,
+        'classification': selection.CLASSIFICATION,
+        'runtimePolicy': {'launcher': preparation.launcher_policy(),
+                          'budget': preparation.budget_launcher_policy(selection.EXECUTION_CLASS)},
+        'sourceCommit': 'a' * 40, 'products': {}, 'roles': list(selection.ROLES),
+        'runtimeDigest': 'sha256:' + 'd' * 64, 'jdkClosureDigest': 'sha256:' + 'd' * 64,
+        'apps': {}, 'trustDigest': 'sha256:' + 'd' * 64, 'statementDigest': 'sha256:' + 'd' * 64,
+        'statementFingerprint': 'c' * 64, 'verifierDigest': 'sha256:' + 'd' * 64,
+        'toolIdentities': {}, 'permissions': {key: list(value) for key, value in contract.PERMISSIONS.items()},
+        'caseIds': list(contract.CASES), 'environment': dict(contract.ENVIRONMENT),
+        'normalizedConfiguration': copy.deepcopy(contract.NORMALIZED_CONFIGURATION),
+        'failurePolicy': dict(contract.FAILURE_POLICY), 'maxSeconds': 600,
+        'maxOperations': max_operations, 'members': [],
+        'timePlan': {'boundaryEpochSecond': 36000, 'selectedAtEpochSecond': 35500,
+                     'startMarginSeconds': 10, 'requestDeadlineMillis': 45000}}
+
+
+class DurationAdmissionTests(unittest.TestCase):
+    def test_protected_admission_rejects_duration_substitution_even_with_rebound_selection_digest(self):
+        for rebound in (False, True):
+            plan, private, authorization = selected(1000, 60)
+            authorization['maxSeconds'] = 3600
+            if rebound:
+                authorization['selectionDigest'] = selection.canonical_digest({
+                    'executionClass': authorization['executionClass'],
+                    'planDigest': authorization['planDigest'],
+                    'maxSeconds': authorization['maxSeconds'],
+                    'maxOperations': authorization['maxOperations'],
+                    'budgetSelection': authorization['budgetSelection']})
+            with self.subTest(rebound=rebound):
+                self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+                self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_protected_admission_rejects_missing_malformed_or_out_of_range_durations(self):
+        for duration in (None, True, '600', 600.0, 59, 3601):
+            plan, private, authorization = selected(1000, duration)
+            with self.subTest(duration=duration):
+                self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+                self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+        plan, private, authorization = selected(1000, 600)
+        plan['requestedSeconds'] = 600.0
+        authorization['planDigest'] = selection.canonical_digest(plan)
+        authorization['selectionDigest'] = selection.canonical_digest({
+            'executionClass': authorization['executionClass'],
+            'planDigest': authorization['planDigest'],
+            'maxSeconds': authorization['maxSeconds'],
+            'maxOperations': authorization['maxOperations'],
+            'budgetSelection': authorization['budgetSelection']})
+        self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+
+    def test_matching_durations_at_floor_and_ceiling_are_admitted(self):
+        for duration in (60, 600, 3600):
+            plan, private, authorization = selected(1000, duration)
+            with self.subTest(duration=duration):
+                self.assertTrue(selection.verify_selection_contract(plan, private, authorization))
+                self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_selection_digest_must_bind_authorized_duration(self):
+        plan, private, authorization = selected(1000, 60)
+        authorization['selectionDigest'] = selection.canonical_digest({
+            'executionClass': authorization['executionClass'],
+            'planDigest': authorization['planDigest'],
+            'maxOperations': authorization['maxOperations'],
+            'budgetSelection': authorization['budgetSelection']})
+        self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+        self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_divergent_duration_prevents_any_installed_role_start(self):
+        plan, private, authorization = selected(1000, 60)
+        authorization['maxSeconds'] = 3600
+        adapter = SimpleNamespace(plan=plan, private=private, authorization=authorization, start=Mock())
+        with self.assertRaisesRegex(collector.runtime.RuntimeFailure, 'restart-selection-invalid'):
+            collector.run_restart_lane(adapter, Mock())
+        adapter.start.assert_not_called()
+
+    def test_divergent_duration_prevents_campaign_preparation(self):
+        plan, private, authorization = selected(1000, 60)
+        plan['provenanceClass'] = 'source-build-comparison'
+        authorization.update(maxSeconds=3600, syntheticContent=True)
+        authorization['planDigest'] = selection.canonical_digest(plan)
+        authorization['selectionDigest'] = selection.canonical_digest({
+            'executionClass': authorization['executionClass'],
+            'planDigest': authorization['planDigest'],
+            'maxSeconds': authorization['maxSeconds'],
+            'maxOperations': authorization['maxOperations'],
+            'budgetSelection': authorization['budgetSelection']})
+        with patch.object(preparation.workload, 'locked') as campaign_lock, \
+                self.assertRaisesRegex(ValueError, 'profile-selection-unsupported'):
+            preparation.prepare(plan, private, authorization)
+        campaign_lock.assert_not_called()
+
+    def test_materialized_budget_identity_is_accepted_by_protected_and_host_verifiers(self):
+        _, _, authorization = selected(1000, 60)
+        fixture = manifest(1000)
+        fixture.update(maxSeconds=60, sourceCommit='f' * 40,
+            apps=authorization['budgetSelection']['appBundleDigests'],
+            toolIdentities=authorization['budgetSelection']['toolIdentities'],
+            products={name: {'sourceCommit': marker * 40,
+                'artifactDigest': 'sha256:' + marker * 64, 'artifactSize': 100,
+                'packageTarget': 'linux-x64', 'contractVersion': 26}
+                for name, marker in (('candidate', 'a'), ('previous', 'b'))})
+        producer = {'sourceCommit': fixture['sourceCommit'], 'runnerDigest': 'sha256:' + 'f' * 64,
+                    'adapterDigest': 'sha256:' + '9' * 64}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(selection, 'FIXED_GUEST_ROOT', root), \
+                    patch.object(selection.os, 'geteuid', return_value=0), \
+                    patch.object(selection, 'verify', return_value=fixture), \
+                    patch.object(selection.preparation, 'configuration_identity',
+                        side_effect=lambda role, _trust, _class: 'sha256:'
+                            + str(selection.ROLES.index(role) + 5) * 64), \
+                    patch.object(selection.runtime, 'runner_identity', return_value=producer):
+                materialized = selection.materialize_selection(root, root, 'a' * 64, 'b' * 40)
+            plan, private, authorization = (materialized[key]
+                for key in ('plan', 'private', 'authorization'))
+            self.assertEqual(60, plan['requestedSeconds'])
+            self.assertEqual(60, authorization['maxSeconds'])
+            self.assertEqual(1000, authorization['maxOperations'])
+            self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+            self.assertEqual(authorization['selectionDigest'], runner._selection(materialized, fixture, root))
+            authorization['maxOperations'] = 10000
+            self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+            with self.assertRaisesRegex(ValueError, 'host-selection-invalid'):
+                runner._selection(materialized, fixture, root)
+            authorization['maxOperations'] = 1000
+            authorization['maxSeconds'] = 3600
+            with self.assertRaisesRegex(ValueError, 'host-selection-invalid'):
+                runner._selection(materialized, fixture, root)
+
+
+class OperationAdmissionTests(unittest.TestCase):
+    def test_protected_admission_rejects_changed_allowance_with_original_identity(self):
+        floor = selection.contract.MIN_OPERATIONS
+        for original, substituted in ((floor, 10000), (10000, floor)):
+            plan, private, authorization = selected(original)
+            self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+            authorization['maxOperations'] = substituted
+            with self.subTest(original=original, substituted=substituted):
+                self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+                self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_selection_digest_must_bind_operation_allowance(self):
+        plan, private, authorization = selected(selection.contract.MIN_OPERATIONS)
+        authorization['selectionDigest'] = selection.canonical_digest({
+            'executionClass': authorization['executionClass'],
+            'planDigest': authorization['planDigest'],
+            'maxSeconds': authorization['maxSeconds'],
+            'budgetSelection': authorization['budgetSelection']})
+        self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+        self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_changed_allowance_prevents_any_installed_role_start(self):
+        plan, private, authorization = selected(selection.contract.MIN_OPERATIONS)
+        authorization['maxOperations'] = 10000
+        adapter = SimpleNamespace(plan=plan, private=private, authorization=authorization, start=Mock())
+        with self.assertRaisesRegex(collector.runtime.RuntimeFailure, 'restart-selection-invalid'):
+            collector.run_restart_lane(adapter, Mock())
+        adapter.start.assert_not_called()
+
+    def test_changed_allowance_prevents_campaign_preparation(self):
+        plan, private, authorization = selected(selection.contract.MIN_OPERATIONS)
+        plan['provenanceClass'] = 'source-build-comparison'
+        authorization['syntheticContent'] = True
+        authorization['planDigest'] = selection.canonical_digest(plan)
+        authorization['selectionDigest'] = selection.canonical_digest({
+            'executionClass': authorization['executionClass'],
+            'planDigest': authorization['planDigest'],
+            'maxSeconds': authorization['maxSeconds'],
+            'maxOperations': authorization['maxOperations'],
+            'budgetSelection': authorization['budgetSelection']})
+        self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+        authorization['maxOperations'] = 10000
+        with patch.object(preparation.workload, 'locked') as campaign_lock, \
+                self.assertRaisesRegex(ValueError, 'profile-selection-unsupported'):
+            preparation.prepare(plan, private, authorization)
+        campaign_lock.assert_not_called()
+
+    def test_protected_admission_rejects_insufficient_missing_or_malformed_allowance(self):
+        for limit in (None, True, '1000', 1, selection.contract.MIN_OPERATIONS - 1, 10001):
+            plan, private, authorization = selected(limit)
+            with self.subTest(limit=limit):
+                self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+                self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_protected_admission_accepts_complete_selection_at_floor_and_existing_ceiling(self):
+        for limit in (selection.contract.MIN_OPERATIONS, 1000, 10000):
+            plan, private, authorization = selected(limit)
+            with self.subTest(limit=limit):
+                self.assertTrue(selection.verify_selection_contract(plan, private, authorization))
+                self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_insufficient_authorization_prevents_any_installed_role_start(self):
+        plan, private, authorization = selected(1)
+        adapter = SimpleNamespace(plan=plan, private=private, authorization=authorization, start=Mock())
+        with self.assertRaisesRegex(collector.runtime.RuntimeFailure, 'restart-selection-invalid'):
+            collector.run_restart_lane(adapter, Mock())
+        adapter.start.assert_not_called()
+
+    def test_preparation_rejects_insufficient_allowance_before_source_checks_or_file_creation(self):
+        for limit in (1, selection.contract.MIN_OPERATIONS - 1):
+            with self.subTest(limit=limit), tempfile.TemporaryDirectory() as temporary:
+                output = Path(temporary) / 'prepared'
+                args = SimpleNamespace(max_seconds=600, max_operations=limit,
+                    candidate_commit='a' * 40, previous_commit='b' * 40,
+                    source=Path('/unused'), output=output)
+                with patch.object(selection.subprocess, 'check_output') as source_check, \
+                        self.assertRaisesRegex(ValueError, 'fixture-selection-invalid'):
+                    selection.prepare(args)
+                source_check.assert_not_called()
+                self.assertFalse(output.exists())
+
+    def test_preparation_accepts_floor_then_enforces_the_independent_source_gate(self):
+        args = SimpleNamespace(max_seconds=600, max_operations=selection.contract.MIN_OPERATIONS,
+            candidate_commit='a' * 40, previous_commit='b' * 40, source=Path('/unused'))
+        with patch.object(selection.subprocess, 'check_output', return_value=b'dirty') as source_check, \
+                self.assertRaisesRegex(ValueError, 'clean-helper-source-required'):
+            selection.prepare(args)
+        source_check.assert_called_once()
+
+    def test_retained_manifest_rejects_insufficient_allowance_before_product_verification(self):
+        raw = json.dumps(manifest(1)).encode()
+        digest = hashlib.sha256(raw).hexdigest()
+        with patch.object(selection.base, 'digest', return_value=digest), \
+                patch('runtime_snapshot.read_file', return_value=raw), \
+                patch.object(selection.base, 'inventory', return_value=[]), \
+                patch.object(selection.base, 'validate_roster') as products, \
+                self.assertRaisesRegex(ValueError, 'fixture-manifest-invalid'):
+            selection.verify(Path('/unused'), digest, Path('/unused-source'), 'a' * 40)
+        products.assert_not_called()
+
+    def test_retained_manifest_accepts_floor_then_enforces_the_independent_product_gate(self):
+        raw = json.dumps(manifest(selection.contract.MIN_OPERATIONS)).encode()
+        digest = hashlib.sha256(raw).hexdigest()
+        with patch.object(selection.base, 'digest', return_value=digest), \
+                patch('runtime_snapshot.read_file', return_value=raw), \
+                patch.object(selection.base, 'inventory', return_value=[]), \
+                patch.object(selection.base, 'validate_roster', side_effect=ValueError('product-gate')) as products, \
+                self.assertRaisesRegex(ValueError, 'product-gate'):
+            selection.verify(Path('/unused'), digest, Path('/unused-source'), 'a' * 40)
+        products.assert_called_once()
+
+
+if __name__ == '__main__':
+    unittest.main()

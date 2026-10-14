@@ -32,6 +32,14 @@ dependencies {
   testRuntimeOnly(libs.junitPlatformLauncher)
 }
 
+val restartNativeExports = layout.buildDirectory.dir("test-results/pr319-native")
+
+tasks.named<Test>("test") {
+  // Export files belong to this execution, including when a producer skips or fails.
+  outputs.dir(restartNativeExports)
+  doFirst { delete(restartNativeExports) }
+}
+
 // Native packaged-export tests live with the devtools historical bridge and execute this module.
 // Include those executions in module reports as well as the root aggregate consumed by Sonar.
 tasks.withType<JacocoReport>().configureEach {
