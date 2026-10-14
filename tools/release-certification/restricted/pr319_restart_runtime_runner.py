@@ -92,6 +92,7 @@ def _selection(value, fixture, fixture_root):
             "executionClass": evidence.EXECUTION_CLASS,
             "planDigest": authorization["planDigest"],
             "maxSeconds": authorization["maxSeconds"],
+            "maxOperations": authorization["maxOperations"],
             "budgetSelection": authorization["budgetSelection"]})
             or authorization["budgetSelection"]["statementDigest"] !=
                fixture["statementDigest"]

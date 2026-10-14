@@ -28,7 +28,7 @@ Fixture selection requires at least 70 seconds before the selected hour boundary
 
 The authorized `maxSeconds` must equal the plan's `requestedSeconds`, with both set to an integer from 60 through 3,600. The selection digest binds `maxSeconds`; protected admission rejects a divergent duration before campaign creation or role startup. The host verifier checks the same identity against the prospective fixture.
 
-The operation allowance must be at least 772 and at most 10,000. The minimum accounts for the four-role setup, two readiness attempts per start, bounded peer/native polling, initial app installation, 32-request exhaustion setup, all three restart variants, both diagnostic variants and final readback. Preparation, retained-fixture verification and protected admission enforce the same minimum before role startup; further provider-readiness retries remain subject to the caller's finite operation cap and original deadline.
+The operation allowance must be at least 772 and at most 10,000. The minimum accounts for the four-role setup, two readiness attempts per start, bounded peer/native polling, initial app installation, 32-request exhaustion setup, all three restart variants, both diagnostic variants and final readback. Preparation, retained-fixture verification and protected admission enforce the same minimum before role startup. The selection digest binds `maxOperations` alongside `maxSeconds`, so changing the allowance invalidates the selected identity before campaign creation or role startup; further provider-readiness retries remain subject to the caller's finite operation cap and original deadline.
 
 ## Execution status
 

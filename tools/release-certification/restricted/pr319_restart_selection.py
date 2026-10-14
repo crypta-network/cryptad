@@ -405,6 +405,7 @@ def materialize_selection(root, source, expected_manifest_digest=None,
     authorization['selectionDigest'] = runtime.canonical_digest({
         'executionClass': EXECUTION_CLASS, 'planDigest': authorization['planDigest'],
         'maxSeconds': authorization['maxSeconds'],
+        'maxOperations': authorization['maxOperations'],
         'budgetSelection': budget_selection})
     return {'plan': plan, 'private': private, 'authorization': authorization}
 

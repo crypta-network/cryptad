@@ -187,6 +187,7 @@ def verify_selection_contract(plan, private, authorization):
                 'executionClass': EXECUTION_CLASS,
                 'planDigest': authorization.get('planDigest'),
                 'maxSeconds': authorization['maxSeconds'],
+                'maxOperations': authorization['maxOperations'],
                 'budgetSelection': budget}))
     except (KeyError, TypeError, ValueError):
         return False

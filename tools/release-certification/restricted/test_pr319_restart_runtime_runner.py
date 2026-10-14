@@ -77,6 +77,7 @@ def selected(max_operations, max_seconds=600):
     authorization['selectionDigest'] = selection.canonical_digest({
         'executionClass': authorization['executionClass'], 'planDigest': authorization['planDigest'],
         'maxSeconds': authorization['maxSeconds'],
+        'maxOperations': authorization['maxOperations'],
         'budgetSelection': budget})
     return plan, private, authorization
 
@@ -110,6 +111,7 @@ class DurationAdmissionTests(unittest.TestCase):
                     'executionClass': authorization['executionClass'],
                     'planDigest': authorization['planDigest'],
                     'maxSeconds': authorization['maxSeconds'],
+                    'maxOperations': authorization['maxOperations'],
                     'budgetSelection': authorization['budgetSelection']})
             with self.subTest(rebound=rebound):
                 self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
@@ -128,6 +130,7 @@ class DurationAdmissionTests(unittest.TestCase):
             'executionClass': authorization['executionClass'],
             'planDigest': authorization['planDigest'],
             'maxSeconds': authorization['maxSeconds'],
+            'maxOperations': authorization['maxOperations'],
             'budgetSelection': authorization['budgetSelection']})
         self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
 
@@ -143,6 +146,7 @@ class DurationAdmissionTests(unittest.TestCase):
         authorization['selectionDigest'] = selection.canonical_digest({
             'executionClass': authorization['executionClass'],
             'planDigest': authorization['planDigest'],
+            'maxOperations': authorization['maxOperations'],
             'budgetSelection': authorization['budgetSelection']})
         self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
         self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
@@ -164,13 +168,14 @@ class DurationAdmissionTests(unittest.TestCase):
             'executionClass': authorization['executionClass'],
             'planDigest': authorization['planDigest'],
             'maxSeconds': authorization['maxSeconds'],
+            'maxOperations': authorization['maxOperations'],
             'budgetSelection': authorization['budgetSelection']})
         with patch.object(preparation.workload, 'locked') as campaign_lock, \
                 self.assertRaisesRegex(ValueError, 'profile-selection-unsupported'):
             preparation.prepare(plan, private, authorization)
         campaign_lock.assert_not_called()
 
-    def test_materialized_duration_identity_is_accepted_by_protected_and_host_verifiers(self):
+    def test_materialized_budget_identity_is_accepted_by_protected_and_host_verifiers(self):
         _, _, authorization = selected(1000, 60)
         fixture = manifest(1000)
         fixture.update(maxSeconds=60, sourceCommit='f' * 40,
@@ -196,14 +201,66 @@ class DurationAdmissionTests(unittest.TestCase):
                 for key in ('plan', 'private', 'authorization'))
             self.assertEqual(60, plan['requestedSeconds'])
             self.assertEqual(60, authorization['maxSeconds'])
+            self.assertEqual(1000, authorization['maxOperations'])
             self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
             self.assertEqual(authorization['selectionDigest'], runner._selection(materialized, fixture, root))
+            authorization['maxOperations'] = 10000
+            self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+            with self.assertRaisesRegex(ValueError, 'host-selection-invalid'):
+                runner._selection(materialized, fixture, root)
+            authorization['maxOperations'] = 1000
             authorization['maxSeconds'] = 3600
             with self.assertRaisesRegex(ValueError, 'host-selection-invalid'):
                 runner._selection(materialized, fixture, root)
 
 
 class OperationAdmissionTests(unittest.TestCase):
+    def test_protected_admission_rejects_changed_allowance_with_original_identity(self):
+        floor = selection.contract.MIN_OPERATIONS
+        for original, substituted in ((floor, 10000), (10000, floor)):
+            plan, private, authorization = selected(original)
+            self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+            authorization['maxOperations'] = substituted
+            with self.subTest(original=original, substituted=substituted):
+                self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+                self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_selection_digest_must_bind_operation_allowance(self):
+        plan, private, authorization = selected(selection.contract.MIN_OPERATIONS)
+        authorization['selectionDigest'] = selection.canonical_digest({
+            'executionClass': authorization['executionClass'],
+            'planDigest': authorization['planDigest'],
+            'maxSeconds': authorization['maxSeconds'],
+            'budgetSelection': authorization['budgetSelection']})
+        self.assertFalse(selection.verify_selection_contract(plan, private, authorization))
+        self.assertFalse(preparation.valid_execution_selection(plan, private, authorization))
+
+    def test_changed_allowance_prevents_any_installed_role_start(self):
+        plan, private, authorization = selected(selection.contract.MIN_OPERATIONS)
+        authorization['maxOperations'] = 10000
+        adapter = SimpleNamespace(plan=plan, private=private, authorization=authorization, start=Mock())
+        with self.assertRaisesRegex(collector.runtime.RuntimeFailure, 'restart-selection-invalid'):
+            collector.run_restart_lane(adapter, Mock())
+        adapter.start.assert_not_called()
+
+    def test_changed_allowance_prevents_campaign_preparation(self):
+        plan, private, authorization = selected(selection.contract.MIN_OPERATIONS)
+        plan['provenanceClass'] = 'source-build-comparison'
+        authorization['syntheticContent'] = True
+        authorization['planDigest'] = selection.canonical_digest(plan)
+        authorization['selectionDigest'] = selection.canonical_digest({
+            'executionClass': authorization['executionClass'],
+            'planDigest': authorization['planDigest'],
+            'maxSeconds': authorization['maxSeconds'],
+            'maxOperations': authorization['maxOperations'],
+            'budgetSelection': authorization['budgetSelection']})
+        self.assertTrue(preparation.valid_execution_selection(plan, private, authorization))
+        authorization['maxOperations'] = 10000
+        with patch.object(preparation.workload, 'locked') as campaign_lock, \
+                self.assertRaisesRegex(ValueError, 'profile-selection-unsupported'):
+            preparation.prepare(plan, private, authorization)
+        campaign_lock.assert_not_called()
+
     def test_protected_admission_rejects_insufficient_missing_or_malformed_allowance(self):
         for limit in (None, True, '1000', 1, selection.contract.MIN_OPERATIONS - 1, 10001):
             plan, private, authorization = selected(limit)
