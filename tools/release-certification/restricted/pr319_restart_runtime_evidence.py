@@ -24,6 +24,8 @@ canonical_digest = legacy.canonical_digest
 FIELDS = {"schemaVersion", "kind", "selectionDigest", "contexts", "attempts",
           "composedBudgetEvidence", "composedBudgetCoverage", "originalReceipts",
           "phaseReceipts", "epochContexts"}
+DAEMON_IDENTITY_FIELDS = ("hostPid", "startTicks", "executableDigest", "pidNamespace", "namespacePids",
+                         "networkNamespaceIdentity", "mountNamespaceIdentity", "userNamespaceIdentity")
 
 
 def _need(condition, code):
@@ -285,6 +287,23 @@ def _transition(raw, original, before, after, diagnostics):
               "forced-daemon-substitution")
 
 
+def _graceful_pin(actual, original, before):
+    """The original administrator history must pin the selected daemon before shutdown."""
+    pins = [r for r in actual if r["caseId"] == "graceful" and r["phase"] == "pin"]
+    _need(len(pins) == 1, "graceful-pin-missing")
+    pin = pins[0]
+    bindings = ("campaign", "generation", "managerInvocation", "bootId", "selectionDigest",
+                "deadlineMonotonicNs", "dataIdentity")
+    _need(all(pin[k] == original[k] == before[k] for k in bindings)
+          and pin["daemon"] == original["daemon"]
+          and all(pin["daemon"][k] == before["daemon"][k] for k in DAEMON_IDENTITY_FIELDS)
+          and pin["effectiveStopProfile"] == original["effectiveStopProfile"],
+          "graceful-pin-substitution")
+    _need(before["observedMonotonicNs"] < pin["observedMonotonicNs"] < original["observedMonotonicNs"]
+          and actual.index(before) < actual.index(pin) < actual.index(original),
+          "graceful-pin-order-invalid")
+
+
 def _forced_intent(actual, original, before, after):
     """The administrator must retain a bound intent before the forced daemon death."""
     intents = [r for r in actual if r["caseId"] == original["caseId"]
@@ -294,11 +313,9 @@ def _forced_intent(actual, original, before, after):
     bindings = ("campaign", "generation", "managerInvocation", "bootId", "selectionDigest",
                 "deadlineMonotonicNs", "daemon", "dataIdentity", "startedMonotonicNs")
     # Separate kernel samples may differ in RSS and thread count for the same daemon.
-    identity_fields = ("hostPid", "startTicks", "executableDigest", "pidNamespace", "namespacePids",
-                       "networkNamespaceIdentity", "mountNamespaceIdentity", "userNamespaceIdentity")
     _need(all(intent[k] == original[k] for k in bindings)
           and all(intent[k] == before[k] for k in bindings if k not in {"daemon", "startedMonotonicNs"})
-          and all(intent["daemon"][k] == before["daemon"][k] for k in identity_fields)
+          and all(intent["daemon"][k] == before["daemon"][k] for k in DAEMON_IDENTITY_FIELDS)
           and intent["intendedSignal"] == original["forcedSignal"] == "SIGKILL",
           "forced-intent-substitution")
     started = intent["startedMonotonicNs"]
@@ -375,7 +392,9 @@ def validate_originals(private, diagnostics, terminal, selection_digest):
                 matches = [r for r in actual if r["caseId"] == case and r["phase"] == "terminal"]
                 _need(len(matches) == 1, "terminal-fault-missing")
                 original = matches[0]
-                if key[1] != "settled-graceful":
+                if key[1] == "settled-graceful":
+                    _graceful_pin(actual, original, phase_receipts["before"])
+                else:
                     _forced_intent(actual, original, phase_receipts["before"], phase_receipts["after"])
                 _transition(row, original, phase_receipts["before"], phase_receipts["after"], diagnostics)
                 _need(phase_receipts["before"]["observedMonotonicNs"] < original["observedMonotonicNs"]

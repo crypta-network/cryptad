@@ -89,6 +89,11 @@ def bound_vector(variant="settled-graceful"):
             **{k: receipt[k] for k in ("generation", "managerInvocation", "bootId")}, "apps": app_contexts}
     original_receipts = [phase_receipts[0]["receipt"], terminal,
                          phase_receipts[1]["receipt"], phase_receipts[2]["receipt"]]
+    if variant == "settled-graceful":
+        pin = base("a" * 64, "a" * 32, 150) | {"caseId": "graceful", "phase": "pin",
+            "daemon": copy.deepcopy(terminal["daemon"]),
+            "effectiveStopProfile": copy.deepcopy(terminal["effectiveStopProfile"])}
+        original_receipts.insert(1, pin)
     retained_receipts = copy.deepcopy(original_receipts)
     if variant != "settled-graceful":
         intent = base("a" * 64, "a" * 32, 160) | {"caseId": purpose, "phase": "fault-intent",
@@ -194,6 +199,71 @@ class OriginalWitnessTest(unittest.TestCase):
         for variant in ("settled-graceful", "settled-abrupt", "inflight-abrupt"):
             with self.subTest(variant=variant):
                 self.assertTrue(evidence.validate_originals(*bound_vector(variant)))
+
+    def test_graceful_restart_requires_exactly_one_original_pin(self):
+        for duplicate in (False, True):
+            private, originals, terminal, selection = bound_vector()
+            stream = originals["restartFaultReceipts"]
+            pin = stream.pop(1)
+            if duplicate:
+                stream[1:1] = [pin, copy.deepcopy(pin)]
+            private["originalReceipts"] = copy.deepcopy(stream)
+            with self.subTest(duplicate=duplicate), self.assertRaisesRegex(ValueError, "graceful-pin-missing"):
+                evidence.validate_originals(private, originals, terminal, selection)
+
+    def test_graceful_pin_binds_campaign_generation_selection_and_retained_data(self):
+        for field, replacement in (("campaign", "f" * 64), ("generation", "f" * 64),
+                ("managerInvocation", "f" * 32), ("bootId", "other-boot"),
+                ("selectionDigest", "sha256:" + "f" * 64), ("deadlineMonotonicNs", 9999),
+                ("dataIdentity", {"device": 1, "inode": 99}),
+                ("effectiveStopProfile", {"KillMode": "process"})):
+            private, originals, terminal, selection = bound_vector()
+            originals["restartFaultReceipts"][1][field] = replacement
+            private["originalReceipts"] = copy.deepcopy(originals["restartFaultReceipts"])
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                evidence.validate_originals(private, originals, terminal, selection)
+
+    def test_graceful_pin_requires_pretermination_time_and_receipt_order(self):
+        for now in (99, 100, 200, 201):
+            private, originals, terminal, selection = bound_vector()
+            originals["restartFaultReceipts"][1]["observedMonotonicNs"] = now
+            private["originalReceipts"] = copy.deepcopy(originals["restartFaultReceipts"])
+            with self.subTest(now=now), self.assertRaisesRegex(ValueError, "graceful-pin-order-invalid"):
+                evidence.validate_originals(private, originals, terminal, selection)
+        for index in (0, 2, 3):
+            private, originals, terminal, selection = bound_vector()
+            stream = originals["restartFaultReceipts"]
+            pin = stream.pop(1)
+            stream.insert(index, pin)
+            private["originalReceipts"] = copy.deepcopy(stream)
+            with self.subTest(index=index), self.assertRaisesRegex(ValueError, "graceful-pin-order-invalid"):
+                evidence.validate_originals(private, originals, terminal, selection)
+
+    def test_graceful_pin_accepts_changed_resources_but_rejects_substituted_immutable_identity(self):
+        for field, replacement in (("rssBytes", 300000), ("processThreads", 30),
+                ("hostPid", 102), ("startTicks", 101), ("executableDigest", "sha256:" + "2" * 64),
+                ("pidNamespace", "pid:[102]"), ("namespacePids", [101, 3]),
+                ("networkNamespaceIdentity", [4, 8]), ("mountNamespaceIdentity", [4, 8]),
+                ("userNamespaceIdentity", [4, 8])):
+            private, originals, terminal, selection = bound_vector()
+            for receipt in originals["restartFaultReceipts"][1:3]:
+                receipt["daemon"] = dict(receipt["daemon"], **{field: replacement})
+            private["originalReceipts"] = copy.deepcopy(originals["restartFaultReceipts"])
+            with self.subTest(field=field):
+                if field in {"rssBytes", "processThreads"}:
+                    self.assertTrue(evidence.validate_originals(private, originals, terminal, selection))
+                else:
+                    with self.assertRaisesRegex(ValueError, "graceful-pin-substitution"):
+                        evidence.validate_originals(private, originals, terminal, selection)
+
+    def test_graceful_terminal_preserves_exact_pinned_daemon_sample(self):
+        for field, replacement in (("rssBytes", 300000), ("processThreads", 30), ("hostPid", 102)):
+            private, originals, terminal, selection = bound_vector()
+            receipt = originals["restartFaultReceipts"][2]
+            receipt["daemon"] = dict(receipt["daemon"], **{field: replacement})
+            private["originalReceipts"] = copy.deepcopy(originals["restartFaultReceipts"])
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "graceful-pin-substitution"):
+                evidence.validate_originals(private, originals, terminal, selection)
 
     def test_forced_restart_requires_exactly_one_retained_fault_intent(self):
         for variant in ("settled-abrupt", "inflight-abrupt"):
@@ -305,9 +375,9 @@ class OriginalWitnessTest(unittest.TestCase):
 
     def test_wrapper_success_cannot_replace_true_kernel_exit(self):
         private, originals, terminal, selection = bound_vector()
-        original = originals["restartFaultReceipts"][1]
+        original = originals["restartFaultReceipts"][2]
         original["kernelExit"].update(normalExit=False, exitCode=None, signal=9, waitStatus=9)
-        private["originalReceipts"][1] = copy.deepcopy(original)
+        private["originalReceipts"][2] = copy.deepcopy(original)
         with self.assertRaisesRegex(ValueError, "graceful-kernel-exit-substitution"):
             evidence.validate_originals(private, originals, terminal, selection)
 
