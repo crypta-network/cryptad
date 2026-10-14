@@ -4,8 +4,10 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from cryptad_certification import composed_budget_journal_member as members
 from cryptad_certification import composed_budget_evidence as legacy
@@ -44,8 +46,13 @@ def event_for(plan,component,raw=None,inline=True):
 
 class PrivateJournalMemberTest(unittest.TestCase):
     def test_privacy_journal_binds_served_script_independently_of_browser_collector(self):
-        from test_pr320_privacy_installed import vector, encoded
-        args = vector()
+        root = Path(__file__).resolve().parents[4]
+        fixture_paths = [str(root / relative) for relative in (
+            'tools/release-certification/protected',
+            'tools/release-certification/restricted', 'tools/interop')]
+        with patch.object(sys, 'path', fixture_paths + sys.path):
+            from restricted.test_pr320_privacy_installed import vector, encoded
+            args = vector()
         plan = dict(fixture_plan(), **args['selected']['plan'])
         plan['producer'] = dict(fixture_plan()['producer'], **plan['producer'])
         tools = args['selected']['authorization']['budgetSelection']['toolIdentities']
