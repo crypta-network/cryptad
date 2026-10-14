@@ -274,7 +274,7 @@ public final class OperatorSupportRedactor {
             || PATH_LABEL_FIELD_NAMES.contains(normalized)
             || Set.of(
                     "apikey",
-                    "signature",
+                    SIGNATURE_FIELD_NAME,
                     "signaturebase64",
                     "signaturevalue",
                     "rawsignaturevalue",

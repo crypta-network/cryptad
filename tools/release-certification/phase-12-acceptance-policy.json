@@ -2814,7 +2814,7 @@
           },
           {
             "path": "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorSupportRedactor.java",
-            "digest": "sha256:ab66597a8aedefe963b9dd58e1a0d42e2989d5fe77d60db43569227588debd65",
+            "digest": "sha256:6f72210b35b1eb9cd16b51f63933e34b7e4bf57ad97d30cd0becbb672b7d042b",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
@@ -3322,7 +3322,7 @@
           },
           {
             "path": "platform-api/src/test/java/network/crypta/platform/api/AppAuditLogTest.java",
-            "digest": "sha256:2a7a0d720c3bc8b5b1b387ad8d49d1be52174c1f68a0a441e26afc1dc4e36cd1",
+            "digest": "sha256:1d13cecdfd78595137dfd5f135e5ddec9df7f1936f5a9abca5787862134a5770",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
@@ -3332,7 +3332,7 @@
           },
           {
             "path": "platform-api/src/test/java/network/crypta/platform/api/TrustGraphPrivacyIntegrationTest.java",
-            "digest": "sha256:169f6718a18cc83fc9a2f0a3ebc445d4a39a59919bd45b9371fa2c28de40efe4",
+            "digest": "sha256:9c9fc946a32af17f1c4a4a09e0bc864a73c8e29cba7286b92fb0d1ed7ae48f8f",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
@@ -3342,7 +3342,7 @@
           },
           {
             "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/LocalProcessRequestOwnersTest.java",
-            "digest": "sha256:3ac598f337063c070abf0d99c3f1b8f1d23796cbea5b707dbd32a6960ac24aad",
+            "digest": "sha256:fc8ffc9ed5729634d81a019eba8b50f183b8ef4c6c13d315688f791ddaa360aa",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
@@ -3863,7 +3863,7 @@
           },
           {
             "path": "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorSupportRedactor.java",
-            "digest": "sha256:ab66597a8aedefe963b9dd58e1a0d42e2989d5fe77d60db43569227588debd65",
+            "digest": "sha256:6f72210b35b1eb9cd16b51f63933e34b7e4bf57ad97d30cd0becbb672b7d042b",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
@@ -4366,7 +4366,7 @@
           },
           {
             "path": "platform-api/src/test/java/network/crypta/platform/api/AppAuditLogTest.java",
-            "digest": "sha256:2a7a0d720c3bc8b5b1b387ad8d49d1be52174c1f68a0a441e26afc1dc4e36cd1",
+            "digest": "sha256:1d13cecdfd78595137dfd5f135e5ddec9df7f1936f5a9abca5787862134a5770",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
@@ -4376,7 +4376,7 @@
           },
           {
             "path": "platform-api/src/test/java/network/crypta/platform/api/TrustGraphPrivacyIntegrationTest.java",
-            "digest": "sha256:169f6718a18cc83fc9a2f0a3ebc445d4a39a59919bd45b9371fa2c28de40efe4",
+            "digest": "sha256:9c9fc946a32af17f1c4a4a09e0bc864a73c8e29cba7286b92fb0d1ed7ae48f8f",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
@@ -4386,7 +4386,7 @@
           },
           {
             "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/LocalProcessRequestOwnersTest.java",
-            "digest": "sha256:3ac598f337063c070abf0d99c3f1b8f1d23796cbea5b707dbd32a6960ac24aad",
+            "digest": "sha256:fc8ffc9ed5729634d81a019eba8b50f183b8ef4c6c13d315688f791ddaa360aa",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {

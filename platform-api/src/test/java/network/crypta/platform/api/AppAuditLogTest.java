@@ -131,8 +131,8 @@ class AppAuditLogTest {
     log.appendDecision(request, decision, AppAuditDecision.DENIED, 403, decision.reasonCode());
 
     var event = log.recentForApp("demo-app", 1).getFirst();
-    assertTrue("unknown".equals(event.endpointFamily()), "audit_family_not_scoped");
-    assertTrue("unknown.unmapped".equals(event.action()), "audit_action_not_scoped");
+    assertEquals("unknown", event.endpointFamily(), "audit_family_not_scoped");
+    assertEquals("unknown.unmapped", event.action(), "audit_action_not_scoped");
     assertEquals("unmapped_route", event.reasonCode());
     assertEquals(AppAuditDecision.DENIED, event.decision());
   }
@@ -154,8 +154,9 @@ class AppAuditLogTest {
         403,
         "unmapped_route");
 
-    assertTrue(
-        "unknown".equals(log.recentForApp("demo-app", 1).getFirst().endpointFamily()),
+    assertEquals(
+        "unknown",
+        log.recentForApp("demo-app", 1).getFirst().endpointFamily(),
         "audit_fallback_family_not_scoped");
   }
 

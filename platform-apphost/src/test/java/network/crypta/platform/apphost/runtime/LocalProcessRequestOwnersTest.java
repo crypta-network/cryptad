@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -66,7 +67,7 @@ class LocalProcessRequestOwnersTest {
     String current = host.currentLaunch("owner-a").orElseThrow().launchId();
     var leases = new ArrayList<AppHost.RequestOwner>();
     try {
-      assertFalse(old.equals(current));
+      assertNotEquals(old, current);
       assertTrue(host.registerRequestOwner("owner-a", old).isEmpty());
       for (int index = 0; index < 256; index++) {
         leases.add(host.registerRequestOwner("owner-a", current).orElseThrow());

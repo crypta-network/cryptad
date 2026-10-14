@@ -156,13 +156,12 @@ class TrustGraphPrivacyIntegrationTest {
                     "sourceUri",
                     List.of(SOURCE)),
                 owner));
-    assertEquals(200, imported.statusCode());
-    assertTrue(imported.body().contains("\"signatureVerified\":true"));
+    assertSignedImport(imported);
     var directReadback =
         new FileTrustGraphStore(root.resolve("graph"), TrustGraphStoreConfig.defaults(), CLOCK)
             .statements()
             .getFirst();
-    assertTrue(LABEL.equals(directReadback.sourceLabel()), "source_label_stimulus_not_observed");
+    assertEquals(LABEL, directReadback.sourceLabel(), "source_label_stimulus_not_observed");
     privateSurfaces.put(
         "directSource",
         Map.of(
@@ -175,9 +174,7 @@ class TrustGraphPrivacyIntegrationTest {
                 List.of("trust-graph", "import-uri"),
                 Map.of("uri", List.of(SOURCE)),
                 owner));
-    assertEquals(200, uriImported.statusCode());
-    assertEquals(1, fetchCalls.get());
-    assertTrue(SOURCE.equals(fetchInput.get()), "fetch_uri_stimulus_not_observed");
+    assertUriFetch(uriImported, fetchCalls.get(), fetchInput.get());
     privateSurfaces.put("fetchInput", Map.of("uri", fetchInput.get()));
     var preview =
         router.route(
@@ -192,7 +189,7 @@ class TrustGraphPrivacyIntegrationTest {
         new FileTrustGraphStore(root.resolve("graph"), TrustGraphStoreConfig.defaults(), CLOCK)
             .statements()
             .getFirst();
-    assertTrue(document.equals(retained.document()), "signed_document_readback_mismatch");
+    assertEquals(document, retained.document(), "signed_document_readback_mismatch");
     assertTrue(retained.signatureVerified());
     privateSurfaces.put(
         "graph",
@@ -239,7 +236,7 @@ class TrustGraphPrivacyIntegrationTest {
         new AppDataService(
                 new FileAppDataStore(root.resolve("data")), null, AppDataStoreConfig.defaults())
             .getRecord(APP, "privacy", RECORD_KEY);
-    assertTrue(RECORD_VALUE.equals(readback.get("valueText")), "app_data_stimulus_not_observed");
+    assertEquals(RECORD_VALUE, readback.get("valueText"), "app_data_stimulus_not_observed");
     privateSurfaces.put("appData", readback);
     stimulus(stimuli, "appDataKey", RECORD_KEY, "appData");
     stimulus(stimuli, "appDataValue", RECORD_VALUE, "appData");
@@ -275,8 +272,7 @@ class TrustGraphPrivacyIntegrationTest {
               ? PlatformApiPrincipal.appToken("privacy-denied", List.of())
               : owner;
       var denied = router.route(request(method, route, Map.of(), deniedPrincipal));
-      assertEquals(403, denied.statusCode());
-      assertEquals(before, calls.get());
+      assertDeniedBeforeComposition(denied, before, calls);
       errors.add(denied.body());
       denials.add(
           Map.of(
@@ -388,13 +384,7 @@ class TrustGraphPrivacyIntegrationTest {
                 List.of("operator", "runtime-observation"),
                 Map.of(),
                 PlatformApiPrincipal.hostOperator()));
-    assertEquals(200, support.statusCode());
-    assertEquals(200, supportPreview.statusCode());
-    assertEquals(200, operatorRuntime.statusCode());
-    assertTrue(support.body().contains("\"statementCount\":1"));
-    assertTrue(support.body().contains("\"sectionCount\":1"));
-    assertTrue(support.body().contains("\"supportDigest\""));
-    assertTrue(operatorRuntime.body().contains("\"valid\":true"));
+    assertUsefulAuthorizedExports(support, supportPreview, operatorRuntime);
     surfaces.put("supportBundle", support.body());
     surfaces.put("supportPreview", supportPreview.body());
     surfaces.put("operatorRuntime", operatorRuntime.body());
@@ -437,12 +427,7 @@ class TrustGraphPrivacyIntegrationTest {
     stimulus(stimuli, "nestedCredential", nestedSecret, "redactorInput");
     stimulus(stimuli, "backupShape", backupBody, "redactorInput");
     stimulus(stimuli, "attachmentName", attachmentName, "redactorInput");
-    String safeBytes = PlatformApiJsonWriter.write(surfaces);
-    for (var stimulus : stimuli) assertFalse(safeBytes.contains(stimulus.get("marker")));
-    assertEquals(0, budgets.diagnostics().activeFamilyLeases());
-    assertEquals(0, budgets.diagnostics().reservedFamilyRates());
-    assertEquals(1, graph.statementCount());
-    assertTrue(budgets.diagnostics().valid());
+    assertSafeSettledState(surfaces, stimuli, budgets, graph);
     var evidence = new LinkedHashMap<String, Object>();
     evidence.put("schemaVersion", 1);
     evidence.put("caseId", "privacy");
@@ -466,6 +451,48 @@ class TrustGraphPrivacyIntegrationTest {
             "composerCalls",
             calls.get()));
     export(evidence);
+  }
+
+  private static void assertSignedImport(PlatformApiResponse imported) {
+    assertEquals(200, imported.statusCode());
+    assertTrue(imported.body().contains("\"signatureVerified\":true"));
+  }
+
+  private static void assertUriFetch(
+      PlatformApiResponse imported, int fetchCalls, String fetchInput) {
+    assertEquals(200, imported.statusCode());
+    assertEquals(1, fetchCalls);
+    assertEquals(SOURCE, fetchInput, "fetch_uri_stimulus_not_observed");
+  }
+
+  private static void assertDeniedBeforeComposition(
+      PlatformApiResponse denied, int callsBefore, AtomicInteger composerCalls) {
+    assertEquals(403, denied.statusCode());
+    assertEquals(callsBefore, composerCalls.get());
+  }
+
+  private static void assertUsefulAuthorizedExports(
+      PlatformApiResponse support, PlatformApiResponse preview, PlatformApiResponse runtime) {
+    assertEquals(200, support.statusCode());
+    assertEquals(200, preview.statusCode());
+    assertEquals(200, runtime.statusCode());
+    assertTrue(support.body().contains("\"statementCount\":1"));
+    assertTrue(support.body().contains("\"sectionCount\":1"));
+    assertTrue(support.body().contains("\"supportDigest\""));
+    assertTrue(runtime.body().contains("\"valid\":true"));
+  }
+
+  private static void assertSafeSettledState(
+      Map<String, Object> surfaces,
+      List<Map<String, String>> stimuli,
+      AppNetworkBudgetService budgets,
+      FileTrustGraphStore graph) {
+    String safeBytes = PlatformApiJsonWriter.write(surfaces);
+    for (var stimulus : stimuli) assertFalse(safeBytes.contains(stimulus.get("marker")));
+    assertEquals(0, budgets.diagnostics().activeFamilyLeases());
+    assertEquals(0, budgets.diagnostics().reservedFamilyRates());
+    assertEquals(1, graph.statementCount());
+    assertTrue(budgets.diagnostics().valid());
   }
 
   private static ContentFetchPort fetchPort(
