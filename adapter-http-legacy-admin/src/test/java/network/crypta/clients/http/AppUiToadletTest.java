@@ -40,6 +40,7 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -99,6 +100,11 @@ class AppUiToadletTest {
   @Mock private HTTPRequest request;
 
   @TempDir private Path tempDir;
+
+  @BeforeEach
+  void resolveOwnedFixtureRoot() throws IOException {
+    tempDir = tempDir.toRealPath();
+  }
 
   @Test
   void path_whenRequested_expectAppsRoot() {

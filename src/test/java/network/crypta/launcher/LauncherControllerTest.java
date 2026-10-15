@@ -1,5 +1,6 @@
 package network.crypta.launcher;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URI;
@@ -579,49 +580,54 @@ class LauncherControllerTest {
   @Test
   void start_whenTransientReadinessReadFailsAfterShellRoot_recoversSameSnapshot() throws Exception {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
+    Path releaseFile = tempDir.resolve("release-fixture.marker");
     FlakyReadinessLauncherController controller =
         new FlakyReadinessLauncherController(tempDir, () -> readinessFile, () -> null);
 
     writeWrapperConf(tempDir);
-    writeStableStructuredReadinessCryptadScript(tempDir, readinessFile);
+    writeStableStructuredReadinessCryptadScript(tempDir, readinessFile, releaseFile);
 
-    controller.start();
+    try {
+      controller.start();
 
-    awaitState(
-        controller,
-        s ->
-            s.knownPort() != null
-                && s.knownPort() == TEST_PORT
-                && "/app/node/".equals(s.knownUiRoot()));
+      awaitState(
+          controller,
+          s ->
+              s.knownPort() != null
+                  && s.knownPort() == TEST_PORT
+                  && "/app/node/".equals(s.knownUiRoot()));
 
-    controller.failNextRead();
-    awaitCondition(controller::failureInjected, "transient readiness read failure");
+      controller.failNextRead();
+      awaitCondition(controller::failureInjected, "transient readiness read failure");
 
-    AppState fallbackState =
-        awaitState(
-            controller,
-            s ->
-                s.knownPort() != null
-                    && s.knownPort() == TEST_PORT
-                    && LauncherReadinessInfo.DEFAULT_UI_ROOT.equals(s.knownUiRoot()));
-    assertEquals(LauncherReadinessInfo.DEFAULT_UI_ROOT, fallbackState.knownUiRoot());
+      AppState fallbackState =
+          awaitState(
+              controller,
+              s ->
+                  s.knownPort() != null
+                      && s.knownPort() == TEST_PORT
+                      && LauncherReadinessInfo.DEFAULT_UI_ROOT.equals(s.knownUiRoot()));
+      assertEquals(LauncherReadinessInfo.DEFAULT_UI_ROOT, fallbackState.knownUiRoot());
 
-    controller.allowRecovery();
+      controller.allowRecovery();
 
-    AppState recoveredState =
-        awaitState(
-            controller,
-            s ->
-                s.knownPort() != null
-                    && s.knownPort() == TEST_PORT
-                    && "/app/node/".equals(s.knownUiRoot()));
-    assertEquals("/app/node/", recoveredState.knownUiRoot());
-    awaitCondition(
-        () -> controller.launchedUris().size() == 1,
-        "single browser auto-open after transient readiness read failure");
-    assertEquals(List.of(URI.create("http://localhost:8888/app/node/")), controller.launchedUris());
-
-    controller.shutdownAndWait();
+      AppState recoveredState =
+          awaitState(
+              controller,
+              s ->
+                  s.knownPort() != null
+                      && s.knownPort() == TEST_PORT
+                      && "/app/node/".equals(s.knownUiRoot()));
+      assertEquals("/app/node/", recoveredState.knownUiRoot());
+      awaitCondition(
+          () -> controller.launchedUris().size() == 1,
+          "single browser auto-open after transient readiness read failure");
+      assertEquals(
+          List.of(URI.create("http://localhost:8888/app/node/")), controller.launchedUris());
+    } finally {
+      controller.allowRecovery();
+      releaseFixtureProcess(controller, releaseFile);
+    }
   }
 
   @Test
@@ -656,26 +662,29 @@ class LauncherControllerTest {
     Path readinessFile = createReadinessFilePath(tempDir, "runtime");
     Path wrongDaemonLogFile = tempDir.resolve("missing-logs").resolve("crypta-latest.log");
     Path wrapperLogFile = tempDir.resolve("logs").resolve("wrapper.log");
+    Path releaseFile = tempDir.resolve("release-fixture.marker");
     LauncherController controller = controller(() -> readinessFile, () -> wrongDaemonLogFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
     writeWrapperConf(tempDir);
-    writeLegacyPortWithWrapperLogCompletionCryptadScript(tempDir, wrapperLogFile);
+    writeLegacyPortWithWrapperLogCompletionCryptadScript(tempDir, wrapperLogFile, releaseFile);
 
-    controller.start();
+    try {
+      controller.start();
 
-    awaitState(controller, AppState::isRunning);
-    awaitLog(logs, l -> l.contains("Starting FProxy on"));
-    AppState stateWithPort =
-        awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
-    assertEquals(TEST_PORT, stateWithPort.knownPort());
-    awaitCondition(
-        () -> isBrowserAutoOpened(controller),
-        "legacy fallback browser auto-open after wrapper-log completion");
-    assertTrue(isBrowserAutoOpened(controller));
-
-    controller.shutdownAndWait();
+      awaitState(controller, AppState::isRunning);
+      awaitLog(logs, l -> l.contains("Starting FProxy on"));
+      AppState stateWithPort =
+          awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+      assertEquals(TEST_PORT, stateWithPort.knownPort());
+      awaitCondition(
+          () -> isBrowserAutoOpened(controller),
+          "legacy fallback browser auto-open after wrapper-log completion");
+      assertTrue(isBrowserAutoOpened(controller));
+    } finally {
+      releaseFixtureProcess(controller, releaseFile);
+    }
   }
 
   @Test
@@ -1264,8 +1273,8 @@ class LauncherControllerTest {
     }
   }
 
-  private static void writeStableStructuredReadinessCryptadScript(Path baseDir, Path readinessFile)
-      throws Exception {
+  private static void writeStableStructuredReadinessCryptadScript(
+      Path baseDir, Path readinessFile, Path releaseFile) throws Exception {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
@@ -1286,7 +1295,7 @@ class LauncherControllerTest {
               "echo ui.port=" + TEST_PORT,
               "echo ui.root=" + SHELL_UI_ROOT,
               ") > \"" + readinessPath + "\"",
-              "ping -n 6 127.0.0.1 > nul");
+              waitForFixtureRelease(releaseFile, true));
     } else {
       content =
           String.join(
@@ -1300,7 +1309,7 @@ class LauncherControllerTest {
               "ui.port=" + TEST_PORT,
               "ui.root=" + SHELL_UI_ROOT,
               "EOF",
-              "sleep " + SHELL_SLEEP_LONG);
+              waitForFixtureRelease(releaseFile, false));
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1502,7 +1511,7 @@ class LauncherControllerTest {
   }
 
   private static void writeLegacyPortWithWrapperLogCompletionCryptadScript(
-      Path baseDir, Path wrapperLogFile) throws Exception {
+      Path baseDir, Path wrapperLogFile, Path releaseFile) throws Exception {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
@@ -1518,7 +1527,7 @@ class LauncherControllerTest {
               "echo Starting FProxy on 127.0.0.1:" + TEST_PORT,
               "ping -n 3 127.0.0.1 > nul",
               "echo Node initialization completed>>\"" + wrapperLogPath + "\"",
-              "ping -n 2 127.0.0.1 > nul");
+              waitForFixtureRelease(releaseFile, true));
     } else {
       content =
           String.join(
@@ -1527,7 +1536,7 @@ class LauncherControllerTest {
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "sleep " + SHELL_SLEEP_MEDIUM,
               "printf 'Node initialization completed\\n' >> \"" + wrapperLogPath + "\"",
-              "sleep " + SHELL_SLEEP_MEDIUM);
+              waitForFixtureRelease(releaseFile, false));
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1638,6 +1647,28 @@ class LauncherControllerTest {
 
     if (!isWindows && !script.toFile().setExecutable(true)) {
       throw new AssertionError("Failed to mark script executable: " + script);
+    }
+  }
+
+  private static String waitForFixtureRelease(Path releaseFile, boolean isWindows) {
+    String path = releaseFile.toAbsolutePath().toString();
+    if (isWindows) {
+      return String.join(
+          "\n",
+          ":awaitFixtureRelease",
+          "if exist \"" + path + "\" goto :eof",
+          "ping -n 2 127.0.0.1 > nul",
+          "goto awaitFixtureRelease");
+    }
+    return "while [ ! -f \"" + path + "\" ]; do sleep " + SHELL_SLEEP_LOOP + "; done";
+  }
+
+  private static void releaseFixtureProcess(LauncherController controller, Path releaseFile)
+      throws IOException {
+    try {
+      Files.writeString(releaseFile, "done", StandardCharsets.UTF_8);
+    } finally {
+      controller.shutdownAndWait();
     }
   }
 

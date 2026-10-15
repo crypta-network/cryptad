@@ -409,3 +409,22 @@ Acceptance scope and states remain unchanged; the separate fixed-cutoff assessme
 `build/pr321-private-pin-review/reader-encoding-review-results/`; the
 [source-pin review](pr-321-source-pin-review.md) identifies the corresponding prior bytes and pins.
 Native Windows/macOS lanes and the full application suite were not rerun for this follow-up.
+
+## Hosted macOS fixture follow-up
+
+The [macOS ARM64 job](https://github.com/crypta-network/cryptad/actions/runs/38801065461/job/116649916408)
+for commit `0583552b58066a3606bd9ef3f42deba32d61903a` failed eight `AppUiToadletTest` cases and
+two `LauncherControllerTest` cases. Its bounded report retention, attestation and upload steps
+completed, preserving the failed result without granting acceptance.
+
+An actual aliased temporary root on Linux reproduced the same eight app-UI failures. The test now
+resolves its owned JUnit root before constructing installed bundle paths, preserving the production
+asset resolver's rejection of aliased or linked untrusted paths. The two launcher fixtures now keep
+their child processes alive until the test releases them, rather than exiting after short sleeps.
+Both tests release and stop the child in `finally`; readiness recovery also releases its injected
+read gate during cleanup. Their existing state, port and browser assertions and wait limits remain.
+
+Formatting and the focused run with the aliased temporary root passed all 35 app-UI tests and
+34 launcher tests without failures, errors or skips. This is local Linux reproduction and
+verification; the updated native hosted jobs must independently establish their own results.
+The existing implementation-evidence commitments and acceptance obligations remain unchanged.
