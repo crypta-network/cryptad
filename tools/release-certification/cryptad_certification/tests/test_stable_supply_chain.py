@@ -3812,7 +3812,10 @@ class StableSupplyChainTest(unittest.TestCase):
             "toolchain { languageVersion.set(JavaLanguageVersion.of(25)) }",
             included_build,
         )
-        self.assertIn("kotlin { jvmToolchain(25) }", included_build)
+        self.assertIn(
+            "extensions.configure<KotlinJvmProjectExtension> { jvmToolchain(25) }",
+            included_build,
+        )
         self.assertNotIn("JvmVendorSpec.ADOPTIUM", included_build)
         for label in ("raw resolution or final", "producer jlink", "verifier jlink", "platform jlink"):
             self.assertIn(label, workflow)
