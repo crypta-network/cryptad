@@ -5467,7 +5467,7 @@
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:ff1e876c828fca3f024716c1fa51508a2c92eeed825fb415f3f3f3acb29f83ea",
+            "digest": "sha256:b238d17adc796fec085ce97ef2d5b0523dd6005475a7fd5f644682e3dedcab02",
             "path": ".github/workflows/build.yml"
           },
           {
@@ -5497,7 +5497,7 @@
           },
           {
             "assertion": "PR-321 static build and source distribution inputs follow the exact selected roster, preserve tracked or export-declared members and configured generated roots, and refuse unsupported source-export selection without admitting unlisted static files.",
-            "digest": "sha256:7c10b93f73cc04e06ec548ffe79e9ee1fe2dfbb2bf917b56dc67f444aac62fb3",
+            "digest": "sha256:9dab59a25554e0b990fc118fb3e54d7e31198f1292cf0a4b4d88a94af6fb5c19",
             "path": "build-logic/src/main/kotlin/cryptad/ActiveSourceFiles.kt"
           },
           {
@@ -5550,7 +5550,7 @@
           },
           {
             "assertion": "PR-321 static and packaging roster regressions retain selected history names, exclude unlisted ordinary export files, preserve configured generated roots and reject missing or escaping source members; source review does not assert native distribution execution.",
-            "digest": "sha256:6475eac0a10c594829cd3b5fcdb81acd6030e2dc495dffc94bf45d09299b642b",
+            "digest": "sha256:754b9e55f47995bcfb8dc319d1484e04b397c5e00f45bb060be686e8fe0d33ac",
             "path": "build-logic/src/test/kotlin/cryptad/ActiveSourceFilesTest.kt"
           },
           {

@@ -498,3 +498,24 @@ required narrow runtime claims are observed. The synthetic local baseline compar
 `fail` with `runtime-regression-exceeded` and `releaseEligible: false`; this allowed comparison
 result is retained, not waived or treated as performance acceptance. Native macOS/Windows execution
 for the successor commit and original hosted acceptance remain separate from these Linux results.
+
+## Interpreter selection and archive classification review correction
+
+The reusable workflow now invokes both report commands through setup-python's quoted absolute
+interpreter output. This selects the pinned Python version without depending on a runner alias.
+An actual local Bash smoke check passes both commands with a spaced interpreter path while the
+`python3` alias deliberately fails; the generated facts are synthetic private test data.
+
+Source archive classification now uses tracked changes plus selected untracked members. Excluded
+untracked history leaves a committed archive manifest unchanged, while selected additions and
+tracked edits/deletions retain working-source classification before and after staging. A real-Git
+regression reproduces the previous manifest drift. The
+[source-pin review](pr-321-source-pin-review.md#interpreter-selection-and-archive-source-classification-review)
+records the three updated commitments, preserved acceptance rules and verification results.
+
+Local verification passed the full `./gradlew test` invocation: 17,524 application test cases with
+zero failures/errors and nine skips, plus all 38 included-build tests without skips. The focused
+Python source-selector, CI-evidence and closeout suites pass all 107 tests. Workflow lint and
+Kotlin formatting pass, and both report commands pass the spaced-interpreter/failing-alias smoke
+check. The separate assessment at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and
+Phase 12 incomplete. These checks do not establish native hosted execution for the successor commit.

@@ -1,6 +1,7 @@
 package cryptad
 
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import java.net.URI
 import java.nio.file.FileSystems
 import java.nio.file.Files
@@ -157,12 +158,6 @@ class ActiveSourceFilesTest {
 
   @Test
   fun repository_whenTrackedMembersAreDeleted_expectCurrentWorkingRoster() {
-    fun git(vararg arguments: String) {
-      val process = ProcessBuilder(listOf("git") + arguments).directory(root.toFile()).start()
-      assertEquals(true, process.waitFor(15, TimeUnit.SECONDS))
-      assertEquals(0, process.exitValue(), process.errorStream.bufferedReader().readText())
-    }
-
     git("init", "--quiet")
     Files.writeString(root.resolve("source.java"), "class Example {}")
     Files.createDirectory(root.resolve(".stversions"))
@@ -178,6 +173,92 @@ class ActiveSourceFilesTest {
     assertEquals(expected, ActiveSourceFiles.repository(root.toFile()))
     git("add", "--update")
     assertEquals(expected, ActiveSourceFiles.repository(root.toFile()))
+  }
+
+  @Test
+  fun writeRoster_whenOnlyExcludedHistoryIsUntracked_expectIdenticalCommittedManifest() {
+    committedFixture()
+    val clean = writeRepositoryRoster()
+    assertEquals("committed-source", (JsonSlurper().parse(clean) as Map<*, *>)["sourceClass"])
+    for (name in listOf(".stversions/archived.java", "nested/.stversions/archived.kt")) {
+      val path = root.resolve(name)
+      Files.createDirectories(path.parent)
+      Files.writeString(path, "unselected historical source")
+    }
+
+    assertArrayEquals(clean, writeRepositoryRoster())
+  }
+
+  @Test
+  fun writeRoster_whenSelectedUntrackedFileIsAdded_expectWorkingSourceBeforeAndAfterStaging() {
+    committedFixture()
+    Files.writeString(root.resolve("new source é.kt"), "class NewSource")
+
+    for (staged in listOf(false, true)) {
+      if (staged) git("add", "new source é.kt")
+      val manifest = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+      assertEquals("working-source", manifest["sourceClass"])
+      assertEquals(
+        setOf("source.java", ".stversions/kept.kt", "new source é.kt"),
+        (manifest["files"] as Map<*, *>).keys,
+      )
+    }
+  }
+
+  @Test
+  fun writeRoster_whenTrackedHistoryChanges_expectWorkingSourceBeforeAndAfterStaging() {
+    committedFixture()
+    val source = root.resolve(".stversions/kept.kt")
+    Files.writeString(source, "class Changed")
+
+    for (staged in listOf(false, true)) {
+      if (staged) git("add", "--update")
+      assertEquals(
+        "working-source",
+        (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
+      )
+    }
+    Files.delete(source)
+    for (staged in listOf(false, true)) {
+      if (staged) git("add", "--update")
+      val manifest = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+      assertEquals("working-source", manifest["sourceClass"])
+      assertEquals(setOf("source.java"), (manifest["files"] as Map<*, *>).keys)
+    }
+  }
+
+  private fun committedFixture() {
+    git("init", "--quiet")
+    Files.writeString(root.resolve("source.java"), "class Example {}")
+    Files.createDirectories(root.resolve(".stversions"))
+    Files.writeString(root.resolve(".stversions/kept.kt"), "class Kept")
+    git("add", ".")
+    git(
+      "-c",
+      "user.name=Source roster fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      "fixture: committed sources",
+    )
+  }
+
+  private fun writeRepositoryRoster(): ByteArray {
+    val output = root.resolve("build/export/roster.json").toFile()
+    ActiveSourceFiles.writeRoster(
+      root.toFile(),
+      ActiveSourceFiles.repository(root.toFile()),
+      output,
+    )
+    return output.readBytes()
+  }
+
+  private fun git(vararg arguments: String) {
+    val process = ProcessBuilder(listOf("git") + arguments).directory(root.toFile()).start()
+    assertEquals(true, process.waitFor(15, TimeUnit.SECONDS))
+    assertEquals(0, process.exitValue(), process.errorStream.bufferedReader().readText())
   }
 
   @Test

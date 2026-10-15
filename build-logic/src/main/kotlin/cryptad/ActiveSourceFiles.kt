@@ -334,8 +334,10 @@ internal object ActiveSourceFiles {
     require(commit.matches(Regex(GIT_SHA1_PATTERN)) && tree.matches(Regex(GIT_SHA1_PATTERN))) {
       "Source identity unavailable"
     }
-    val dirty = git(base, "status", "--porcelain", "--untracked-files=normal").isNotEmpty()
     val trackedModes by lazy { trackedExecutableModes(git(base, GIT_LS_FILES, "--stage", "-z")) }
+    val dirty =
+      git(base, "status", "--porcelain", "--untracked-files=no").isNotEmpty() ||
+        selected.any { it !in trackedModes }
     var total = 0L
     val files =
       selected

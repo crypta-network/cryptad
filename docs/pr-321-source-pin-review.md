@@ -387,3 +387,36 @@ required narrow runtime claims are observed. The synthetic local baseline compar
 `fail` with `runtime-regression-exceeded` and `releaseEligible: false`; this allowed comparison
 result is retained, not waived or treated as performance acceptance. Native macOS/Windows execution
 for the successor commit and original hosted acceptance remain separate from these Linux results.
+
+## Interpreter selection and archive source classification review
+
+[Review 5540563594](https://github.com/crypta-network/cryptad/pull/1423#pullrequestreview-5540563594)
+identified an interpreter-alias dependency in the reusable native workflow and inconsistent source
+classification in Git-produced archives. Both report commands now use the quoted absolute
+`python-path` output of the existing, version-pinned setup-python action. The recent Windows jobs
+had successfully invoked `python3`, so the claimed immediate command failure was not reproduced;
+the correction ensures the preparation and retention steps select the installed interpreter
+regardless of hosted command aliases. Both actual Bash commands pass locally with an interpreter
+path containing spaces and a deliberately failing `python3` alias, in a synthetic private context.
+
+Archive dirtiness now combines tracked changes with selected members absent from the index.
+Untracked excluded history no longer changes an otherwise committed manifest. The real-Git
+regression fails before the correction and passes afterward, comparing the entire manifest byte
+for byte after adding root and nested history. Separate regressions keep selected untracked files,
+tracked history edits and tracked history deletions classified as working source before and after
+staging. Existing source selection, archive encoding and member verification remain unchanged.
+
+Exactly three existing file commitments advance, all owned by `p12-303-ci`: the reusable workflow,
+`ActiveSourceFiles.kt` and `ActiveSourceFilesTest.kt`. The assertions, implementation states,
+requirements, acceptance scope and historical commitments remain unchanged. Prior bytes are
+retained under `build/pr1423-review5540563594/before/`; the exact previous/current digest review is
+in `build/pr1423-review5540563594/byte-review.json`. Diagnostics and synthetic report facts remain
+private and outside upload rosters. All 631 implementation-evidence commitments match the current
+files.
+
+Local verification passed the full `./gradlew test` invocation: 17,524 application test cases with
+zero failures/errors and nine skips, plus all 38 included-build tests without skips. The focused
+Python source-selector, CI-evidence and closeout suites pass all 107 tests. Workflow lint and
+Kotlin formatting pass, and both report commands pass the spaced-interpreter/failing-alias smoke
+check. The separate assessment at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and
+Phase 12 incomplete. These checks do not establish native hosted execution for the successor commit.

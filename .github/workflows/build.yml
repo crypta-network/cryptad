@@ -60,6 +60,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.14.7'
@@ -84,7 +85,9 @@ jobs:
         shell: bash
         env:
           PYTHONPATH: tools/release-certification
-        run: python3 -m cryptad_certification.phase_12_ci --prepare "$RUNNER_TEMP/phase12-report-start.json"
+          PYTHON3: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          "$PYTHON3" -m cryptad_certification.phase_12_ci --prepare "$RUNNER_TEMP/phase12-report-start.json"
 
       - name: Build and analyze (Gradle)
         if: ${{ inputs.lane == 'linux-amd64' && env.SONAR_TOKEN != '' }}
@@ -114,7 +117,9 @@ jobs:
         env:
           PYTHONPATH: tools/release-certification
           PHASE12_LANE: ${{ inputs.lane }}
-        run: python3 -m cryptad_certification.phase_12_ci --retain "$RUNNER_TEMP/phase12-report-facts" --started "$RUNNER_TEMP/phase12-report-start.json" --lane "$PHASE12_LANE"
+          PYTHON3: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          "$PYTHON3" -m cryptad_certification.phase_12_ci --retain "$RUNNER_TEMP/phase12-report-facts" --started "$RUNNER_TEMP/phase12-report-start.json" --lane "$PHASE12_LANE"
 
       - name: Attest exact CI report facts
         if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
