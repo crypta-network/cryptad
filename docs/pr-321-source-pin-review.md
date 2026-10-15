@@ -329,7 +329,61 @@ the prior implementation because the reader is still alive when shutdown returns
 
 Local Linux verification passed the full `./gradlew test` invocation: application reports contain
 17,523 cases, zero failures/errors and nine skips; all 35 included-build tests pass without skips.
-The affected Java suites pass 177 cases without skips, and all 56 core HTTP runtime tests also pass
-with an aliased JVM temporary root. SonarLint reports no findings for either changed production
-Java file. Interop checks pass 319 cases with nine environment-gated skips. These local results do
-not establish native hosted execution for the successor commit.
+The affected Java suites pass 177 cases without skips. The earlier alias invocation reused the
+core HTTP runtime test result (`UP-TO-DATE`), so it did not establish execution under that temporary
+root; the fresh alias reproduction and correction are recorded below. SonarLint reports no findings
+for either changed production Java file. Interop checks pass 319 cases with nine environment-gated
+skips. These local results do not establish native hosted execution for the successor commit.
+
+## Native temporary roots, asset shutdown and scheduler capture follow-up
+
+Run `38814947603`, on source `b24fbd53e0e184670b9f90b5c2631c5d9dd5d2a9`, failed in
+[macOS native verification](https://github.com/crypta-network/cryptad/actions/runs/38814947603/job/116697153649),
+[Windows native verification](https://github.com/crypta-network/cryptad/actions/runs/38814947603/job/116697153963)
+and [packaged scheduler integration](https://github.com/crypta-network/cryptad/actions/runs/38814947603/job/116697153457).
+
+The six pilot fixtures now resolve the fixture-owned root before constructing any registry or
+approval path. The preceding fix resolved only the approval path; the normal Stable registry still
+retained macOS's aliased `/var` ancestor. A fresh Linux run through an aliased temporary root,
+with test outputs explicitly invalidated, reproduces the four hosted failures before this change
+and passes all 56 core HTTP runtime tests afterward. The earlier alias invocation reused an
+up-to-date test result and did not prove this condition. Production rejection of linked or aliased
+untrusted paths is unchanged.
+
+The loopback UI server now waits up to ten seconds after interrupting its request executor, allowing
+handlers to close file-backed asset streams before temporary directory cleanup. The new regression
+holds a real asset stream open during shutdown, verifies that close waits, releases the request,
+and checks executor termination and file removal. It fails against the previous immediate-return
+shutdown. A package-private constructor supplies the owned executor without reflective mutation.
+
+The scheduler collector previously finalized the last observation immediately after a separate
+subscription-state read reported success. That native event prefix can precede the subscription
+read and end at a write attempt without its outcome. The strict version-four derivation then
+correctly rejects the incomplete write trace. The collector now retains fresh observations until
+a completed tick, zero family leases/reservations and zero in-flight fetches are observed, within
+the existing overall deadline and sample budget. Native event validation, event/drop limits,
+resource bounds, baselines and release assertions remain unchanged. Three synthetic regressions
+fail before the collector change and pass afterward: an incomplete native metadata write,
+outstanding work/family holds, and expiration of the existing deadline. They exercise the real
+strict deriver and do not assert original runtime authority. Three standalone packaged executions
+passed before the change, so these local results do not claim an end-to-end reproduction of the
+hosted scheduler failure.
+
+No implementation-evidence file commitment covers the files changed in this follow-up; the policy
+and its existing commitments remain unchanged. Private original logs, before/after bytes and
+verification results remain under `build/pr1423-ci-run38814947603/`; packaged execution records
+remain in their owned private run directories. These paths are outside public upload rosters.
+
+Local Linux verification passed the full Java suite: 17,524 application cases with zero
+failures/errors and nine skips, plus all 35 included-build tests. The final executor-injection
+refinement then passed all 191 adapter tests. All three changed Java files have clean SonarLint
+reports with their owning main/test scope. Cross-version checks pass 322 tests with nine
+environment-gated skips, and scheduler-input/runtime-pressure/storage-evidence checks pass all
+48 tests. All 631 implementation-evidence file commitments match without policy changes.
+
+Both packaged scheduler tests pass without skips after rebuilding the distribution: one borrowed
+supervisor execution and three independent standalone executions (511 seconds total). All five
+required narrow runtime claims are observed. The synthetic local baseline comparison reports
+`fail` with `runtime-regression-exceeded` and `releaseEligible: false`; this allowed comparison
+result is retained, not waived or treated as performance acceptance. Native macOS/Windows execution
+for the successor commit and original hosted acceptance remain separate from these Linux results.

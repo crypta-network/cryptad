@@ -669,6 +669,26 @@ class SchedulerLane(runtime.Supervisor):
             'droppedEvents': max(row['work']['dropped'] for row in observations),
             **({'baseline': self.selected_baseline} if hasattr(self, 'selected_baseline') else {})}
 
+    def capture_runtime_evidence(self):
+        # Subscription state is read after each native observation. Its success can
+        # race with the sampled event prefix, so retain a completed tick before
+        # asking the strict evidence deriver to validate every write outcome.
+        def completed(snapshot):
+            work = snapshot.get('work', {})
+            budget_state = snapshot.get('budget', {})
+            fetch = snapshot.get('contentFetch', {})
+            events = work.get('events', [])
+            return (work.get('known') is True and bool(events)
+                    and events[-1].get('kind') == 'TICK_COMPLETED'
+                    and budget_state.get('valid') is True
+                    and budget_state.get('activeFamilyLeases') == 0
+                    and budget_state.get('reservedFamilyRates') == 0
+                    and fetch.get('known') is True
+                    and fetch.get('inFlightOperations') == 0)
+
+        self.wait_for(completed, 15, 'scheduler-native-capture-not-quiescent')
+        return self.runtime_evidence()
+
     def wait_for(self, predicate, seconds, code):
         deadline = time.monotonic() + self.remaining(seconds)
         while time.monotonic() < deadline:
@@ -886,7 +906,7 @@ class SchedulerLane(runtime.Supervisor):
             raise runtime.RuntimeFailure('scheduler-owned-rate-control-resume-failed')
         self.wait_for(lambda _: self.owned_subscription().get('lastSuccessAt') != success_before, 30,
                       'scheduler-post-rate-useful-progress-unobserved')
-        attachment = self.runtime_evidence()
+        attachment = self.capture_runtime_evidence()
         if hasattr(self, 'selected_baseline'):
             comparison = pressure_evidence.baseline.compare(attachment['series'], self.selected_baseline)
             private_json(self.root / 'runtime-baseline-comparison.json', comparison)

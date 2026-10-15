@@ -459,7 +459,42 @@ rosters. The fixed-cutoff assessment retains 49 requirements, 47 unresolved and 
 
 Local Linux verification passed the full `./gradlew test` invocation: application reports contain
 17,523 cases, zero failures/errors and nine skips; all 35 included-build tests pass without skips.
-The affected Java suites pass 177 cases without skips, and all 56 core HTTP runtime tests also pass
-with an aliased JVM temporary root. SonarLint reports no findings for either changed production
-Java file. Interop checks pass 319 cases with nine environment-gated skips. These local results do
-not establish native hosted execution for the successor commit.
+The affected Java suites pass 177 cases without skips. The earlier alias invocation reused the
+core HTTP runtime test result (`UP-TO-DATE`), so it did not establish execution under that temporary
+root; the fresh alias reproduction and correction are recorded below. SonarLint reports no findings
+for either changed production Java file. Interop checks pass 319 cases with nine environment-gated
+skips. These local results do not establish native hosted execution for the successor commit.
+
+## Native temporary root, asset lifetime and scheduler capture correction
+
+The next hosted run, `38814947603`, exposed a remaining macOS pilot fixture path, a Windows
+loopback asset lifetime race and a packaged scheduler observation failure. The
+[source-pin review](pr-321-source-pin-review.md#native-temporary-roots-asset-shutdown-and-scheduler-capture-follow-up)
+records the original job links, reproduction limits and unchanged evidence contract.
+
+All six pilot fixtures now resolve their owned temporary root before constructing member paths.
+A forced fresh alias run reproduces the four macOS failures before the fix and passes all 56 tests
+afterward. This replaces the earlier alias claim, whose invocation had reused an up-to-date result.
+Loopback UI shutdown now awaits request executor termination for up to ten seconds so active asset
+streams can close; its regression holds and releases a real asset stream during shutdown.
+
+The scheduler collector waits for a fresh completed tick and released family/fetch work before
+finalizing the original event prefix. It retains the existing deadline, sample bounds and strict
+write/outcome validation. Synthetic regressions cover a pending metadata write, outstanding
+family/fetch work and deadline expiration. Three standalone packaged executions passed locally
+before this change; they did not reproduce the hosted scheduler failure end to end. The source
+change addresses the independently reproduced capture race without changing acceptance criteria.
+
+Local Linux verification passed the full Java suite: 17,524 application cases with zero
+failures/errors and nine skips, plus all 35 included-build tests. The final executor-injection
+refinement then passed all 191 adapter tests. All three changed Java files have clean SonarLint
+reports with their owning main/test scope. Cross-version checks pass 322 tests with nine
+environment-gated skips, and scheduler-input/runtime-pressure/storage-evidence checks pass all
+48 tests. All 631 implementation-evidence file commitments match without policy changes.
+
+Both packaged scheduler tests pass without skips after rebuilding the distribution: one borrowed
+supervisor execution and three independent standalone executions (511 seconds total). All five
+required narrow runtime claims are observed. The synthetic local baseline comparison reports
+`fail` with `runtime-regression-exceeded` and `releaseEligible: false`; this allowed comparison
+result is retained, not waived or treated as performance acceptance. Native macOS/Windows execution
+for the successor commit and original hosted acceptance remain separate from these Linux results.

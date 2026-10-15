@@ -683,7 +683,8 @@ class CoreHttpShellRuntimeSupportTest {
 
   @Test
   void appHost_whenBoundedPilotConfigurationPresent_expectExactExternalSubjectOnly(
-      @TempDir Path tempDir) throws Exception {
+      @TempDir Path ownedTempDir) throws Exception {
+    Path tempDir = ownedTempDir.toRealPath();
     KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
@@ -769,7 +770,8 @@ class CoreHttpShellRuntimeSupportTest {
 
   @Test
   void appHost_whenPilotRegistryReusesCatalogKeyId_expectConfigurationRejected(
-      @TempDir Path tempDir) throws Exception {
+      @TempDir Path ownedTempDir) throws Exception {
+    Path tempDir = ownedTempDir.toRealPath();
     KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
@@ -807,7 +809,8 @@ class CoreHttpShellRuntimeSupportTest {
 
   @Test
   void appHost_whenPilotRegistryReusesCatalogPublicKey_expectConfigurationRejected(
-      @TempDir Path tempDir) throws Exception {
+      @TempDir Path ownedTempDir) throws Exception {
+    Path tempDir = ownedTempDir.toRealPath();
     KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair sharedKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     Path normalRegistry = tempDir.resolve("normal-stable-keys.properties");
@@ -844,7 +847,8 @@ class CoreHttpShellRuntimeSupportTest {
 
   @Test
   void appHost_whenPilotRegistryBytesDifferFromApproval_expectDigestMismatchRejected(
-      @TempDir Path tempDir) throws Exception {
+      @TempDir Path ownedTempDir) throws Exception {
+    Path tempDir = ownedTempDir.toRealPath();
     KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
@@ -887,7 +891,8 @@ class CoreHttpShellRuntimeSupportTest {
 
   @Test
   void appCatalog_whenCatalogRegistryBytesChangeAfterBootstrap_expectDigestMismatchRejected(
-      @TempDir Path tempDir) throws Exception {
+      @TempDir Path ownedTempDir) throws Exception {
+    Path tempDir = ownedTempDir.toRealPath();
     KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
@@ -937,8 +942,9 @@ class CoreHttpShellRuntimeSupportTest {
   }
 
   @Test
-  void appHost_whenPilotApprovalIsExpired_expectStableTrustRemainsAvailable(@TempDir Path tempDir)
-      throws Exception {
+  void appHost_whenPilotApprovalIsExpired_expectStableTrustRemainsAvailable(
+      @TempDir Path ownedTempDir) throws Exception {
+    Path tempDir = ownedTempDir.toRealPath();
     KeyPair stableKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair catalogKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     KeyPair publisherKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
