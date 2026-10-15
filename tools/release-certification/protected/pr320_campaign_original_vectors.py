@@ -166,7 +166,8 @@ def privacy_vectors():
     from pathlib import Path
     from cryptad_certification.tests.test_certification_public_export import envelope
     with tempfile.TemporaryDirectory() as temporary:
-        root=Path(temporary);workspace=root/'workspace';workspace.mkdir()
+        # Canonicalize the fixture's platform temp alias before the strict descriptor reader.
+        root=Path(temporary).resolve();workspace=root/'workspace';workspace.mkdir()
         source=workspace/'build/release-certification/ci-42-1/release-certification/summary.json'
         source.parent.mkdir(parents=True);source.write_bytes(exports._json(envelope(workspace)))
         manifest=root/'manifest.json';manifest.write_text(json.dumps({'release':{'id':'ci-42-1','version':'1','profile':'pr'},'output':{'root':'build/release-certification'}}))

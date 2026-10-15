@@ -51,7 +51,7 @@ def chain_vector(original_fixture):
     with tempfile.TemporaryDirectory() as temporary, \
          patch.object(evidence.dt, 'datetime', FixedClock), \
          patch.object(evidence.time, 'monotonic_ns', side_effect=lambda: next(monotonic)), \
-         evidence.Journal(Path(temporary), plan) as journal:
+         evidence.Journal(Path(temporary).resolve(), plan) as journal:
         journal.append('start')
         for index, node in enumerate(plan['nodes']):
             node_epoch = component['bindings']['nodeEpoch'] if node['role'] == 'candidate-sender' else '%032x' % (index + 2)

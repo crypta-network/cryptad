@@ -253,7 +253,8 @@ class OriginalCampaignAdmissionTest(unittest.TestCase):
         payloads={'campaign.json':vectors.encoded(selection),'originals.json':vectors.encoded(originals),
                   'plan.json':vectors.encoded(originals[0]['bundle']['plan'])}
         with tempfile.TemporaryDirectory() as temporary:
-            result=runtime.verify_authenticated('budget-campaign',payloads,'2026-10-14T06:00:00Z',Path(temporary),proof)
+            root=Path(temporary).resolve()
+            result=runtime.verify_authenticated('budget-campaign',payloads,'2026-10-14T06:00:00Z',root,proof)
             self.assertEqual('observed',result['components']['appBudgets'])
             self.assertEqual('partial',result['dimensions']['coverage'])
             self.assertEqual(31,len(result['coverage']['observed']))
@@ -262,7 +263,7 @@ class OriginalCampaignAdmissionTest(unittest.TestCase):
             self.assertIn('reviewed-resource-baseline-required',result['blockers'])
             self.assertIn('remaining-runtime-adapters-required',result['blockers'])
             with self.assertRaises(ValueError):
-                runtime.verify_authenticated('budget-campaign',payloads,'2026-10-14T06:00:00Z',Path(temporary),proof.coverage())
+                runtime.verify_authenticated('budget-campaign',payloads,'2026-10-14T06:00:00Z',root,proof.coverage())
         rules,_=closeout.policy()
         self.assertEqual(49,len(rules['requirements']))
 

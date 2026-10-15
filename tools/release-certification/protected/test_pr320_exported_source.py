@@ -1,7 +1,7 @@
 """Physical product/kit import composition; policy providers remain explicitly offline.
 
-Fresh isolated children never see the repository or its import cache. Original vectors are
-serialized by the parent; every child executes the exported owning decoders and validators.
+Isolated export children never see the repository or its import cache. Original vectors are
+serialized by the parent; each export child executes exported owning decoders and validators.
 This does not qualify a host, execute Java, authenticate a job, or create protected custody.
 """
 from __future__ import annotations
@@ -188,7 +188,7 @@ class PhysicalExportTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix='pr320-exported-source-')
         cls.addClassCleanup(cls.temporary.cleanup)
-        cls.root = Path(cls.temporary.name)
+        cls.root = Path(cls.temporary.name).resolve()
         cls.product, cls.kit = cls.root / 'product', cls.root / 'kit'
         cls.product.mkdir(mode=0o700)
         cls.kit.mkdir(mode=0o700)
@@ -327,6 +327,52 @@ print(json.dumps({'freshBrowserImports': 'passed'}))
             self.assertEqual({'status': 'rejected', 'mode': 'substituted-kit'}, self._run('substituted-kit'))
         finally:
             path.write_bytes(raw); path.chmod(0o600)
+
+
+@unittest.skipUnless(os.name == 'posix', 'requires POSIX temporary-directory aliases')
+class AliasedTemporaryRootTests(unittest.TestCase):
+    def test_real_export_and_original_owners_accept_canonical_fixture_roots(self):
+        with tempfile.TemporaryDirectory(prefix='pr320-aliased-temp-') as temporary:
+            root = Path(temporary).resolve()
+            physical, alias = root / 'physical', root / 'alias'
+            physical.mkdir()
+            alias.symlink_to(physical, target_is_directory=True)
+            script = r'''
+import os
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+source = Path(sys.argv[1])
+sys.path[:0] = [str(source / relative) for relative in (
+    'tools/release-certification/protected', 'tools/release-certification/restricted',
+    'tools/release-certification', 'tools/interop')]
+assert Path(tempfile.gettempdir()).is_symlink()
+from cryptad_certification import certification_public_export as exports
+from cryptad_certification import cross_version_evidence as evidence
+from cryptad_certification.tests.test_cross_version_evidence import fixture_plan
+checks = unittest.TestCase()
+with tempfile.TemporaryDirectory() as temporary:
+    with checks.assertRaises(OSError):
+        os.close(exports._open_directory(Path(temporary)))
+    with checks.assertRaisesRegex(evidence.EvidenceError, 'journal-root-symlink'):
+        with evidence.Journal(Path(temporary), fixture_plan()):
+            pass
+names = (
+    'test_pr320_original_acquisition.FixedServiceTests.test_actual_partial_journal_verifier_rejects_lineage_and_checkpoint_replacement',
+    'test_pr320_original_acquisition.FixedServiceTests.test_root_capability_returns_only_actual_committed_owner_originals',
+    'test_pr320_budget_original_chain.BudgetOriginalChainTest.test_actual_partial_original_chain_and_native_owner_accept_without_upstream_validator_mocks',
+    'test_composed_budget_campaign_admission.OriginalCampaignAdmissionTest.test_authenticated_budget_capability_preserves_all_49_phase_requirements_and_other_blockers',
+    'test_pr320_exported_source.PhysicalExportTests.test_physical_export_loads_all_fixed_factories_and_original_owners_from_measured_kit',
+)
+result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromNames(names))
+raise SystemExit(0 if result.wasSuccessful() else 1)
+'''
+            result = subprocess.run([sys.executable, '-I', '-S', '-B', '-c', script, str(SOURCE)],
+                cwd=root, env={**os.environ, 'TMPDIR': str(alias), 'TMP': str(alias), 'TEMP': str(alias)},
+                capture_output=True, text=True, timeout=120)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
 
 if __name__ == '__main__': unittest.main()

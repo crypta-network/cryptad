@@ -371,7 +371,7 @@ class FixedServiceTests(unittest.TestCase):
         from cryptad_certification.tests.test_composed_budget_journal_member import fixture
         plan, component, _tools = fixture()
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             with evidence.Journal(root, plan) as journal:
                 journal.append('node-start', role='candidate-sender', node_epoch=component['bindings']['nodeEpoch'])
                 members.append_member(journal, 'route-component', encode(component))
@@ -420,7 +420,7 @@ class FixedServiceTests(unittest.TestCase):
         private = json.loads(base64.b64decode(originals['private']))
         raw_member = encode(private['composedBudgetEvidence'])
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             with evidence.Journal(root, plan) as journal:
                 journal.append('node-start', role='candidate-sender', node_epoch=private['composedBudgetEvidence']['nodeEpoch'])
                 members.append_member(journal, 'legacy-attachment', raw_member)
