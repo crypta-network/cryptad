@@ -46,6 +46,7 @@ import network.crypta.runtime.spi.QueuePersistenceStatusSnapshot;
 import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
+import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.MultiValueTable;
@@ -245,7 +246,7 @@ class QueueToadletPostMutationTest {
     toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
 
     String html = body.toString(StandardCharsets.UTF_8);
-    assertTrue(html.contains(detachedTempDir.toString()));
+    assertTrue(html.contains(HTMLEncoder.encode(detachedTempDir.toFile().getCanonicalPath())));
     assertTrue(html.contains("detached-queue.db"));
     verify(queueSupportPort).persistenceStatus();
   }

@@ -428,3 +428,38 @@ Formatting and the focused run with the aliased temporary root passed all 35 app
 34 launcher tests without failures, errors or skips. This is local Linux reproduction and
 verification; the updated native hosted jobs must independently establish their own results.
 The existing implementation-evidence commitments and acceptance obligations remain unchanged.
+
+## Native jobs and report retention follow-up
+
+Run `38807779388`, at `e977471a556877f1573b1e85627acf81e32a6071`, failed the
+[macOS native job](https://github.com/crypta-network/cryptad/actions/runs/38807779388/job/116673005458),
+[Windows native job](https://github.com/crypta-network/cryptad/actions/runs/38807779388/job/116673005546)
+and [macOS certification self-test](https://github.com/crypta-network/cryptad/actions/runs/38807779388/job/116673005017).
+The successor corrects their fixture assumptions and the Windows source-reader metadata comparison.
+It preserves provider admission, exact source checks, signatures and bounded report redaction.
+
+Pilot-approval fixtures now use real owned paths, and signed app fixtures choose Windows command
+scripts or Unix shell scripts before signing. Hidden-file fixtures create native hidden attributes,
+queue error-page assertions use canonical encoded paths, and file-backed bloom-filter tests use
+JUnit temporary directories. The repeated-start AppHost test stops its child in `finally`. The
+updater test controls the filesystem access observation without POSIX permission assumptions.
+
+Launcher shutdown waits for wrapper-log reader closure and executor termination. A regression
+reproduces the prior premature return on Linux and verifies reader/executor completion and log-file
+removal. Starts after shutdown are ignored. Windows source reads compare stable identity and birth
+time across pathname and handle observations, while retaining each API's complete change-time and
+mode checks before and after reading. This accommodates CPython's Windows metadata differences
+without removing hardlink, reparse-point, replacement, size or mutation checks. Linux report fixtures
+supply image facts explicitly so inherited macOS image variables cannot alter their provider.
+
+The [source-pin review](pr-321-source-pin-review.md#native-provider-and-shutdown-review-follow-up)
+records the exact nine updated file commitments and preserved acceptance scope. Private diagnostics,
+prior bytes and verification results remain under `build/pr1423-ci-three-jobs/`, outside upload
+rosters. The fixed-cutoff assessment retains 49 requirements, 47 unresolved and Phase 12 incomplete.
+
+Local Linux verification passed the full `./gradlew test` invocation: application reports contain
+17,523 cases, zero failures/errors and nine skips; all 35 included-build tests pass without skips.
+The affected Java suites pass 177 cases without skips, and all 56 core HTTP runtime tests also pass
+with an aliased JVM temporary root. SonarLint reports no findings for either changed production
+Java file. Interop checks pass 319 cases with nine environment-gated skips. These local results do
+not establish native hosted execution for the successor commit.

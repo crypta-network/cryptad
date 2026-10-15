@@ -208,13 +208,19 @@ class PlatformApiAppsIntegrationTest {
     assertEquals(409, reinstallResponse.statusCode());
     assertTrue(reinstallResponse.body().contains("\"code\":\"app_conflict\""));
 
-    router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+    try {
+      router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
 
-    PlatformApiResponse repeatedStartResponse =
-        router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+      PlatformApiResponse repeatedStartResponse =
+          router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
 
-    assertEquals(409, repeatedStartResponse.statusCode());
-    assertTrue(repeatedStartResponse.body().contains("\"code\":\"app_conflict\""));
+      assertEquals(409, repeatedStartResponse.statusCode());
+      assertTrue(repeatedStartResponse.body().contains("\"code\":\"app_conflict\""));
+    } finally {
+      PlatformApiResponse stopResponse =
+          router.route(request("POST", List.of("apps", APP_ID, "stop"), Map.of()));
+      assertEquals(200, stopResponse.statusCode());
+    }
   }
 
   @Test

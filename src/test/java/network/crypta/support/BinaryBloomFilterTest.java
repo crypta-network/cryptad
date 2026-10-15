@@ -4,13 +4,13 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
 import java.util.Arrays;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
@@ -254,25 +254,7 @@ class BinaryBloomFilterTest {
 
   @Nested
   class FileBacked {
-    private File tempDir;
-
-    @BeforeEach
-    void setupDir() throws IOException {
-      File secureRoot = new File("build/securetmp-tests");
-      // best-effort owner-only permissions
-      if (!secureRoot.exists()) {
-        assertTrue(secureRoot.mkdirs(), "Failed to create secure test temp root");
-      }
-      assertTrue(secureRoot.setReadable(true, true));
-      assertTrue(secureRoot.setWritable(true, true));
-      assertTrue(secureRoot.setExecutable(true, true));
-
-      tempDir = Files.createTempDirectory(secureRoot.toPath(), "bbf-test-").toFile();
-      assertTrue(tempDir.setReadable(true, true));
-      assertTrue(tempDir.setWritable(true, true));
-      assertTrue(tempDir.setExecutable(true, true));
-      tempDir.deleteOnExit();
-    }
+    @TempDir private File tempDir;
 
     @Test
     @DisplayName("fileBacked_whenFirstOpen_expectNeedRebuildTrueThenFalse")

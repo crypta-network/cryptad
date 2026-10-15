@@ -16,6 +16,7 @@ from unittest.mock import patch
 import zipfile
 
 from cryptad_certification import phase_12_ci as ci
+from .test_active_source import windows_source_metadata
 from .test_phase_12_ci import OriginalAPI, AS_OF, SHA, SOURCE, encoded, xml as _legacy_xml
 
 
@@ -352,7 +353,7 @@ class PrivateEvidenceBoundaryTests(unittest.TestCase):
                 "RUNNER_OS": "Windows", "RUNNER_ARCH": "X64", "ImageOS": "win2025", "ImageVersion": "20260910.1.0"}
             with patch.object(ci, "ROOT", root), patch("cryptad_certification.active_source.source_roster", return_value=selected), \
                  patch.object(ci, "_producer_identity", return_value="sha256:" + "c" * 64), \
-                 patch.dict(os.environ, environment), without_unix_open_flags():
+                 patch.dict(os.environ, environment), without_unix_open_flags(), windows_source_metadata():
                 result = ci.retain_reports_v2(private / "public", start, "windows-amd64")
             self.assertEqual("windows-amd64", result["lane"])
             self.assertEqual(211, len(result["rows"]))
@@ -361,7 +362,7 @@ class PrivateEvidenceBoundaryTests(unittest.TestCase):
 
     def test_current_producer_identity_preserves_both_schema_digests_without_unix_open_flags(self):
         expected = {schema: ci._producer_identity(schema) for schema in (1, 2)}
-        with without_unix_open_flags():
+        with without_unix_open_flags(), windows_source_metadata():
             for schema in (1, 2):
                 with self.subTest(schema=schema):
                     self.assertEqual(expected[schema], ci._producer_identity(schema))
@@ -409,7 +410,7 @@ class PrivateEvidenceBoundaryTests(unittest.TestCase):
             selected = SourceRoster((source_path,), SHA, SOURCE["tree"], "committed-source")
             environment = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": ci.REPOSITORY, "GITHUB_JOB": "build",
                 "GITHUB_SHA": SHA, "GITHUB_WORKFLOW_SHA": SHA, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "2",
-                "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64"}
+                "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu24", "ImageVersion": "20261012.1.0"}
             inserted = root / "build/test-results/test/TEST-inserted.xml"
             edited = ci.ET.fromstring(report_raw)
             edited.remove(edited.find("testcase"))
@@ -588,7 +589,7 @@ class PrivateEvidenceBoundaryTests(unittest.TestCase):
                 "tasks": [{"taskPath": ":private-canary:compileJava", "outcome": "executed"}]}))
             environment = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": ci.REPOSITORY, "GITHUB_JOB": "build",
                 "GITHUB_SHA": SHA, "GITHUB_WORKFLOW_SHA": SHA, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "2",
-                "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64"}
+                "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu24", "ImageVersion": "20261012.1.0"}
             with patch.object(ci, "ROOT", root), patch("cryptad_certification.active_source.source_roster", return_value=selected), \
                  patch.object(ci, "_producer_identity", return_value="sha256:" + "c" * 64), patch.dict(os.environ, environment):
                 result = ci.retain_reports_v2(root / "public", start, "linux-amd64")
@@ -635,7 +636,7 @@ class PrivateEvidenceBoundaryTests(unittest.TestCase):
                 return xml("junit")
             environment = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": ci.REPOSITORY, "GITHUB_JOB": "build",
                 "GITHUB_SHA": SHA, "GITHUB_WORKFLOW_SHA": SHA, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "2",
-                "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64"}
+                "RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu24", "ImageVersion": "20261012.1.0"}
             with patch.object(ci, "ROOT", root), patch("cryptad_certification.active_source.source_roster", return_value=selected), \
                  patch.object(ci, "_producer_identity", return_value="sha256:" + "c" * 64), \
                  patch.object(ci, "_v2_rows", return_value=[(".", "junit"), (".", "spotbugs-main")]), \

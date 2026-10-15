@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import network.crypta.fs.AppEnv;
 import network.crypta.support.api.ManifestElement;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -65,7 +67,7 @@ class ClientPutDirManifestSupportTest {
 
   @Test
   void buildDiskManifest_whenHiddenFilesExcluded_skipsHiddenEntries() throws Exception {
-    Files.writeString(tempDir.resolve(".hidden.txt"), "secret");
+    writeHiddenFile();
     Files.writeString(tempDir.resolve("visible.txt"), "visible");
 
     Map<String, Object> manifest =
@@ -78,7 +80,7 @@ class ClientPutDirManifestSupportTest {
 
   @Test
   void buildDiskManifest_whenHiddenFilesIncluded_keepsHiddenEntries() throws Exception {
-    Files.writeString(tempDir.resolve(".hidden.txt"), "secret");
+    writeHiddenFile();
 
     Map<String, Object> manifest =
         ClientPutDirManifestSupport.buildDiskManifest(tempDir.toFile(), false, true);
@@ -98,5 +100,13 @@ class ClientPutDirManifestSupportTest {
     assertThrows(
         IllegalArgumentException.class,
         () -> ClientPutDirManifestSupport.buildDiskManifest(nonDirectory, false, false));
+  }
+
+  private void writeHiddenFile() throws Exception {
+    Path hidden = Files.writeString(tempDir.resolve(".hidden.txt"), "secret");
+    if (new AppEnv().isWindows()) {
+      Files.setAttribute(hidden, "dos:hidden", true);
+    }
+    assertTrue(Files.isHidden(hidden), "The fixture must be hidden on its actual filesystem");
   }
 }

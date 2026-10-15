@@ -5141,7 +5141,7 @@
           },
           {
             "assertion": "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
-            "digest": "sha256:9a1659763d4bae59f28917129230c720990a37b85d5e7eb3ac6a574930047096",
+            "digest": "sha256:c16c7f40676bb0376097797cb2e18b8271f4b6e56cc8c8794773b4191281652b",
             "path": "tools/release-certification/cryptad_certification/active_source.py"
           }
         ],
@@ -5154,7 +5154,7 @@
           },
           {
             "assertion": "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
-            "digest": "sha256:61fc880c33960f8f5236d573d3e2cd2362b6184d4167051cf526ee3a7465eac5",
+            "digest": "sha256:696a6a3e791a9bc3b0b29adae0c1c82b7d7c45022eba279552d4b90cd00f1845",
             "path": "tools/release-certification/cryptad_certification/tests/test_active_source.py"
           }
         ]
@@ -5215,7 +5215,7 @@
           },
           {
             "assertion": "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
-            "digest": "sha256:9a1659763d4bae59f28917129230c720990a37b85d5e7eb3ac6a574930047096",
+            "digest": "sha256:c16c7f40676bb0376097797cb2e18b8271f4b6e56cc8c8794773b4191281652b",
             "path": "tools/release-certification/cryptad_certification/active_source.py"
           }
         ],
@@ -5228,7 +5228,7 @@
           },
           {
             "assertion": "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
-            "digest": "sha256:61fc880c33960f8f5236d573d3e2cd2362b6184d4167051cf526ee3a7465eac5",
+            "digest": "sha256:696a6a3e791a9bc3b0b29adae0c1c82b7d7c45022eba279552d4b90cd00f1845",
             "path": "tools/release-certification/cryptad_certification/tests/test_active_source.py"
           }
         ]
@@ -5289,7 +5289,7 @@
           },
           {
             "assertion": "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
-            "digest": "sha256:9a1659763d4bae59f28917129230c720990a37b85d5e7eb3ac6a574930047096",
+            "digest": "sha256:c16c7f40676bb0376097797cb2e18b8271f4b6e56cc8c8794773b4191281652b",
             "path": "tools/release-certification/cryptad_certification/active_source.py"
           }
         ],
@@ -5302,7 +5302,7 @@
           },
           {
             "assertion": "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
-            "digest": "sha256:61fc880c33960f8f5236d573d3e2cd2362b6184d4167051cf526ee3a7465eac5",
+            "digest": "sha256:696a6a3e791a9bc3b0b29adae0c1c82b7d7c45022eba279552d4b90cd00f1845",
             "path": "tools/release-certification/cryptad_certification/tests/test_active_source.py"
           }
         ]
@@ -5482,7 +5482,7 @@
           },
           {
             "assertion": "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
-            "digest": "sha256:9a1659763d4bae59f28917129230c720990a37b85d5e7eb3ac6a574930047096",
+            "digest": "sha256:c16c7f40676bb0376097797cb2e18b8271f4b6e56cc8c8794773b4191281652b",
             "path": "tools/release-certification/cryptad_certification/active_source.py"
           },
           {
@@ -5540,7 +5540,7 @@
           },
           {
             "assertion": "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
-            "digest": "sha256:61fc880c33960f8f5236d573d3e2cd2362b6184d4167051cf526ee3a7465eac5",
+            "digest": "sha256:696a6a3e791a9bc3b0b29adae0c1c82b7d7c45022eba279552d4b90cd00f1845",
             "path": "tools/release-certification/cryptad_certification/tests/test_active_source.py"
           },
           {
@@ -5555,7 +5555,7 @@
           },
           {
             "assertion": "PR-321 complete fixed-lane CI graph and substitution, freshness, exact source/class coverage, completion report bytes, analyzer policy, applicability and safe-projection regressions exercise original admission through declared external provider fixtures; they do not establish actual hosted execution.",
-            "digest": "sha256:2b8a6e85ceb00bc174c200beb8d86c832688e72b043953d7712a077a63757124",
+            "digest": "sha256:1407cb24cd16bf96858f8cab681fe6979afa33f3ab633716fb13cd318c18d17c",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_ci_v2.py"
           },
           {

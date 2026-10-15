@@ -100,6 +100,21 @@ def _source_handle(path):
             os.close(descriptor)
 
 
+def _source_identity(info, *, cross_api=False):
+    mode = info.st_mode
+    changed = info.st_ctime_ns
+    if cross_api and os.name == 'nt':
+        # Windows path stat synthesizes execute bits from the filename and exposes birth time
+        # as ctime, while fstat exposes ChangeTime. Compare birth time across the two APIs;
+        # retain each API's full mode and change time when checking its own before/after pair.
+        mode &= ~0o111
+        changed = getattr(info, 'st_birthtime_ns', None)
+        if changed is None:
+            _deny()
+    return (info.st_dev, info.st_ino, mode, info.st_nlink, info.st_size,
+            info.st_mtime_ns, changed, getattr(info, 'st_birthtime_ns', None))
+
+
 def read_source(root, name, maximum=MAX_ROSTER):
     """Read selected bytes with bounded size and observable identity/change checks.
 
@@ -113,17 +128,15 @@ def read_source(root, name, maximum=MAX_ROSTER):
         if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                 or not 0 <= before.st_size <= maximum):
             _deny()
-        fields = ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
-        identity = lambda info: tuple(getattr(info, field) for field in fields)
         with _source_handle(path) as source:
             opened = os.fstat(source.fileno())
-            if identity(before) != identity(opened):
+            if _link(opened) or _source_identity(before, cross_api=True) != _source_identity(opened, cross_api=True):
                 _deny()
             raw = source.read(maximum + 1)
             after = os.fstat(source.fileno())
-        if (len(raw) != before.st_size or identity(before) != identity(opened)
-                or identity(before) != identity(after)
-                or identity(before) != identity(_checked_path(root, name).lstat())):
+        if (len(raw) != before.st_size or _link(after)
+                or _source_identity(opened) != _source_identity(after)
+                or _source_identity(before) != _source_identity(_checked_path(root, name).lstat())):
             _deny()
         for parent, expected in ancestors:
             actual = parent.lstat()

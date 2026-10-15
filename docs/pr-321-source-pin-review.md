@@ -294,3 +294,42 @@ No VM, live-node operation, protected acquisition, independent review, publicati
 eligibility follows from these local checks. Historical job authentication remains a separate
 record of its exact integrated source. PR-322 retains the finite
 installed and restricted-execution work, including the unchanged unfinished historical obligations.
+
+## Native provider and shutdown review follow-up
+
+The three failed jobs in run `38807779388`, on source
+`e977471a556877f1573b1e85627acf81e32a6071`, exposed native fixture assumptions and a portable
+source-reader metadata mismatch. The reader now compares Windows birth time and filename-independent
+mode bits between pathname and handle observations, while retaining full change time and mode checks
+within each API's before/after pair. Device, inode, link count, size, modification time, reparse-point
+and ancestor checks remain mandatory. CPython 3.14.7's differing pathname/handle change times are
+also documented in [the upstream report](https://github.com/python/cpython/issues/157671).
+
+The source-reader regression reproduces rejection of an unchanged file with those Windows metadata
+observations on the prior implementation. The successor accepts unchanged bytes and rejects handle
+changes to time, identity, link count, length, mode, birth time and reparse attributes. Both report
+start-clock retention and current producer hashing exercise the same provider seam, with Unix-only
+open flags absent. Three Linux report fixtures now supply their complete provider image facts;
+inherited macOS image variables no longer replace the intended fixture provider.
+
+Only nine existing commitments advance across `active_source.py`, `test_active_source.py` and
+`test_phase_12_ci_v2.py`. Prior bytes are retained under
+`build/pr1423-ci-three-jobs/before/`, and `byte-review.json` records every previous/current digest,
+owner and unchanged assertion. All 631 implementation-evidence file commitments match. Requirements,
+owner assertions, scope, states and historical commitments remain unchanged. The separate fixed-cutoff
+assessment under `closeout-after/` retains 49 requirements, 47 unresolved and Phase 12 incomplete.
+
+Java fixtures resolve their owned pilot-approval paths, select native signed launchers before signing,
+create actual Windows hidden files, compare canonical HTML-encoded paths and release real AppHost
+children in `finally`. Bloom-filter fixtures use JUnit temporary directories without Unix permission
+assumptions. The updater's negative access test controls a narrow filesystem-observation method;
+production access predicates are unchanged. Launcher shutdown now joins wrapper-log readers and
+awaits executor termination, and ignores starts after shutdown begins. Its new regression fails on
+the prior implementation because the reader is still alive when shutdown returns.
+
+Local Linux verification passed the full `./gradlew test` invocation: application reports contain
+17,523 cases, zero failures/errors and nine skips; all 35 included-build tests pass without skips.
+The affected Java suites pass 177 cases without skips, and all 56 core HTTP runtime tests also pass
+with an aliased JVM temporary root. SonarLint reports no findings for either changed production
+Java file. Interop checks pass 319 cases with nine environment-gated skips. These local results do
+not establish native hosted execution for the successor commit.

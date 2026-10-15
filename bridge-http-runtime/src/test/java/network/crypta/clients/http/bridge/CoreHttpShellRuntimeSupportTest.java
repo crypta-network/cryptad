@@ -35,6 +35,7 @@ import network.crypta.clients.http.bookmark.BookmarkManager;
 import network.crypta.clients.http.bridge.bookmark.CoreBookmarkRuntimeSupport;
 import network.crypta.clients.http.updateableelements.PushDataManager;
 import network.crypta.config.PersistentConfig;
+import network.crypta.fs.AppEnv;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
 import network.crypta.node.ProgramDirectory;
@@ -726,7 +727,7 @@ class CoreHttpShellRuntimeSupportTest {
             "cryptad.appcatalog.trustedKeysFile", catalogRegistry.toString(),
             "cryptad.apphost.pilot.id", "pilot-294",
             "cryptad.apphost.pilot.nodeId", "node-294",
-            "cryptad.apphost.pilot.approvalFile", approvalFile.toString(),
+            "cryptad.apphost.pilot.approvalFile", approvalFile.toRealPath().toString(),
             "cryptad.apphost.pilot.approvalDigest", sha256(approvalFile),
             "cryptad.apphost.pilot.trustedKeysFile", pilotRegistry.toString());
 
@@ -1697,13 +1698,12 @@ class CoreHttpShellRuntimeSupportTest {
 
   private static Path stageUnsignedApp(Path stagedDir) throws IOException {
     Path binDir = Files.createDirectories(stagedDir.resolve("bin"));
-    Path launcher = binDir.resolve("launch.sh");
+    boolean windows = new AppEnv().isWindows();
+    String executable = windows ? "launch.cmd" : "launch.sh";
+    Path launcher = binDir.resolve(executable);
     Files.writeString(
         launcher,
-        """
-        #!/bin/sh
-        exit 0
-        """,
+        windows ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n",
         StandardCharsets.UTF_8);
     Files.writeString(
         stagedDir.resolve(AppManifestParser.MANIFEST_FILE_NAME),
@@ -1712,12 +1712,13 @@ class CoreHttpShellRuntimeSupportTest {
         app.id=demo-app
         app.name=Demo App
         app.version=1.0.0
-        app.exec=bin/launch.sh
+        app.exec=bin/%s
         app.ui.entry=/
         app.permissions=network.access
         quota.data.bytes=1024
         quota.cache.bytes=512
-        """,
+        """
+            .formatted(executable),
         StandardCharsets.UTF_8);
     return stagedDir;
   }
@@ -1748,9 +1749,10 @@ class CoreHttpShellRuntimeSupportTest {
             .replace("app.id=demo-app", "app.id=stable-app");
     Files.writeString(
         unsigned.resolve(AppManifestParser.MANIFEST_FILE_NAME), manifest, StandardCharsets.UTF_8);
+    boolean windows = new AppEnv().isWindows();
     Files.writeString(
-        unsigned.resolve("bin").resolve("launch.sh"),
-        "#!/bin/sh\nsleep 30\n",
+        unsigned.resolve("bin").resolve(windows ? "launch.cmd" : "launch.sh"),
+        windows ? "@echo off\r\nping -n 31 127.0.0.1 > nul\r\n" : "#!/bin/sh\nsleep 30\n",
         StandardCharsets.UTF_8);
     AppBundleSigner.sign(unsigned, "stable-first-party", keyPair.getPrivate());
     return unsigned;
@@ -1810,7 +1812,7 @@ class CoreHttpShellRuntimeSupportTest {
         "cryptad.appcatalog.trustedKeysFile", catalogRegistry.toString(),
         "cryptad.apphost.pilot.id", "pilot-294",
         "cryptad.apphost.pilot.nodeId", "node-294",
-        "cryptad.apphost.pilot.approvalFile", approvalFile.toString(),
+        "cryptad.apphost.pilot.approvalFile", approvalFile.toRealPath().toString(),
         "cryptad.apphost.pilot.approvalDigest", sha256(approvalFile),
         "cryptad.apphost.pilot.trustedKeysFile", pilotRegistry.toString());
   }

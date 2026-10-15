@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -873,12 +874,41 @@ class LauncherControllerTest {
   }
 
   @Test
+  void shutdownAndWait_whenLogTailerActive_waitsForReadersToClose() throws Exception {
+    LauncherController controller = controller(() -> null, () -> null);
+    writeWrapperConf(tempDir);
+    Path heartbeat = tempDir.resolve("shutdown-heartbeat.log");
+    writeLongRunningCryptadScript(tempDir, heartbeat);
+    Field tailField = LauncherController.class.getDeclaredField("tailThread");
+    tailField.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    AtomicReference<Thread> tailReference = (AtomicReference<Thread>) tailField.get(controller);
+    Thread tailer;
+    try {
+      controller.start();
+      awaitHeartbeat(heartbeat);
+      awaitCondition(() -> tailReference.get() != null, "active wrapper log tailer");
+      tailer = tailReference.get();
+    } finally {
+      controller.shutdownAndWait();
+    }
+
+    assertFalse(tailer.isAlive(), "Shutdown must close the wrapper log before returning");
+    Field ioField = LauncherController.class.getDeclaredField("io");
+    ioField.setAccessible(true);
+    assertTrue(((ExecutorService) ioField.get(controller)).isTerminated());
+    Files.delete(tempDir.resolve("logs/wrapper.log"));
+  }
+
+  @Test
   void shutdownAndWait_whenNoProcess_setsShuttingDownFlag() {
     LauncherController controller = controller();
 
     controller.shutdownAndWait();
+    controller.start();
 
     assertTrue(controller.getState().isShuttingDown());
+    assertFalse(controller.getState().isRunning());
   }
 
   @Test

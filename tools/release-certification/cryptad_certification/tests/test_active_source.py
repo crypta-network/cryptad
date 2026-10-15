@@ -15,6 +15,38 @@ from cryptad_certification import active_source as owner
 from cryptad_certification import transparency_bundle as bundle
 
 
+@contextmanager
+def windows_source_metadata(mutation=None):
+    """Model CPython's Windows path creation time/mode and handle change time/mode."""
+    original_lstat, original_fstat = Path.lstat, os.fstat
+
+    def metadata(info, *, handle=False):
+        values = {key: getattr(info, key) for key in dir(info) if key.startswith('st_')}
+        values['st_birthtime_ns'] = 123
+        values['st_ctime_ns'] = 456 if handle else 123
+        values['st_mode'] = info.st_mode & ~0o111 if handle else info.st_mode | 0o111
+        return SimpleNamespace(**values)
+
+    def lstat(path, *args, **kwargs):
+        return metadata(original_lstat(path, *args, **kwargs))
+
+    calls = 0
+
+    def fstat(descriptor):
+        nonlocal calls
+        calls += 1
+        info = metadata(original_fstat(descriptor), handle=True)
+        if calls == 2 and mutation:
+            setattr(info, mutation, getattr(info, mutation, 0) +
+                    (0x400 if mutation == 'st_file_attributes' else 1))
+        return info
+
+    windows = SimpleNamespace(**vars(os))
+    windows.name, windows.fstat, windows.supports_dir_fd = 'nt', fstat, set()
+    with patch.object(owner, 'os', windows), patch.object(Path, 'lstat', lstat):
+        yield
+
+
 class ActiveSourceTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -65,13 +97,11 @@ class ActiveSourceTests(unittest.TestCase):
     def test_windows_export_metadata_does_not_compare_synthetic_host_execute_bits(self):
         manifest, source, _ = self.full_source_manifest()
         # Only the OS metadata interpretation is substituted; roster, bytes and links stay real.
-        windows = SimpleNamespace(**vars(os))
-        windows.name = 'nt'
         name = source.relative_to(self.root).as_posix()
         for executable in (False, True):
             manifest['files'][name]['executable'] = executable
             (self.root / owner.SOURCE_EXPORT_ROSTER).write_text(json.dumps(manifest))
-            with patch.object(owner, 'os', windows):
+            with windows_source_metadata():
                 selected = owner.source_roster(self.root)
                 self.assertIn(name, selected.paths)
                 self.assertEqual('manifest-source-export', selected.source_class)
@@ -81,7 +111,7 @@ class ActiveSourceTests(unittest.TestCase):
             source.write_bytes(b'VALUE = 1\n')
         manifest['files'][name]['executable'] = 1
         (self.root / owner.SOURCE_EXPORT_ROSTER).write_text(json.dumps(manifest))
-        with patch.object(owner, 'os', windows), self.assertRaises(owner.SourceRosterError):
+        with windows_source_metadata(), self.assertRaises(owner.SourceRosterError):
             owner.source_roster(self.root)
 
     @unittest.skipUnless(os.name == 'posix', 'requires actual POSIX permission bits')
@@ -347,6 +377,18 @@ class ActiveSourceTests(unittest.TestCase):
             with self.subTest(replacement=replacement), patch.object(owner, '_source_handle', changing):
                 with self.assertRaises(owner.SourceRosterError):
                     owner.read_source(self.root, self.source.relative_to(self.root).as_posix())
+
+    def test_windows_path_and_handle_metadata_preserve_read_and_mutation_checks(self):
+        self.repository()
+        name = self.source.relative_to(self.root).as_posix()
+        for mutation in (None, 'st_ctime_ns', 'st_ino', 'st_nlink', 'st_size', 'st_mtime_ns',
+                         'st_mode', 'st_birthtime_ns', 'st_file_attributes'):
+            with self.subTest(mutation=mutation), windows_source_metadata(mutation):
+                if mutation:
+                    with self.assertRaises(owner.SourceRosterError):
+                        owner.read_source(self.root, name)
+                else:
+                    self.assertEqual(b'VALUE = 1\n', owner.read_source(self.root, name))
 
     def test_directory_replacement_after_handle_open_cannot_supply_source(self):
         self.repository()
