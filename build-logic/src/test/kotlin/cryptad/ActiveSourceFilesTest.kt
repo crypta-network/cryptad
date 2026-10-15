@@ -7,6 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
@@ -152,6 +153,31 @@ class ActiveSourceFilesTest {
         error("Generated roots must not query history metadata")
       },
     )
+  }
+
+  @Test
+  fun repository_whenTrackedMembersAreDeleted_expectCurrentWorkingRoster() {
+    fun git(vararg arguments: String) {
+      val process = ProcessBuilder(listOf("git") + arguments).directory(root.toFile()).start()
+      assertEquals(true, process.waitFor(15, TimeUnit.SECONDS))
+      assertEquals(0, process.exitValue(), process.errorStream.bufferedReader().readText())
+    }
+
+    git("init", "--quiet")
+    Files.writeString(root.resolve("source.java"), "class Example {}")
+    Files.createDirectory(root.resolve(".stversions"))
+    Files.writeString(root.resolve(".stversions/kept.kt"), "class Kept")
+    val deleted = listOf("deleted space é.kt", ".stversions/deleted.kt")
+    deleted.forEach { Files.writeString(root.resolve(it), "class Deleted") }
+    git("add", ".")
+    deleted.forEach { Files.delete(root.resolve(it)) }
+    Files.writeString(root.resolve("new source.kt"), "class NewSource")
+    Files.writeString(root.resolve(".stversions/untracked.kt"), "invalid historical source")
+    val expected = setOf("source.java", ".stversions/kept.kt", "new source.kt")
+
+    assertEquals(expected, ActiveSourceFiles.repository(root.toFile()))
+    git("add", "--update")
+    assertEquals(expected, ActiveSourceFiles.repository(root.toFile()))
   }
 
   @Test

@@ -187,10 +187,11 @@ def source_roster(root):
         if not re.fullmatch('[0-9a-f]{40}|[0-9a-f]{64}', commit) or not re.fullmatch('[0-9a-f]{40}|[0-9a-f]{64}', tree):
             _deny()
         tracked = _git_names(_git(root, 'ls-files', '--cached', '-z'))
+        deleted = _git_names(_git(root, 'ls-files', '--deleted', '-z'))
         exclusions = tuple(f':(exclude,glob)**/{name}/**' for name in sorted(UNTRACKED_HISTORY))
         untracked = _git_names(_git(root, 'ls-files', '--others', '--exclude-standard', '-z', '--', '.', *exclusions))
         current = [name for name in untracked if not UNTRACKED_HISTORY.intersection(PurePosixPath(name).parts)]
-        paths = tuple(sorted(set(tracked) | set(current)))
+        paths = tuple(sorted((set(tracked) - set(deleted)) | set(current)))
         if len(paths) > MAX_PATHS:
             _deny()
         changed = _git(root, 'status', '--porcelain', '--untracked-files=no')

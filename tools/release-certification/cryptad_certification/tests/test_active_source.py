@@ -114,6 +114,45 @@ class ActiveSourceTests(unittest.TestCase):
         self.git('add', '.')
         self.assertIn(history.relative_to(self.root).as_posix(), owner.active_files(self.root))
 
+    def test_tracked_deletions_select_current_files_before_and_after_staging(self):
+        self.repository()
+        history = self.source.parent / '.stversions'
+        history.mkdir()
+        kept = history / 'kept.py'
+        kept.write_bytes(b'EXPLICITLY SELECTED\n')
+        deleted = [self.source.with_name('deleted space é.py'), history / 'deleted.py']
+        for path in deleted:
+            path.write_bytes(b'DELETED\n')
+        self.git('add', '.')
+        self.git('commit', '--quiet', '-m', 'fixture: tracked deletion candidates')
+        for path in deleted:
+            path.unlink()
+        current = self.source.with_name('new source.py')
+        current.write_bytes(b'NEW SOURCE\n')
+        (history / 'untracked.py').write_bytes(b'UNSELECTED HISTORY\n')
+        expected = tuple(sorted(path.relative_to(self.root).as_posix()
+                                for path in (self.source, kept, current)))
+
+        for staged in (False, True):
+            with self.subTest(staged=staged):
+                if staged:
+                    self.git('add', '--update')
+                roster = owner.source_roster(self.root)
+                self.assertEqual(expected, roster.paths)
+                self.assertEqual('working-source', roster.source_class)
+                self.assertEqual(b'NEW SOURCE\n', owner.read_source(
+                    self.root, current.relative_to(self.root).as_posix()))
+
+    def test_unstaged_rename_selects_destination_and_remains_working_source(self):
+        self.repository()
+        destination = self.source.with_name('renamed source é.py')
+        self.source.rename(destination)
+
+        roster = owner.source_roster(self.root)
+
+        self.assertEqual((destination.relative_to(self.root).as_posix(),), roster.paths)
+        self.assertEqual('working-source', roster.source_class)
+
     def test_untracked_history_never_consumes_the_active_source_count_budget(self):
         self.repository()
         clean = owner.active_files(self.root)

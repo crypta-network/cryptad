@@ -176,6 +176,7 @@ val bootstrapSelectedSources: NavigableSet<String> by lazy {
   val names =
     if (Files.exists(bootstrapRealRepository.resolve(".git"), NOFOLLOW_LINKS)) {
       val tracked = bootstrapGitNames(bootstrapGit("ls-files", "--cached", "-z"))
+      val deleted = bootstrapGitNames(bootstrapGit("ls-files", "--deleted", "-z")).toSet()
       val exclusions = bootstrapHistory.sorted().map { ":(exclude,glob)**/$it/**" }
       val untracked =
         bootstrapGitNames(
@@ -190,7 +191,7 @@ val bootstrapSelectedSources: NavigableSet<String> by lazy {
             )
           )
           .filter { name -> name.split('/').none { it in bootstrapHistory } }
-      (tracked + untracked).toSet().onEach { bootstrapSourcePath(it) }
+      ((tracked.toSet() - deleted) + untracked).onEach { bootstrapSourcePath(it) }
     } else {
       val fullSource =
         Files.exists(bootstrapRealRepository.resolve(".cryptad-source-roster.json"), NOFOLLOW_LINKS)

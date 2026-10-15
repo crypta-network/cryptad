@@ -50,7 +50,10 @@ without changing a timing threshold or ordinary developer defaults.
 
 Selected source uses bounded Git metadata for tracked and current untracked working files. History
 and cache exclusions apply to untracked discovery; a tracked file does not disappear because it has
-a history-like name. Git-less installed/source exports require the exact approved source manifest.
+a history-like name. Git-reported working-tree deletions are removed from the index roster before
+validating current files, so an unstaged deletion or rename does not block Gradle initialization.
+Deletions still classify the checkout as working source. Git-less installed/source exports require
+the exact approved source manifest; missing declared members remain invalid.
 There is no recursive fallback admitting arbitrary local history.
 
 The active-source reader rejects linked/reparse ancestors, unsafe names, special files and private

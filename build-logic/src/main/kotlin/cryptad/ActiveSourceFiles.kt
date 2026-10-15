@@ -118,6 +118,7 @@ internal object ActiveSourceFiles {
     val base = root.canonicalFile
     if (!base.resolve(".git").exists()) return sourceExport(base)
     val tracked = git(base, GIT_LS_FILES, "--cached", "-z")
+    val deleted = git(base, GIT_LS_FILES, "--deleted", "-z")
     val exclusions = history.flatMap { listOf(":(exclude,glob)**/$it/**", ":(exclude,glob)$it/**") }
     val untracked =
       git(
@@ -130,7 +131,7 @@ internal object ActiveSourceFiles {
         ".",
         *exclusions.toTypedArray(),
       )
-    return select(base, tracked, untracked)
+    return select(base, tracked, untracked, deleted)
   }
 
   private fun git(root: File, vararg arguments: String): ByteArray {
@@ -166,7 +167,12 @@ internal object ActiveSourceFiles {
     }
   }
 
-  fun select(root: File, tracked: ByteArray, untracked: ByteArray): Set<String> {
+  fun select(
+    root: File,
+    tracked: ByteArray,
+    untracked: ByteArray,
+    deleted: ByteArray = byteArrayOf(),
+  ): Set<String> {
     fun parse(raw: ByteArray): List<String> {
       require(raw.size <= MAX_BYTES && (raw.isEmpty() || raw.last() == 0.toByte())) {
         "Invalid source roster"
@@ -192,8 +198,9 @@ internal object ActiveSourceFiles {
         }
       }
     }
+    val currentTracked = parse(tracked).toSet() - parse(deleted).toSet()
     val selected =
-      (parse(tracked) + parse(untracked).filter { name -> name.split('/').none { it in history } })
+      (currentTracked + parse(untracked).filter { name -> name.split('/').none { it in history } })
         .toSortedSet()
     require(selected.isNotEmpty() && selected.size <= 100000) { "Empty or oversized source roster" }
     val base = root.toPath().toRealPath()

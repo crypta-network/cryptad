@@ -191,6 +191,36 @@ or establish an approved installation. Private commands and results are retained
 `reader-encoding-review-results/`. Native Windows/macOS lanes and the full application suite were
 not rerun for this follow-up.
 
+## Working-tree deletion review follow-up
+
+The Git-backed Kotlin helper, included-build bootstrap and Python selector now subtract the bounded,
+NUL-delimited `git ls-files --deleted` roster from cached index entries before selecting current
+source. This permits verification after an unstaged deletion or rename, including a deleted tracked
+history-named member. Current untracked sources and surviving tracked history members retain their
+existing selection rules. The checkout remains working source while deletions are staged or
+unstaged. Export manifests do not supply this deletion roster; missing declared export members
+continue to fail validation.
+
+New actual-Git regressions reproduced the missing-member Kotlin failure and the stale Python paths
+before the fix. An isolated copy of the real included-build script likewise failed during plugin
+bootstrap with an unrelated tracked file deleted, then passed with the correction while checking
+current untracked and tracked/untracked history membership. The focused source/CI Python suite
+passes 96 tests; all 35 included-build tests and 41 closeout guards also pass without skips. The
+interop suite passes 179 tests with nine environment-gated root-peer skips.
+
+The subsequent Linux `./gradlew test` run passed in 7m 3s. All 33 test tasks with sources executed;
+ten tasks were source-free. Their JUnit reports contain 17,557 cases, zero failures/errors and nine
+skips: eight existing platform-conditional branches and the benchmark disabled in ordinary developer
+mode. This run includes the 35 passing included-build tests. It is ordinary test verification,
+without the fresh analyzer cohort or original hosted authority required for CI acceptance.
+
+Only eleven existing commitments advance across five reviewed source/test paths. Their prior bytes
+and owner commitments are retained under `build/pr1423-deleted-source-review/before/` and
+`pins-before.json`; `byte-review.json` records the exact updates with unchanged assertions. All 631
+implementation commitments match. The separate fixed-cutoff assessment retains the same acceptance
+scope, 49 requirements, 47 unresolved requirements and incomplete decision. These local regressions
+and source review do not establish original hosted or native macOS/Windows execution.
+
 ## Verification and evidence limits
 
 Private local evidence is under `build/pr321-private-pin-review/`, outside upload rosters. The
