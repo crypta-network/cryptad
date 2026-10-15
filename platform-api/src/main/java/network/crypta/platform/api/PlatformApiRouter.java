@@ -69,6 +69,8 @@ public final class PlatformApiRouter {
   /** Bounded process-local audit log for app-originated authorization decisions. */
   private final AppAuditLog appAuditLog;
 
+  private final AppHost requestOwnerHost;
+
   /**
    * Creates a router backed by the supplied runtime ports.
    *
@@ -275,6 +277,7 @@ public final class PlatformApiRouter {
       PlatformApiSharedAppServices appServices) {
     RuntimePorts checkedRuntimePorts = requireNonNull(runtimePorts, "runtimePorts");
     this.appAuditLog = requireNonNull(appAuditLog, "appAuditLog");
+    requestOwnerHost = appHost;
     requireNonNull(appUiOriginRegistry, "appUiOriginRegistry");
     PlatformApiSharedAppServices checkedAppServices = requireNonNull(appServices, "appServices");
     AppVaultService appVaultService = checkedAppServices.vaultService();
@@ -373,7 +376,9 @@ public final class PlatformApiRouter {
     }
 
     try {
-      PlatformApiResponse response = routeInternal(checkedRequest);
+      PlatformApiResponse response =
+          PlatformApiRequestOwner.execute(
+              requestOwnerHost, checkedRequest, () -> routeInternal(checkedRequest));
       appAuditLog.appendDecision(
           checkedRequest,
           authorization,
@@ -387,7 +392,7 @@ public final class PlatformApiRouter {
       if (structuredFailure != null) {
         return structuredFailure;
       }
-      LOG.log(System.Logger.Level.ERROR, "Unexpected Platform API failure", e);
+      LOG.log(System.Logger.Level.ERROR, "Unexpected Platform API failure [internal_error]");
       PlatformApiResponse response =
           PlatformApiResponse.error(500, "internal_error", "Unexpected platform API failure.");
       appAuditLog.appendDecision(

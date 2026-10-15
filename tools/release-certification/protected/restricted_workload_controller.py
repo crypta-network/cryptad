@@ -25,6 +25,7 @@ import urllib.parse
 
 if __package__ in (None, ''):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES as COMPLETE_STORAGE_CLASSES
 import restricted_workload as workload
 
 SOCKET = Path('/run/cryptad-workload/control.sock')
@@ -373,11 +374,11 @@ def _observer_arbitrary_endpoint_denial(connection, handle, peer_pid, peer_uid,
     return 'pr315-arbitrary-endpoint'
 
 
-def _http(sock, path, headers):
+def _http(sock, path, headers, *, method='GET', body=None):
     connection = http.client.HTTPConnection('127.0.0.1', sock.getpeername()[1], timeout=5)
     connection.sock = sock
     try:
-        connection.request('GET', path, headers=headers)
+        connection.request(method, path, body=body, headers=headers)
         response = connection.getresponse()
         body = response.read(65537)
         if len(body) > 65536:
@@ -385,6 +386,27 @@ def _http(sock, path, headers):
         return response.status, dict(response.getheaders()), body
     finally:
         connection.close()
+
+
+def _prospective_budget_native():
+    """Read the fixed root-only prospective ring with its separate four-MiB bound."""
+    from restricted_workload_network import _connect_port, HTTP_PORT
+    with _connect_port('candidate-sender', HTTP_PORT) as sock:
+        class NativeConnection(http.client.HTTPConnection):
+            def connect(self):
+                workload.reject('prospective-native-reconnect-forbidden')
+        connection = NativeConnection('127.0.0.1', HTTP_PORT, timeout=5)
+        connection.sock = sock
+        try:
+            connection.request('GET', '/api/v1/operator/runtime-observation',
+                               headers={'Accept': 'application/json'})
+            response = connection.getresponse()
+            raw = response.read(4 * 1024 * 1024 + 1)
+            if not 1 <= len(raw) <= 4 * 1024 * 1024:
+                workload.reject('prospective-native-output-limit')
+            return response.status, dict(response.getheaders()), raw
+        finally:
+            connection.close()
 
 
 def runtime_object(body):
@@ -490,6 +512,54 @@ def bootstrap(handle):
         return {key: value.get(key) for key in ('uiOrigin', 'browserSessionToken', 'browserSessionExpiresAt')}
 
 
+def _route_scope_controls(role, contexts):
+    """Authenticate numeric scopes with charge-free fixed requests in the fresh route cohort."""
+    from restricted_workload_network import _connect_port, HTTP_PORT
+    controls, bindings = [], []
+    for app in ('feed-reader', 'budget-importer', 'budget-no-trust', 'budget-no-fetch'):
+        context = contexts[app]
+        status, _headers, body = _http(_connect_port(role, HTTP_PORT),
+            '/api/v1/operator/runtime-observation', {'Accept': 'application/json'})
+        if status != 200:
+            workload.reject('route-scope-native-unavailable')
+        before = json.loads(body)
+        app_port = urllib.parse.urlsplit(context['origin']).port
+        if type(app_port) is not int or not 1024 <= app_port <= 65535 or app_port == HTTP_PORT:
+            workload.reject('route-scope-origin-invalid')
+        status, _headers, _body = _http(_connect_port(role, app_port), '/api/v1/trust-graph/import-uri',
+            {'Accept': 'application/json', 'Origin': context['origin'],
+             'X-Crypta-App-Session': context['session'],
+             'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': '0'},
+            method='POST', body=b'')
+        if status != (400 if app in ('feed-reader', 'budget-importer') else 403):
+            workload.reject('route-scope-principal-unobserved')
+        result, _headers, body = _http(_connect_port(role, HTTP_PORT),
+            '/api/v1/operator/runtime-observation', {'Accept': 'application/json'})
+        if result != 200:
+            workload.reject('route-scope-native-unavailable')
+        after = json.loads(body)
+        first, last = before['work']['lastSequence'], after['work']['lastSequence']
+        events = [row for row in after['work']['events'] if first < row['sequence'] <= last]
+        if (before['work']['collectorEpoch'] != after['work']['collectorEpoch']
+                or before['work']['dropped'] or after['work']['dropped']
+                or len(events) != last - first or len(events) not in (2, 3)
+                or [row['kind'] for row in events] != (
+                    ['COMPOSED_URI_IMPORT_START', 'REQUEST_FAILED'] if status == 400 else
+                    ['COMPOSED_URI_IMPORT_START', 'CAPABILITY_DENIED', 'REQUEST_FAILED'])
+                or before['budget']['rates'] != after['budget']['rates']
+                or before['budget']['activeFamilyLeases'] != 0 or after['budget']['activeFamilyLeases'] != 0
+                or before['budget']['reservedFamilyRates'] != 0 or after['budget']['reservedFamilyRates'] != 0
+                or not before['budget']['valid'] or not after['budget']['valid']
+                or events[0]['scope'] < 3 or any(row['scope'] != events[0]['scope'] for row in events)):
+            workload.reject('route-scope-native-work-unexpected')
+        bindings.append({'appId': app, 'scope': events[0]['scope']})
+        controls.append({'appId': app, 'status': status, 'beforeSequence': first,
+            'afterSequence': last, 'collectorEpoch': after['work']['collectorEpoch'], 'events': events})
+    if len({row['scope'] for row in bindings}) != 4:
+        workload.reject('route-scope-alias')
+    return bindings, controls
+
+
 def _budget_statement(launch):
     """Read only the preparation-copied fixed statement and recheck its selected digest."""
     path = workload.ROOT / 'roles/candidate-sender/public/budget-statement.json'
@@ -515,7 +585,7 @@ def bootstrap_budget(handle):
         with bootstrap_phase('authority', 'unknown'):
             campaign, role, record = workload.retained(handle)
             if (campaign.get('executionClass') not in
-                    ('pr317-namespace-bound-composed-budget-v1', 'pr318-fixed-window-partial-store-v1', 'pr319-composed-budget-restart-diagnostics-v1')
+                    ('pr317-namespace-bound-composed-budget-v1', 'pr318-fixed-window-partial-store-v1', 'pr319-composed-budget-restart-diagnostics-v1', *COMPLETE_STORAGE_CLASSES)
                     or role != 'candidate-sender'
                     or campaign.get('budgetSelectionDigest') is None):
                 workload.reject('budget-bootstrap-authority-invalid')
@@ -600,7 +670,7 @@ def bootstrap_budget(handle):
                 'worker': binding['worker'], 'origin': origin,
                 'session': value['browserSessionToken'],
                 'sessionExpiresAt': value.get('browserSessionExpiresAt')}
-        if campaign.get('executionClass') == 'pr319-composed-budget-restart-diagnostics-v1':
+        if campaign.get('executionClass') in ('pr319-composed-budget-restart-diagnostics-v1', *COMPLETE_STORAGE_CLASSES):
             def digest(value):
                 return 'sha256:' + hashlib.sha256(json.dumps(value, sort_keys=True,
                     separators=(',', ':'), allow_nan=False).encode()).hexdigest()
@@ -615,6 +685,10 @@ def bootstrap_budget(handle):
                     'workerEpochDigest': digest(context['worker']),
                     'originDigest': digest(context['origin']), 'sessionDigest': digest(context['session']),
                     'sessionExpiryDigest': digest(context['sessionExpiresAt'])}
+            from pr320_budget_contract import ROUTE_EXECUTION_CLASSES
+            if campaign.get('executionClass') in ROUTE_EXECUTION_CLASSES:
+                bindings, controls = _route_scope_controls(role, contexts)
+                original.update(routeScopeBindings=bindings, routeScopeControls=controls)
             target = workload.ROOT / 'authority' / (
                 'candidate-sender-budget-bootstrap-' + record['generation'] + '.json')
             if os.path.lexists(target):

@@ -205,7 +205,7 @@ def _original_admin_receipts(private, diagnostics, terminal, selection_digest):
 
 
 def _attempt_projection(args, attempt, report, fixture, source_commit,
-                        watcher_finished):
+                        watcher_finished, *, suite=None):
     if (not isinstance(report, dict) or report.get("schemaVersion") != 7
             or report.get("mode") != "workload-positive"
             or report.get("workloadPurpose") != "budget-restart"
@@ -217,12 +217,13 @@ def _attempt_projection(args, attempt, report, fixture, source_commit,
             or report.get("fixtureManifestDigest") != args.fixture_manifest_digest):
         raise ValueError("pr319-reference-attempt-invalid")
     identity = shared._source_identity(report)
-    observed = _driver_observation(shared._private_json(
+    observation_reader = _driver_observation if suite is None else suite.driver_observation
+    observed = observation_reader(shared._private_json(
         attempt / "pr314-workload-observation.private.json", 131072))
     private, private_digest = _private_evidence(
         attempt / "pr319-restart-budget.private.json")
-    selected = shared._private_json(attempt / "pr319-selection.private.json", 262144)
-    selected_digest = _selection(selected, fixture, args.prepared_fixtures)
+    selected = shared._private_json(attempt / ("pr319-selection.private.json" if suite is None else 'pr320-selection.private.json'), 262144)
+    selected_digest = (_selection(selected, fixture, args.prepared_fixtures) if suite is None else suite.selection(selected, fixture))
     if (observed["selectionDigest"] != private["selectionDigest"]
             or private["selectionDigest"] != selected_digest
             or observed["privateEvidenceDigest"] != private_digest
@@ -235,6 +236,10 @@ def _attempt_projection(args, attempt, report, fixture, source_commit,
         raise ValueError("pr319-terminal-cleanup-invalid")
     diagnostics = shared._private_json(attempt / "pr315-workload-memory.private.json", 262144)
     _original_admin_receipts(private, diagnostics, terminal, selected_digest)
+    if suite is not None and getattr(suite, 'original_validator', None) is not None:
+        suite.original_validator(private, selected, diagnostics, terminal, report,
+            evidence.decode_checkpoints(shared._private_bytes(
+                attempt / 'pr319-restart-attempts.private.jsonl', evidence.MAX_PRIVATE_BYTES)))
     node_epoch = _expected_node_epoch(private, terminal)
     plan, attachment = selected["plan"], private["composedBudgetEvidence"]
     _selected_time_plan(attachment, selected["authorization"])
@@ -252,13 +257,15 @@ def _attempt_projection(args, attempt, report, fixture, source_commit,
     if recomputed != private["composedBudgetCoverage"]:
         raise ValueError("pr319-causal-coverage-substituted")
     source_digest = evidence.canonical_digest(identity)
-    return _closed_public(evidence.public_projection(private,
+    project = evidence.public_projection if suite is None else suite.public_projection
+    close = _closed_public if suite is None else suite.closed_public
+    return close(project(private,
         source_identity_digest=source_digest, selection_digest=selected_digest,
         cleanup_verified=True, guest_stopped=True,
         watcher_finished=watcher_finished, privacy_verified=True))
 
 
-def _scan_budget_privacy(root):
+def _scan_budget_privacy(root, *, capsule_decoder=None, root_capsule_decoder=None):
     """Scan every bounded retained text/JSON surface collected for public assessment."""
     exclude_source_clone = True
     root = Path(root).absolute()
@@ -277,6 +284,12 @@ def _scan_budget_privacy(root):
             continue
         if path.is_symlink():
             raise ValueError('pr319-retained-surface-link-invalid')
+        if capsule_decoder is not None and path == root / 'attempt-01/pr320-campaign-original-inputs.private.json':
+            capsule_decoder(shared._private_bytes(path, 16 * 1024 * 1024))
+            continue
+        if root_capsule_decoder is not None and path == root / 'attempt-01/pr320-campaign-root-originals.private.json':
+            root_capsule_decoder(shared._private_bytes(path, 16 * 1024 * 1024))
+            continue
         if path == root / 'attempt-01/pr315-workload-memory.private.json':
             evidence.decode_original_diagnostics(shared._private_bytes(path, 262144))
             continue

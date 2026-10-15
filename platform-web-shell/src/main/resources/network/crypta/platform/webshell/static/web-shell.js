@@ -43,6 +43,8 @@
     wizardSnapshot: null,
     catalogChannel: readStoredCatalogChannel(),
   };
+  const verifiedSupportBundles = new WeakSet();
+  const verifiedSupportBundleTexts = new WeakMap();
   const directDownloadOperation = "create_direct_download";
   const isolatedLaunchParameter = "cryptadIsolatedLaunch";
   const isolatedOriginProbePath = "/.well-known/cryptad-origin.json";
@@ -7089,6 +7091,16 @@
       },
       body: body.toString(),
     });
+    if (path === "operator/recovery/execute" && formData.get("actionId") === "support-bundle.export") {
+      try {
+        const text = await readSupportText(response);
+        const data = JSON.parse(text);
+        data.result.details.supportBundle = await verifySupportText(nestedSupportBundleText(text));
+        return data;
+      } catch (error) {
+        throw new Error("Support bundle could not be verified; export is disabled.");
+      }
+    }
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw createApiError(data, response);
@@ -7850,12 +7862,197 @@
     }
   }
 
+  // Preserve the server's number and string encodings when checking its ordered JSON digest.
+  // Parsing and re-stringifying would change values such as 1.0 or large integer metadata.
+  function supportJsonMembers(text) {
+    const members = [];
+    let member = "";
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (const character of text.trim()) {
+      if (quoted) {
+        member += character;
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') quoted = false;
+        continue;
+      }
+      if (/\s/.test(character)) continue;
+      if (character === '"') quoted = true;
+      if (character === "{" || character === "[") depth += 1;
+      if (character === "}" || character === "]") depth -= 1;
+      if (depth > 32 || depth < 0) throw new Error("Invalid support bundle.");
+      if (depth === 1 && character === ",") {
+        members.push(member);
+        member = "";
+      } else if (!(members.length === 0 && member === "" && depth === 1 && character === "{")
+          && !(depth === 0 && character === "}")) {
+        member += character;
+      }
+    }
+    if (quoted || depth !== 0 || members.length > 64) throw new Error("Invalid support bundle.");
+    members.push(member);
+    const keys = new Map();
+    for (const value of members) {
+      const entry = JSON.parse(`{${value}}`);
+      const names = Object.keys(entry);
+      if (names.length !== 1 || keys.has(names[0])) throw new Error("Invalid support bundle.");
+      let colon = 0;
+      let inKey = false;
+      let keyEscape = false;
+      for (; colon < value.length; colon += 1) {
+        const character = value[colon];
+        if (inKey) {
+          if (keyEscape) keyEscape = false;
+          else if (character === "\\") keyEscape = true;
+          else if (character === '"') inKey = false;
+        } else if (character === '"') inKey = true;
+        else if (character === ":") break;
+      }
+      keys.set(names[0], { member: value, text: value.slice(colon + 1) });
+    }
+    return keys;
+  }
+
+  function supportDigestInput(text) {
+    const keys = supportJsonMembers(text);
+    if (!keys.has("supportDigest")) throw new Error("Invalid support bundle.");
+    keys.delete("supportDigest");
+    return `{${Array.from(keys.values(), (entry) => entry.member).join(",")}}`;
+  }
+
+  function nestedSupportBundleText(text) {
+    for (const key of ["result", "details", "supportBundle"]) {
+      const selected = supportJsonMembers(text).get(key);
+      if (!selected) throw new Error("Invalid support bundle.");
+      text = selected.text;
+    }
+    return text;
+  }
+
+  async function readSupportText(response) {
+    if (!response.ok || !response.body) throw new Error("Support bundle unavailable.");
+    const reader = response.body.getReader();
+    const chunks = [];
+    let size = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > 2 * 1024 * 1024) throw new Error("Invalid support bundle.");
+        chunks.push(value);
+      }
+    } finally {
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }
+
+  function supportSha256Fallback(bytes) {
+    // SHA-256's 32-bit compression and big-endian padding (RFC 6234 sections 4-6).
+    // The support reader bounds input to 2 MiB, including on HTTP without Web Crypto.
+    const constants = new Uint32Array([
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+    ]);
+    const state = new Uint32Array([
+      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+    ]);
+    const padded = new Uint8Array(Math.ceil((bytes.length + 9) / 64) * 64);
+    padded.set(bytes);
+    padded[bytes.length] = 0x80;
+    const view = new DataView(padded.buffer);
+    view.setUint32(padded.length - 8, Math.floor(bytes.length / 0x20000000));
+    view.setUint32(padded.length - 4, bytes.length << 3);
+    const words = new Uint32Array(64);
+    const rotate = (value, bits) => (value >>> bits) | (value << (32 - bits));
+    for (let offset = 0; offset < padded.length; offset += 64) {
+      for (let index = 0; index < 16; index++) words[index] = view.getUint32(offset + index * 4);
+      for (let index = 16; index < 64; index++) {
+        const previous = words[index - 15];
+        const recent = words[index - 2];
+        const sigma0 = rotate(previous, 7) ^ rotate(previous, 18) ^ (previous >>> 3);
+        const sigma1 = rotate(recent, 17) ^ rotate(recent, 19) ^ (recent >>> 10);
+        words[index] = (words[index - 16] + sigma0 + words[index - 7] + sigma1) >>> 0;
+      }
+      let [a, b, c, d, e, f, g, h] = state;
+      for (let index = 0; index < 64; index++) {
+        const sum1 = rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25);
+        const choice = (e & f) ^ (~e & g);
+        const first = (h + sum1 + choice + constants[index] + words[index]) >>> 0;
+        const sum0 = rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22);
+        const majority = (a & b) ^ (a & c) ^ (b & c);
+        const second = (sum0 + majority) >>> 0;
+        h = g; g = f; f = e; e = (d + first) >>> 0;
+        d = c; c = b; b = a; a = (first + second) >>> 0;
+      }
+      const working = [a, b, c, d, e, f, g, h];
+      for (let index = 0; index < 8; index++) state[index] = (state[index] + working[index]) >>> 0;
+    }
+    const result = new Uint8Array(32);
+    const output = new DataView(result.buffer);
+    for (let index = 0; index < 8; index++) output.setUint32(index * 4, state[index]);
+    return result;
+  }
+
+  async function supportDigest(bytes) {
+    const subtle = window.crypto && window.crypto.subtle;
+    const hash = subtle ? await subtle.digest("SHA-256", bytes) : supportSha256Fallback(bytes);
+    return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function verifySupportText(text) {
+    const bundle = JSON.parse(text);
+    if (bundle.kind !== "cryptad-operator-support-bundle" || bundle.schemaVersion !== 2
+        || !Number.isSafeInteger(bundle.generatedAtEpochMillis)
+        || !bundle.sections || !Object.keys(bundle.sections).length
+        || !bundle.dashboard || !Object.keys(bundle.dashboard).length
+        || !bundle.diagnostics || !Object.keys(bundle.diagnostics).length
+        || !bundle.redaction || bundle.redaction.status !== "pass"
+        || bundle.redaction.rawSensitiveMaterialExcluded !== true
+        || !Array.isArray(bundle.redaction.redactionFindings)
+        || bundle.redaction.redactionFindings.length !== 0
+        || !bundle.supportDigest || bundle.supportDigest.algorithm !== "SHA-256"
+        || !/^[0-9a-f]{64}$/.test(bundle.supportDigest.digest)) {
+      throw new Error("Invalid support bundle.");
+    }
+    const expected = await supportDigest(new TextEncoder().encode(supportDigestInput(text)));
+    if (bundle.supportDigest.digest !== expected) throw new Error("Invalid support bundle.");
+    verifiedSupportBundles.add(bundle);
+    verifiedSupportBundleTexts.set(bundle, text.trim());
+    return bundle;
+  }
+
+  async function readSupportBundle(response) {
+    return verifySupportText(await readSupportText(response));
+  }
+
   async function loadSupportBundle() {
+    shellState.supportBundleSnapshot = null;
+    shellState.supportBundlePreviewSnapshot = null;
+    updateBetaDashboardToolbar();
     try {
       shellState.supportBundlePreviewSnapshot = await loadJson(
         apiUrl("operator/support-bundle/preview"),
       ).catch(() => null);
-      const bundle = await loadJson(apiUrl("operator/support-bundle"));
+      const response = await fetch(apiUrl("operator/support-bundle"), { headers: { Accept: "application/json" } });
+      const bundle = await readSupportBundle(response);
       shellState.supportBundleSnapshot = bundle;
       updateBetaDashboardToolbar();
       if (shellState.betaDashboardSnapshot) {
@@ -7863,7 +8060,9 @@
       }
       setBetaDashboardStatus("Support bundle generated.", "is-success");
     } catch (error) {
-      setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
+      shellState.supportBundlePreviewSnapshot = null;
+      updateBetaDashboardToolbar();
+      setBetaDashboardStatus("Support bundle could not be verified; generate it again before export.", "is-error");
     }
   }
 
@@ -7887,7 +8086,7 @@
   }
 
   function supportBundleExportBlocked(bundle) {
-    return supportBundleRedactionFailed(bundle);
+    return !bundle || !verifiedSupportBundles.has(bundle) || supportBundleRedactionFailed(bundle);
   }
 
   function supportBundleOmittedFieldCount(bundle) {
@@ -7916,7 +8115,7 @@
   }
 
   function supportJsonText(bundle) {
-    return `${formatJson(bundle)}\n`;
+    return `${verifiedSupportBundleTexts.get(bundle)}\n`;
   }
 
   function supportBundleFileName(bundle) {
@@ -7940,7 +8139,7 @@
       setBetaDashboardStatus(supportBundleExportBlockedMessage(), "is-error");
       return;
     }
-    downloadJsonBlob(bundle, supportBundleFileName(bundle));
+    downloadBlob(new Blob([supportJsonText(bundle)], { type: "application/json" }), supportBundleFileName(bundle));
     setBetaDashboardStatus("Support bundle download prepared.", "is-success");
   }
 
@@ -8522,7 +8721,7 @@
         setBetaDashboardStatus(supportBundleExportBlockedMessage(), "is-error");
         return;
       }
-      downloadJsonBlob(supportBundle, supportBundleFileName(supportBundle));
+      downloadBlob(new Blob([supportJsonText(supportBundle)], { type: "application/json" }), supportBundleFileName(supportBundle));
       setBetaDashboardStatus("Support bundle download prepared.", "is-success");
     });
     actions.append(download);

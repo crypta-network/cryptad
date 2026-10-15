@@ -279,6 +279,8 @@ public final class ContentApiHandler {
         parent.recordStage(RuntimeWorkObservation.Kind.CONTENT_BYTES_REJECTED);
       }
       observeFetchFailure(exception, lease, appId, reservation);
+      network.crypta.platform.api.PlatformApiRequestOwner.consumeHandledNativeCancellation(
+          exception);
       throw mappedFetchException(exception);
     } catch (RuntimeException _) {
       observeFetch(RuntimeWorkObservation.Kind.FETCH_FAILED, lease, appId);

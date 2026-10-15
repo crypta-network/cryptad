@@ -239,13 +239,23 @@ def _digest_valid(value):
 
 
 def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None, public_products=None,
-            authenticated_baseline=None, baseline_binding=None):
+            authenticated_baseline=None, baseline_binding=None, budget_campaign=None):
     """Project prospective exact subjects separately from incomplete maintenance scenarios.
 
     Historical input without a runtime binding retains byte-for-byte v1 semantics. A v2 result
     cannot be constructed by upgrading that report: the original journal and exact product rows
     must be presented again to this producer, then authenticated through the original supervisor.
     """
+    if budget_campaign is not None:
+        from composed_budget_campaign_admission import OriginalBudgetCampaign
+        from cryptad_certification.composed_budget_campaign_evidence import validate_coverage
+        if type(budget_campaign) is not OriginalBudgetCampaign:
+            raise ProjectionError('maintenance-budget-campaign-original-required')
+        budget_campaign.bind(plan)
+        historical = project(plan, events, checkpoint, products, policy_path=policy_path, now=now,
+            public_products=public_products, authenticated_baseline=authenticated_baseline,
+            baseline_binding=baseline_binding)
+        return with_original_budget_campaign(historical, budget_campaign, plan=plan)
     now = now or dt.datetime.now(dt.timezone.utc)
     result = _project_v1(plan, events, checkpoint, products, policy_path=policy_path, now=now)
     sealed = any("sealedRuntimeBinding" in row for row in (products or []))
@@ -386,6 +396,27 @@ def project(plan, events, checkpoint, products, *, policy_path=POLICY, now=None,
     return result
 
 
+def with_original_budget_campaign(measurements, budget_campaign, *, plan):
+    """Project an authenticated campaign after the independent original measurement owner.
+
+    This is a downstream consumer contract, not a rewrite of any supervisor report.
+    Nine-row maintenance eligibility and the resource-baseline decision retain their owner.
+    """
+    from composed_budget_campaign_admission import OriginalBudgetCampaign
+    from cryptad_certification.composed_budget_campaign_evidence import validate_coverage
+    if type(budget_campaign) is not OriginalBudgetCampaign:
+        raise ProjectionError('maintenance-budget-campaign-original-required')
+    budget_campaign.bind(plan)
+    validate(measurements)
+    if measurements['planDigest'] != digest(plan):
+        raise ProjectionError('maintenance-budget-campaign-plan-substituted')
+    result = {'schemaVersion': 7, 'kind': 'maintenance-runtime-budget-campaign',
+        'historicalMeasurements': json.loads(json.dumps(measurements)),
+        'budgetCampaignCoverage': validate_coverage(budget_campaign.coverage()),
+        'maintenanceEligibility': measurements['maintenanceEligibility']}
+    return validate(result)
+
+
 def without_current_baseline(value, scope):
     """Keep terminal measurements public-safe without asserting current baseline authority."""
     validate(value)
@@ -420,6 +451,19 @@ def without_current_baseline(value, scope):
 
 def validate(value):
     """Validate historical diagnostics or the closed prospective narrow-component contract."""
+    if isinstance(value, dict) and value.get('schemaVersion') == 7:
+        from cryptad_certification.composed_budget_campaign_evidence import validate_coverage
+        if (set(value) != {'schemaVersion', 'kind', 'historicalMeasurements',
+                          'budgetCampaignCoverage', 'maintenanceEligibility'}
+                or type(value['schemaVersion']) is not int
+                or value['kind'] != 'maintenance-runtime-budget-campaign'):
+            raise ProjectionError('maintenance-budget-campaign-contract-invalid')
+        historical = validate(value['historicalMeasurements'])
+        validate_coverage(value['budgetCampaignCoverage'])
+        if (value['budgetCampaignCoverage']['originalAuthentication'] != 'authenticated'
+                or value['maintenanceEligibility'] != historical['maintenanceEligibility']):
+            raise ProjectionError('maintenance-budget-campaign-authority-invalid')
+        return value
     if isinstance(value, dict) and value.get("schemaVersion") == 6:
         from cryptad_certification.composed_budget_evidence import REQUIRED_CASES
         historical = json.loads(json.dumps(value))
@@ -575,17 +619,19 @@ def validate(value):
     return value
 
 
-def authenticate(coordinates, private_root, *, expected_plan_digest, expected_policy_digest, now=None):
+def authenticate(coordinates, private_root, *, expected_plan_digest, expected_policy_digest, now=None,
+                 budget_campaign=None, budget_plan=None):
     """Materialize original measured inputs in the protected producer, never in offline verify."""
     from cross_version_supervisor_authority import authenticate_report
     report, origin = authenticate_report(coordinates, private_root)
-    if report.get("schemaVersion") not in {2, 3, 4, 5, 6, 7} or report.get("operation") != "finish":
+    if report.get("schemaVersion") not in {2, 3, 4, 5, 6, 7, 8} or report.get("operation") != "finish":
         raise ProjectionError("maintenance-measurements-original-finish-v2-required")
     value = validate(report["maintenanceMeasurements"])
+    report_version = report.get('budgetCampaignBaseVersion', report['schemaVersion'])
     if (value["planDigest"] != expected_plan_digest or report["planDigest"] != expected_plan_digest
             or value["policyByteDigest"] != expected_policy_digest
             or value["producer"] != report["producer"] or value["checkpointDigest"] != report["checkpoint"]["digest"]
-            or value["schemaVersion"] != report["schemaVersion"] - 1
+            or value["schemaVersion"] != report_version - 1
             or (value["schemaVersion"] in {2, 3, 4, 5, 6} and report["admittedProductsDigest"] != value["admittedProductsDigest"])):
         raise ProjectionError("maintenance-measurements-original-selection-mismatch")
     policy_bytes = POLICY.read_bytes()
@@ -598,4 +644,8 @@ def authenticate(coordinates, private_root, *, expected_plan_digest, expected_po
             or now - end > dt.timedelta(days=maximum_age)
             or (value["schemaVersion"] in {2, 3, 4, 5, 6} and parse_timestamp(value["evaluationCutoff"]) > now)):
         raise ProjectionError("maintenance-measurements-original-observation-expired")
+    if budget_campaign is not None:
+        value = with_original_budget_campaign(value, budget_campaign, plan=budget_plan)
+    elif budget_plan is not None:
+        raise ProjectionError('maintenance-budget-campaign-original-required')
     return AuthenticatedMeasurements(value, origin, _AUTHORITY)

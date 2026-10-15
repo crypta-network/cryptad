@@ -10,6 +10,7 @@ METHODS = frozenset({
     'maintenance-prepare', 'maintenance-validate', 'supervisor-authorize',
     'supervisor-start', 'supervisor-checkpoint', 'supervisor-finish',
     'baseline-prepare', 'baseline-approve',
+    'budget-acquisition-prepare', 'budget-acquisition-begin', 'budget-acquisition-collect',
 })
 MAX_REQUEST = 256
 MAX_RESULT = 4 * 1024 * 1024

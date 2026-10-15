@@ -178,7 +178,7 @@ public final class AppAuditLog {
 
   private static PlatformApiAction fallbackAction(PlatformApiRequest request) {
     List<String> segments = request.pathSegments();
-    String endpointFamily = segments.isEmpty() ? "unknown" : segments.getFirst();
+    String endpointFamily = PlatformApiCapabilities.auditEndpointFamily(segments);
     return PlatformApiAction.of(endpointFamily, endpointFamily + ".unmapped", List.of("unmapped"));
   }
 }

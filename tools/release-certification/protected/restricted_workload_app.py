@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import time
+from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES as COMPLETE_STORAGE_CLASSES
 
 import restricted_workload as workload
 
@@ -256,12 +257,13 @@ def require_budget_listener(role, app_id, runtime_dict, port):
     try:
         launch = workload.read(workload.ROOT / 'roles' / role / 'launch.json')
         if (launch.get('executionClass') not in ('pr317-namespace-bound-composed-budget-v1',
-                'pr318-fixed-window-partial-store-v1', 'pr319-composed-budget-restart-diagnostics-v1')
+                'pr318-fixed-window-partial-store-v1', 'pr319-composed-budget-restart-diagnostics-v1', *COMPLETE_STORAGE_CLASSES)
                 or set(launch.get('budgetAppIdentities', {})) != {
                     'feed-reader', 'budget-importer', 'budget-no-trust', 'budget-no-fetch'}):
             _reject()
         java_digest = launch.get('javaDigest')
-        executable_digest = launch.get('budgetExecutableDigest')
+        executable_digest = (launch.get('budgetExecutableDigests', {}).get(app_id)
+            if launch.get('executionClass') in COMPLETE_STORAGE_CLASSES else launch.get('budgetExecutableDigest'))
         bundle = launch['budgetAppIdentities'][app_id]
         if (re.fullmatch('sha256:[0-9a-f]{64}', str(java_digest)) is None
                 or re.fullmatch('sha256:[0-9a-f]{64}', str(executable_digest)) is None
@@ -302,6 +304,10 @@ def require_budget_listener(role, app_id, runtime_dict, port):
         if len(fixtures) != 1:
             _reject()
         fixture = fixtures[0]
+        if launch.get('executionClass') in COMPLETE_STORAGE_CLASSES and app_id in ('feed-reader', 'budget-importer'):
+            if _read(PROC / str(fixture['hostPid']) / 'cmdline', 4096, deadline).split(b'\0') != [
+                    b'/usr/bin/python3', b'-I', b'-S', b'-B', b'lib/pr320-budget-process-client.py', b'']:
+                _reject()
         bundle_cwd = _budget_cwd(fixture['hostPid'], app_id, deadline)
         if (leader['mountNamespaceIdentity'] != fixture['mountNamespaceIdentity']
                 or leader['userNamespaceIdentity'] != fixture['userNamespaceIdentity']):

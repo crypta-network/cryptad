@@ -577,12 +577,15 @@ def _expect_status(result, allowed, code):
         fail(code)
 
 
-def _run_concurrency_case(adapter, handles, statement, case):
+def _run_concurrency_case(adapter, handles, statement, case, *, variant=None):
     """Drive real import/fetch overlap with an unpublished owned key and finite fulfillment."""
     if case not in {"import-concurrency", "fetch-concurrency"}:
         fail("concurrency-case-invalid")
+    if variant not in {None, "app", "global"}:
+        fail("concurrency-variant-invalid")
     holder_app = APP_IDS[0]
-    contender_app = APP_IDS[0] if case == "import-concurrency" else APP_IDS[1]
+    contender_app = (APP_IDS[0] if variant == "app" else APP_IDS[1] if variant == "global"
+                     else APP_IDS[0] if case == "import-concurrency" else APP_IDS[1])
     holder_key = _new_content_key(adapter)
     before = _with_graph(handles[holder_app], _snapshot(handles[holder_app]))
     with _start_client(adapter, handles[holder_app].context, {
@@ -718,7 +721,7 @@ def _run_abandonment_case(adapter, handles, statement):
             "afterSequence": after["work"]["lastSequence"]}
 
 
-def _run_timeout_case(adapter, handles, statement):
+def _run_timeout_case(adapter, handles, statement, *, capture_response=False):
     """Attempt a real short content-fetch timeout; require a separately observed owner tail."""
     selected = _new_content_key(adapter)
     handle = handles[APP_IDS[0]]
@@ -777,7 +780,8 @@ def _run_timeout_case(adapter, handles, statement):
     causal = _causal_case("timeout", before, during, after,
         operation_id=primary_id, roles=roles, request_outcome="timed-out",
         owner_outcome="normal-ack")
-    return causal, {"status": "observed"}
+    return causal, ({"status": "observed", "httpStatus": result["status"]}
+                    if capture_response else {"status": "observed"})
 
 
 def _save_private(root, value):

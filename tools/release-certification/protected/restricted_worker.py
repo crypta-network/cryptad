@@ -43,7 +43,7 @@ POLICIES = {
     'baseline-prepare': ('.github/workflows/runtime-baseline-approval.yml', 'prepare-runtime-baseline'),
     'baseline-approve': ('.github/workflows/runtime-baseline-approval.yml', 'approve-runtime-baseline'),
     **{method: ('.github/workflows/cross-version-live-network-soak.yml', 'supervise-cross-version')
-       for method in METHODS if method.startswith('supervisor-')},
+       for method in METHODS if method.startswith(('supervisor-', 'budget-acquisition-'))},
 }
 JOB_NAMES = {
     'maintenance-prepare': 'Freeze exact bytes or validate a prior frozen Stable maintenance candidate',
@@ -231,8 +231,6 @@ def authenticate_job(record, environment):
 
 
 def dispatch(record, root):
-    if record['method'] in {'supervisor-authorize', 'supervisor-start', 'supervisor-checkpoint'}:
-        raise BoundaryError('restricted-workload-observer-boundary-unavailable')
     from restricted_native import owning_boundary
     deadline = _DEADLINE.get()
     if deadline is None:
@@ -248,6 +246,11 @@ def dispatch(record, root):
         if record['method'].startswith('maintenance-'):
             from restricted_maintenance import dispatch as maintenance
             return maintenance(record['method'], root)
+        if record['method'] in {'supervisor-authorize', 'supervisor-start', 'supervisor-checkpoint'}:
+            from cross_version_supervisor_authority import selected_inputs, is_budget_selection
+            plan, private, authorization, _uid, _bindings = selected_inputs()
+            if not is_budget_selection(plan, private, authorization):
+                raise BoundaryError('restricted-workload-observer-boundary-unavailable')
         from cross_version_supervisor_authority import dispatch_owned
         return dispatch_owned(record['method'])
 

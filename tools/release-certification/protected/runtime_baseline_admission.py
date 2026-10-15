@@ -123,6 +123,22 @@ def terminal_outcome(events, checkpoint):
 
 
 def authenticate_observation(coordinates, bundle, scratch, *, cutoff):
+    return _authenticate_observation(coordinates, bundle, scratch, cutoff=cutoff, budget_component=False)
+
+
+def authenticate_budget_observation(coordinates, bundle, scratch, *, cutoff):
+    """Authenticate a selected budget component without promoting its partial experiment.
+
+    The native owner and post-cleanup root receipt still decide every variant. A component
+    experiment's intentionally partial full-system journal cannot grant runtime duration,
+    baseline approval, release products or a successful unknown business outcome.
+    """
+    from cryptad_certification.composed_budget_journal_member import validate_inputs
+    validate_inputs(bundle['plan'])
+    return _authenticate_observation(coordinates, bundle, scratch, cutoff=cutoff, budget_component=True)
+
+
+def _authenticate_observation(coordinates, bundle, scratch, *, cutoff, budget_component):
     """Authenticate the original complete supervisor chain and reverify retained inputs.
 
     The private bundle is never an artifact authority. Its journal must reproduce the original
@@ -192,7 +208,13 @@ def authenticate_observation(coordinates, bundle, scratch, *, cutoff):
             if admitted.public_identities() != activation.get('products'):
                 raise AdmissionError('runtime-baseline-original-products-mismatch')
     runtime_events = [event for event in events if 'runtimeEvidence' in event]
-    outcome = terminal_outcome(events, checkpoint)
+    if (budget_component and checkpoint.get('status') == 'partial' and events
+            and events[-1].get('kind') == 'finish' and events[-1].get('outcome') == 'partial'):
+        if any(event.get('kind') == 'fault' or event.get('outcome') == 'fail' for event in events):
+            raise AdmissionError('runtime-budget-original-failed-experiment')
+        outcome = 'partial-budget-component'
+    else:
+        outcome = terminal_outcome(events, checkpoint)
     if len(runtime_events) > 1 or observation['cleanup'] != 'observed':
         raise AdmissionError('runtime-baseline-original-terminal-invalid')
     attachment = runtime_events[0] if runtime_events else None

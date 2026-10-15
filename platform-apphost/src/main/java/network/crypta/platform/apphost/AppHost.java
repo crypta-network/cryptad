@@ -604,6 +604,35 @@ public interface AppHost {
   }
 
   /**
+   * Registers the calling request thread against one authenticated live process launch.
+   *
+   * <p>This internal lifecycle seam never accepts a caller-selected thread or cancellation target.
+   * Hosts supporting it atomically validate the launch and interrupt its registered request owners
+   * when that launch stops or dies. Browser sessions and host requests have no process-launch
+   * binding and must not use this method. Closing a registration only removes request tracking;
+   * asynchronous native fetch completion remains the authority for resource release.
+   *
+   * @param appId authenticated process application identifier
+   * @param expectedLaunchId token-free launch identity established during token authentication
+   * @return owned registration, or empty when the launch is stale or unsupported
+   * @throws IOException if the bounded host request-owner registry cannot admit another owner
+   */
+  default Optional<RequestOwner> registerRequestOwner(String appId, String expectedLaunchId)
+      throws IOException {
+    return Optional.empty();
+  }
+
+  /** One process-bound request registration, distinct from native fetch acknowledgment. */
+  interface RequestOwner extends AutoCloseable {
+    /** Returns whether lifecycle cancellation was delivered to this registered request. */
+    boolean cancellationRequested();
+
+    /** Removes request tracking without acknowledging native asynchronous work termination. */
+    @Override
+    void close();
+  }
+
+  /**
    * Returns token-free process runtime status for one installed app.
    *
    * <p>The status is process-observed only. It does not perform app-provided HTTP health checks or

@@ -15,6 +15,7 @@ import sys
 import tarfile
 import tempfile
 import time
+from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES as COMPLETE_STORAGE_CLASSES
 
 import restricted_workload as workload
 from restricted_workload_storage import copy_tree
@@ -38,6 +39,24 @@ def valid_execution_selection(plan, private, authorization):
     if execution_class is None:
         return ('executionClass' not in authorization
                 and 'selectionDigest' not in authorization)
+    if execution_class in COMPLETE_STORAGE_CLASSES:
+        from pr320_budget_contract import PRIVACY_EXECUTION_CLASS, CANCELLATION_EXECUTION_CLASS
+        if execution_class == PRIVACY_EXECUTION_CLASS:
+            import pr320_privacy_contract
+            return pr320_privacy_contract.verify_selection_contract(plan, private, authorization)
+        if execution_class == CANCELLATION_EXECUTION_CLASS:
+            import pr320_cancellation_contract
+            return pr320_cancellation_contract.verify_selection_contract(plan, private, authorization)
+        from pr320_budget_contract import RESTART_EXECUTION_CLASS as prospective_restart
+        if execution_class == prospective_restart:
+            import pr320_restart_contract
+            return pr320_restart_contract.verify_selection_contract(plan, private, authorization)
+        from pr320_budget_contract import ROUTE_EXECUTION_CLASSES
+        if execution_class in ROUTE_EXECUTION_CLASSES:
+            import pr320_route_contract
+            return pr320_route_contract.verify_selection_contract(plan, private, authorization)
+        import pr320_storage_contract
+        return pr320_storage_contract.verify_selection_contract(plan, private, authorization)
     if execution_class == RESTART_EXECUTION_CLASS:
         import pr319_restart_contract
         return pr319_restart_contract.verify_selection_contract(plan, private, authorization)
@@ -129,7 +148,7 @@ def configuration_identity(role, trust_digest, execution_class=None):
     value = {'profile': workload.PROFILE, 'role': role,
              'configuration': text, 'appTrustDigest': trust_digest,
              'launcherPolicy': launcher_policy()}
-    if execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
+    if execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *COMPLETE_STORAGE_CLASSES):
         value['budgetLauncherPolicy'] = budget_launcher_policy(execution_class)
     elif execution_class is not None:
         if execution_class != MAIL_EXECUTION_CLASS:
@@ -149,7 +168,7 @@ def prepare(plan, private, authorization):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'interop'))
     import cross_version_runtime as runtime
     execution_class = authorization.get('executionClass')
-    budget_class = execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS)
+    budget_class = execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *COMPLETE_STORAGE_CLASSES)
     if (plan.get('provenanceClass') != 'source-build-comparison'
             or set(private) != {'root', 'nodes'}
             or (not budget_class and plan.get('workloadInputs'))
@@ -161,7 +180,8 @@ def prepare(plan, private, authorization):
             or authorization.get('planDigest') != runtime.canonical_digest(plan)
             or authorization.get('experimentId') != plan.get('experimentId')
             or type(authorization.get('maxSeconds')) is not int
-            or not 30 <= authorization['maxSeconds'] <= workload.MAX_SECONDS
+            or not 30 <= authorization['maxSeconds'] <= (
+                7200 if execution_class == 'pr320-installed-budget-privacy-v1' else workload.MAX_SECONDS)
             or type(authorization.get('maxOperations')) is not int
             or not 1 <= authorization['maxOperations'] <= 10000
             or not valid_execution_selection(plan, private, authorization)):
@@ -232,6 +252,8 @@ def prepare(plan, private, authorization):
             state = workload.manager(role, 'show')
             if state['ActiveState'] not in {'inactive', 'failed'} or not workload.quiescent(role):
                 workload.reject('role-pool-busy')
+        from pr320_role_lifetime import configure
+        configure(authorization.get('executionClass'))
         # Admission is a conservative allocation bound, not a filesystem quota. Candidate
         # writable bytes have a separate hard tmpfs limit. Keep headroom for retained failures.
         space = os.statvfs(workload.ROOT)
@@ -368,6 +390,10 @@ def prepare(plan, private, authorization):
                 launch['budgetAppIdentities'] = {}
                 if role == 'candidate-sender':
                     launch['budgetExecutableDigest'] = runtime.digest_file('/usr/bin/sleep')
+                    if execution_class in COMPLETE_STORAGE_CLASSES:
+                        launch['budgetExecutableDigests'] = {app_id: runtime.digest_file(
+                            '/usr/bin/python3' if app_id in ('feed-reader', 'budget-importer') else '/usr/bin/sleep')
+                            for app_id in BUDGET_APP_IDS}
                     launch['budgetStatementDigest'] = row['budgetStatementDigest']
                     for app_id in BUDGET_APP_IDS:
                         identity = tree_identity(inputs / 'apps' / app_id)

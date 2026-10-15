@@ -822,16 +822,28 @@ jobs:
           fi
           python3 tools/release-certification/certify.py release-certification --manifest "$manifest"
 
-      - name: Upload release certification artifacts
+      - name: Prepare exact public certification artifacts
+        id: public-export
         if: always()
+        run: |
+          set -euo pipefail
+          export PYTHONPATH=tools/release-certification
+          public_root="$RUNNER_TEMP/certification-public-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 -m cryptad_certification.certification_public_export create \
+            --manifest "$RUNNER_TEMP/release-certification-manifest.json" \
+            --workspace "$GITHUB_WORKSPACE" --root "$public_root" --source-commit "$GITHUB_SHA"
+          python3 -m cryptad_certification.certification_public_export verify \
+            --root "$public_root" --source-commit "$GITHUB_SHA"
+          python3 -m cryptad_certification.certification_public_export job-summary \
+            --root "$public_root" --source-commit "$GITHUB_SHA" --job-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact public certification artifacts
+        if: always() && steps.public-export.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: release-certification-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            build/release-certification/
-            build/release-certification-history/
-            !**/private-insert-uris.json
-          if-no-files-found: warn
+          name: release-certification-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/certification-public-${{ github.run_id }}-${{ github.run_attempt }}/
+          if-no-files-found: error
           retention-days: 30
 
   certify-release-candidate:
@@ -873,3 +885,32 @@ jobs:
       STABLE_SUPPLY_CHAIN_ARTIFACT_DIGEST: ${{ github.event.inputs['stable-supply-chain-artifact-digest'] || vars.STABLE_SUPPLY_CHAIN_PROMOTION_ARTIFACT_DIGEST || '' }}
       DEPENDENCY_VULNERABILITY_STAGE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['dependency-vulnerability-stage'] || 'pre-publication' }}
     steps: *certification-steps
+
+  verify-public-artifact:
+    needs: [certify-nonpromotion, certify-release-candidate]
+    if: always() && (needs.certify-nonpromotion.result != 'skipped' || needs.certify-release-candidate.result != 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
+      - name: Download exact public certification artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-certification-public-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/certification-public-transferred
+      - name: Verify transferred members and publish validated summary
+        run: |
+          set -euo pipefail
+          export PYTHONPATH=tools/release-certification
+          python3 -m cryptad_certification.certification_public_export verify \
+            --root "$RUNNER_TEMP/certification-public-transferred" --source-commit "$GITHUB_SHA"
+          python3 -m cryptad_certification.certification_public_export job-summary \
+            --root "$RUNNER_TEMP/certification-public-transferred" --source-commit "$GITHUB_SHA" \
+            --job-summary "$GITHUB_STEP_SUMMARY"

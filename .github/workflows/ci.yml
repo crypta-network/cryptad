@@ -275,6 +275,8 @@ jobs:
 
       - name: Test protected producer boundaries offline
         shell: bash
+        env:
+          PYTHONPATH: tools/release-certification:tools/release-certification/protected:tools/release-certification/restricted:tools/interop
         run: ${{ matrix.python_cmd }} -m unittest discover -s tools/release-certification/protected -p 'test_*.py'
 
       - name: Reconcile Phase 12 without operational inputs

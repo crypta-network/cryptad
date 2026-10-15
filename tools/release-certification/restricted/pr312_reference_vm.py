@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+import pr320_installed_dispatch as complete_storage
 
 import pr313_boot_inputs as boot
 
@@ -348,11 +349,11 @@ def workload_guest_command(args):
     scenario = getattr(args, 'lifecycle_scenario', 'cancellation')
     workload_group = getattr(args, 'workload_group', None)
     execution_class = getattr(args, 'execution_class', None)
-    selected_execution = execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS)
+    selected_execution = execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *complete_storage.EXECUTION_CLASSES)
     if (re.fullmatch('[0-9a-f]{64}', str(args.fixture_manifest_digest)) is None
             or re.fullmatch('[0-9a-f]{40}', str(args.product_source_commit)) is None
             or execution_class not in (None, MAIL_EXECUTION_CLASS,
-                                       BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS)
+                                       BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *complete_storage.EXECUTION_CLASSES)
             or scenario not in ('cancellation', 'controller-restart', 'deadline',
                                 'revocation-running', 'setsid-double-fork',
                                 'observer-death', 'none')
@@ -420,7 +421,8 @@ def run(args, *, before_guest_launch=None):
               'developmentSnapshot': args.development_snapshot, 'cpuModel': CPU_MODEL,
               'accelerator': ACCELERATOR}
     if args.mode == 'workload-positive':
-        report['workloadPurpose'] = ('budget-restart' if getattr(args, 'execution_class', None) == RESTART_EXECUTION_CLASS else 'budget-storage' if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS else 'budget-lifecycle' if getattr(args, 'execution_class', None) ==
+        report['workloadPurpose'] = (complete_storage.purpose(args.execution_class)
+            if getattr(args, 'execution_class', None) in complete_storage.EXECUTION_CLASSES else 'budget-restart' if getattr(args, 'execution_class', None) == RESTART_EXECUTION_CLASS else 'budget-storage' if getattr(args, 'execution_class', None) in (STORAGE_EXECUTION_CLASS, *complete_storage.EXECUTION_CLASSES) else 'budget-lifecycle' if getattr(args, 'execution_class', None) ==
                                      BUDGET_EXECUTION_CLASS
                                      else 'mail-runtime' if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
                                      else 'startup-measurement' if getattr(args, 'startup_measurement', False)
@@ -483,6 +485,8 @@ def run(args, *, before_guest_launch=None):
                 helper_names.append('pr319_restart_selection.py')
             if getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS:
                 helper_names.append('pr318_storage_selection.py')
+            if getattr(args, 'execution_class', None) in complete_storage.EXECUTION_CLASSES:
+                helper_names.extend(('pr320_storage_selection.py', 'pr320_installed_dispatch.py'))
         for name in helper_names:
             if sha256(Path(__file__).resolve().parent / name) != sha256(source / 'tools/release-certification/restricted' / name):
                 raise ValueError('executing-reference-source-mismatch')
@@ -499,7 +503,9 @@ def run(args, *, before_guest_launch=None):
         report['productSourceVerification'] = 'local-git-and-embedded-marker-v1'
         if args.prepared_fixtures is not None:
             if args.mode == 'workload-positive':
-                if getattr(args, 'execution_class', None) == RESTART_EXECUTION_CLASS:
+                if getattr(args, 'execution_class', None) in complete_storage.EXECUTION_CLASSES:
+                    fixture_module, fixtures = complete_storage.fixture(args.execution_class, clone)
+                elif getattr(args, 'execution_class', None) == RESTART_EXECUTION_CLASS:
                     import pr319_restart_selection as fixture_module
                     fixtures = clone / 'build/pr319-inputs'
                 elif getattr(args, 'execution_class', None) == STORAGE_EXECUTION_CLASS:
@@ -599,7 +605,7 @@ def run(args, *, before_guest_launch=None):
                            else 'installed-pr316-mail-runtime'
                            if getattr(args, 'execution_class', None) == MAIL_EXECUTION_CLASS
                            else 'installed-' + args.mode)
-        storage_clock = getattr(args, 'execution_class', None) in (STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS)
+        storage_clock = getattr(args, 'execution_class', None) in (STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *complete_storage.EXECUTION_CLASSES)
         if storage_clock:
             report['storageClock'] = {
                 'before': guest_clock_sample(ssh, log, boot.ENVIRONMENT)}
@@ -684,7 +690,9 @@ print(json.dumps(records))
                 ('app-compile-stdout.private', '/root/pr312-app-projection/compile-stdout.private', 65536),
                 ('app-compile-stderr.private', '/root/pr312-app-projection/compile-stderr.private', 65536),
                 ('app-generate-stdout.private', '/root/pr312-app-projection/generate-stdout.private', 65536),
-                ('app-generate-stderr.private', '/root/pr312-app-projection/generate-stderr.private', 65536)):
+                ('app-generate-stderr.private', '/root/pr312-app-projection/generate-stderr.private', 65536),
+                *(complete_storage.capture_members(args.execution_class)
+                  if getattr(args, 'execution_class', None) in complete_storage.EXECUTION_CLASSES else ())):
             with (attempt / label).open('xb') as stream:
                 command([*ssh, 'sudo test ! -f ' + remote + ' || sudo head -c ' + str(maximum) + ' ' + remote],
                         stdout=stream, stderr=log, timeout=15)

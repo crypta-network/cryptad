@@ -926,8 +926,10 @@ class InstalledWorkloadAdapter:
                  *, control=None, counter_sampler=None, lost_start_sampler=None,
                  origin_handoff=None):
         expected_jdk_digests = expected_jdk_digests or handoff.get('expectedJdkDigests', {})
+        from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES
         budget_class = authorization.get('executionClass') in (BUDGET_EXECUTION_CLASS,
-            'pr318-fixed-window-partial-store-v1', 'pr319-composed-budget-restart-diagnostics-v1')
+            'pr318-fixed-window-partial-store-v1', 'pr319-composed-budget-restart-diagnostics-v1',
+            *PROSPECTIVE_EXECUTION_CLASSES)
         if (handoff.get('profile') != PROFILE or set(handoff.get('handles', {})) != set(runtime.ROLES)
                 or plan.get('provenanceClass') != 'source-build-comparison'
                 or set(private_config) != {'root', 'nodes'} or set(private_config['nodes']) != set(runtime.ROLES)

@@ -39,6 +39,8 @@ def _budget_base_measurement(value):
 
 
 def _budget_base_report(value):
+    if value.get('schemaVersion') == 8:
+        return _budget_base_report({**value, 'schemaVersion': value.get('budgetCampaignBaseVersion')})
     if value.get('schemaVersion') == 7:
         return _budget_base_measurement(value['maintenanceMeasurements']) + 1
     return value.get('schemaVersion')
@@ -64,6 +66,7 @@ REQUIRED_INPUTS = {
     "mail-runtime": ("plan.json", "events.json", "checkpoint.json"),
     "maintenance-drill": ("drill.json",),
     "maintenance-measurements": ("plan.json", "events.json", "checkpoint.json", "products.json"),
+    "budget-campaign": ("campaign.json", "originals.json", "plan.json"),
 }
 
 
@@ -71,7 +74,7 @@ def _protected(name):
     if name not in {"app_subject_projection", "sharesite_observation", "maintenance_runtime_projection",
                     "runtime_baseline_admission", "runtime_baseline_approval",
                     "cross_version_supervisor_authority", "cross_version_product_admission",
-                    "federated_catalog_runtime_observer"}:
+                    "federated_catalog_runtime_observer", "composed_budget_campaign_admission"}:
         raise ValueError("phase12-runtime-adapter-unknown")
     # Fixed installed modules only, never an evidence-supplied import or script.
     sys.path.insert(0, str(PROTECTED))
@@ -530,6 +533,36 @@ def verify(adapter: str, payloads: dict[str, bytes], as_of: str, scratch: Path) 
             result = _migration(values)
         elif adapter == "profile-review":
             result = _profile_review(payloads, values, scratch, now)
+        elif adapter == 'budget-campaign':
+            from .composed_budget_cohort_contract import REQUIRED_VARIANTS
+            from . import composed_budget_campaign_evidence as campaign
+            selected = values['campaign.json']
+            campaign._closed(selected, {'schemaVersion', 'kind', 'evidenceClass', 'subject', 'members', 'attempts'})
+            campaign._closed(selected['subject'], campaign.SUBJECT_FIELDS)
+            if (type(selected['schemaVersion']) is not int or selected['schemaVersion'] != 1
+                    or selected['kind'] != 'composed-budget-campaign'
+                    or selected['evidenceClass'] != 'installed-cohort-local-consistency'
+                    or not isinstance(selected['members'], list) or len(selected['members']) != 19
+                    or not isinstance(values['originals.json'], list) or not 1 <= len(values['originals.json']) <= 19):
+                raise ValueError('budget-campaign-selection-invalid')
+            planned = set()
+            names = set()
+            for row in selected['members']:
+                campaign._closed(row, {'member', 'kind', 'digest', 'size', 'binding', 'plannedVariants'})
+                campaign._closed(row['binding'], campaign.binding_fields(row['kind']))
+                if row['kind'] not in campaign.KINDS or row['member'] in names:
+                    raise ValueError('budget-campaign-member-invalid')
+                names.add(row['member'])
+                planned.update(tuple(pair) for pair in row['plannedVariants'])
+            if names != {'member-%02d.json' % index for index in range(19)} or planned != set(REQUIRED_VARIANTS):
+                raise ValueError('budget-campaign-roster-invalid')
+            soak.validate_plan(values['plan.json'])
+            result = _result(claims=('p12-300-adapters', 'p12-300-consumers'),
+                required=campaign.legacy.REQUIRED_CASES, blockers=('budget-campaign-original-owner-required',
+                    'remaining-runtime-adapters-required', 'maintenance-required-consumer-adapters-incomplete',
+                    'reviewed-resource-baseline-required'), evidence_class='installed-campaign-selection-only')
+            result['dimensions'].update(runtimeExecution='not-observed', coverage='not-observed')
+            result['components'] = {'appBudgets': 'not-observed', 'releaseEligible': False, 'phaseComplete': False}
         elif adapter == "maintenance-drill":
             record = values["drill.json"]
             drill.verify(record)
@@ -650,7 +683,24 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
     try:
         values = {name: _json(raw) for name, raw in payloads.items() if name.endswith(".json")}
         claim_results = {}
-        if adapter == "catalog-origin-observation":
+        if adapter == 'budget-campaign':
+            owner = _protected('composed_budget_campaign_admission')
+            if type(authority) is not owner.OriginalBudgetCampaign:
+                raise ValueError('budget-campaign-original-capability-required')
+            authority.bind(values['plan.json'])
+            from .composed_budget_campaign_evidence import validate_coverage
+            coverage = validate_coverage(authority.coverage())
+            if coverage['evidenceClass'] == 'original-protected-source-built-budget-cohort':
+                result['blockers'].append('original-production-products-required')
+            result['blockers'].remove('budget-campaign-original-owner-required')
+            result['coverage']['observed'] = coverage['observedCases']
+            result['dimensions'].update(originalProvenance='authenticated', runtimeExecution='partial', coverage='partial')
+            result['components'] = {'appBudgets': coverage['fullAppBudgets'],
+                'budgetCohortStatus': coverage['budgetCohortStatus'], 'releaseEligible': False, 'phaseComplete': False}
+            result['measurements'] = {'budgetCampaignCoverage': coverage}
+            node = next(row for row in values['plan.json']['nodes'] if row['role'] == 'candidate-sender')
+            result['subjectBindings'] = {'commit': node['sourceCommit'], 'digest': node['artifactDigest']}
+        elif adapter == "catalog-origin-observation":
             owner = _protected("federated_catalog_runtime_observer")
             if (type(authority) is not owner.AuthenticatedCatalogObservation
                     or not authority.matches(values["observation.json"])
@@ -761,10 +811,10 @@ def verify_authenticated(adapter, payloads, as_of, scratch, authority):
                     **({"public_products": values["products.json"]} if private_products is not None else {}), **baseline_arguments)
                 if uncompared_scope is not None:
                     measured = owner.without_current_baseline(measured, uncompared_scope)
-                if final.get("schemaVersion") not in {2, 3, 4, 5, 6, 7} or measured != original:
+                if final.get("schemaVersion") not in {2, 3, 4, 5, 6, 7, 8} or measured != original:
                     raise ValueError("maintenance-measurements-substituted")
                 if original["schemaVersion"] in {2, 3, 4, 5, 6}:
-                    if (final["schemaVersion"] != original["schemaVersion"] + 1
+                    if (final.get("budgetCampaignBaseVersion", final["schemaVersion"]) != original["schemaVersion"] + 1
                             or final["admittedProductsDigest"] != soak.digest(values["products.json"])):
                         raise ValueError("maintenance-measurements-products-substituted")
                     result["components"]["originalAuthentication"] = "authenticated"
@@ -803,6 +853,22 @@ def validate_proof(adapter, proof, payloads):
     if proof is None:
         return {"state": "not-supplied", "scope": "none", "blockers": ["original-proof-missing"]}
     try:
+        if adapter == 'budget-campaign':
+            if (set(payloads) != set(REQUIRED_INPUTS[adapter]) or not isinstance(proof, dict)
+                    or set(proof) != {'kind', 'coordinates'} or proof['kind'] != 'budget-campaign-original-roster'):
+                raise ValueError('budget-campaign-proof-invalid')
+            _protected('composed_budget_campaign_admission')
+            from original_artifact_authentication import validate_coordinates
+            originals = _json(payloads['originals.json'])
+            coordinates = [row['coordinates'] for row in originals]
+            if proof['coordinates'] != coordinates or not 1 <= len(coordinates) <= 19:
+                raise ValueError('budget-campaign-proof-roster-invalid')
+            for row in coordinates:
+                checked = validate_coordinates(row)
+                if checked['sourceFamily'] != 'cross-version-supervisor' or checked['jobName'] != 'supervise-cross-version':
+                    raise ValueError('budget-campaign-proof-owner-invalid')
+            return {'state': 'unverified', 'scope': 'retained-original-coordinates-only',
+                    'blockers': ['original-producer-reauthentication-required']}
         if (adapter not in ORIGINAL_MEMBERS or type(proof) is not dict
                 or set(proof) != {"coordinates", "members"} or proof["members"] != ORIGINAL_MEMBERS[adapter]
                 or set(payloads) != set(REQUIRED_INPUTS[adapter])):
@@ -832,6 +898,15 @@ def collect_and_verify(adapter, payloads, as_of, scratch, proof):
     try:
         if validate_proof(adapter, proof, payloads)["state"] != "unverified":
             raise ValueError("original-proof-required")
+        if adapter == 'budget-campaign':
+            owner = _protected('composed_budget_campaign_admission')
+            with tempfile.TemporaryDirectory(prefix='budget-original-', dir=scratch) as directory:
+                authority = owner.authenticate_campaign(_json(payloads['campaign.json']),
+                    _json(payloads['originals.json']), Path(directory), cutoff=as_of)
+                result = verify_authenticated(adapter, payloads, as_of, scratch, authority)
+                result['originalProof'] = {'state': 'authenticated',
+                    'scope': 'original-budget-owners-and-exact-selected-subject', 'blockers': []}
+                return result
         _protected("app_subject_projection")
         from original_artifact_authentication import validate_coordinates
         coordinates = validate_coordinates(proof["coordinates"])

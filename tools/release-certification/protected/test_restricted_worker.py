@@ -291,10 +291,17 @@ class DurableWorkerTest(unittest.TestCase):
         self.assertFalse((self.root / 'result.json').exists())
 
     def test_native_success_never_enables_supervisor_role_operations(self):
+        import cross_version_supervisor_authority as authority
         for method in ('supervisor-authorize', 'supervisor-start', 'supervisor-checkpoint'):
             with self.subTest(method=method):
-                with self.assertRaisesRegex(worker.BoundaryError, 'workload-observer-boundary-unavailable'):
-                    worker.dispatch({**self.record, 'method': method}, self.root)
+                token = worker._DEADLINE.set(worker.time.monotonic() + 60)
+                try:
+                    with patch('restricted_native.owning_boundary', return_value=nullcontext()), \
+                         patch.object(authority, 'selected_inputs', return_value=({}, {}, {}, 62001, {})), \
+                         self.assertRaisesRegex(worker.BoundaryError, 'workload-observer-boundary-unavailable'):
+                        worker.dispatch({**self.record, 'method': method}, self.root)
+                finally:
+                    worker._DEADLINE.reset(token)
 
     def finish_provider(self, status, conclusion=None):
         self.record['method'] = 'supervisor-finish'

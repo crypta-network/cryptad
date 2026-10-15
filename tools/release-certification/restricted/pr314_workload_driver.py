@@ -20,6 +20,7 @@ import stat
 import sys
 import time
 sys.dont_write_bytecode = True
+import pr320_installed_dispatch as complete_storage
 import pr316_mail_runtime_evidence as mail_evidence
 
 INSTALLED = Path('/opt/cryptad-cross-version/current')
@@ -3347,6 +3348,12 @@ class AdministratorFnpSampler:
         message, _ancillary, flags, _address = channel.recvmsg(8193)
         if not message:
             return False
+        if message.startswith(b'O'):
+            from pr320_owner_admin import serve_owner
+            return serve_owner(self, channel, message, flags)
+        if message.startswith(b'Q') and message != b'Q':
+            from pr320_privacy_admin import serve_privacy
+            return serve_privacy(self, channel, message, flags)
         if message.startswith(b'R'):
             from pr319_restart_admin import serve_restart
             return serve_restart(self, channel, message, flags)
@@ -4133,7 +4140,7 @@ def retain_volatile(workload, value):
 def _validate_execution_mode(*, startup_measurement, lifecycle_scenario,
                              workload_group, retired_authority_preparation,
                              execution_class):
-    if execution_class not in (None, MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
+    if execution_class not in (None, MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *complete_storage.EXECUTION_CLASSES):
         raise ValueError('workload-execution-class-invalid')
     if execution_class is not None:
         if (startup_measurement or lifecycle_scenario != 'none'
@@ -4339,6 +4346,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         configure_sampler(sampler, execution_class, handoff)
         from pr319_restart_admin import configure_sampler as configure_restart
         configure_restart(sampler, execution_class, handoff)
+        complete_storage.configure_sampler(sampler, execution_class, handoff)
         sampler.preparation_gate = preparation_gate
         raw, status = collect_child(parent, pid, deadline,
             lambda: sample_memory(diagnostics), admin_channel=admin_parent,
@@ -4375,6 +4383,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         elif execution_class == RESTART_EXECUTION_CLASS:
             from cross_version_installed_restart_budgets import validate_guest_observation
             validate_guest_observation(result, selected['authorization']['selectionDigest'])
+        elif execution_class in complete_storage.EXECUTION_CLASSES:
+            complete_storage.validate_observation(execution_class, result, selected['authorization']['selectionDigest'])
         elif execution_class == STORAGE_EXECUTION_CLASS:
             from cross_version_installed_storage_budgets import validate_guest_observation
             validate_guest_observation(result, selected['authorization']['selectionDigest'])
@@ -4405,6 +4415,8 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         elif execution_class == RESTART_EXECUTION_CLASS:
             from cross_version_installed_restart_budgets import attach_guest_context
             result = attach_guest_context(result, identity, launcher_policy(), campaign_deadline)
+        elif execution_class in complete_storage.EXECUTION_CLASSES:
+            result = complete_storage.attach_context(result, identity, launcher_policy(), campaign_deadline)
         elif execution_class == STORAGE_EXECUTION_CLASS:
             from cross_version_installed_storage_budgets import attach_guest_context
             result = attach_guest_context(result, identity, launcher_policy(), campaign_deadline)
@@ -4781,6 +4793,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
         cleanup_sampler(locals().get("sampler"), diagnostics)
         from pr319_restart_admin import cleanup_sampler as cleanup_restart
         cleanup_restart(locals().get("sampler"), diagnostics)
+        complete_storage.cleanup_sampler(locals().get("sampler"), diagnostics)
         try:
             if parent is not None:
                 parent.close()
@@ -4800,6 +4813,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 cleanup(workload)
                 diagnostics['cleanup'] = 'completed'
                 diagnostics['cleanupFinishedNs'] = time.monotonic_ns()
+                complete_storage.cleanup_final(locals().get('sampler'), diagnostics)
                 if preparation_gate is not None:
                     try:
                         prepared_failure = preparation_gate.after_cleanup()
@@ -4849,7 +4863,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 from pr319_restart_admin import cleanup_sampler as retain_restart
                 retain_restart(locals().get('sampler'), diagnostics)
                 diagnostics['after'] = memory_snapshot()
-                if execution_class == RESTART_EXECUTION_CLASS:
+                if execution_class in (RESTART_EXECUTION_CLASS, complete_storage.common.RESTART_EXECUTION_CLASS):
                     from pr319_restart_admin import write_restart_diagnostics
                     write_restart_diagnostics(workload, diagnostics, create=True)
                 else:
@@ -4857,15 +4871,18 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                 volatile = evidence.capture(workload, sentinel, diagnostics['cleanup'] == 'completed',
                                             observer_root=root)
                 retain_volatile(workload, volatile)
+                if execution_class in complete_storage.EXECUTION_CLASSES and result is not None and diagnostics['cleanup'] == 'completed':
+                    complete_storage.capture_root(workload, selected, diagnostics, volatile)
                 if (sentinel is not None and diagnostics['cleanup'] == 'completed'
                         and volatile['sentinel']['status'] != 'matched'):
                     raise ValueError('workload-retained-sentinel-not-established')
+    complete_storage.require_cleanup(execution_class, diagnostics)
     # No terminal result can exist before owned controller/role/network cleanup succeeds.
     if execution_class == RESTART_EXECUTION_CLASS and diagnostics.get('restartAccessCleanup') != 'completed':
         raise ValueError('pr319-restoration-incomplete')
     if execution_class == STORAGE_EXECUTION_CLASS and diagnostics.get('storageAccessCleanup') != 'completed':
         raise ValueError('pr318-storage-restoration-incomplete')
-    if execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
+    if execution_class in (MAIL_EXECUTION_CLASS, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *complete_storage.EXECUTION_CLASSES):
         if diagnostics['cleanup'] != 'completed':
             raise ValueError('workload-execution-class-cleanup-incomplete')
         if execution_class == MAIL_EXECUTION_CLASS:
@@ -4916,7 +4933,7 @@ def execute(*, startup_measurement=False, lifecycle_scenario='cancellation',
                        'positive-sequence-executed'),
             'workloadAcceptance': ('incomplete'
                                    if execution_class in (MAIL_EXECUTION_CLASS,
-                                                          BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS) else
+                                                          BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *complete_storage.EXECUTION_CLASSES) else
                                    'not-executed' if workload_group == 'role-readiness-diagnostic'
                                    else 'incomplete'),
             'protectedExecutionEnabled': False}
@@ -4928,7 +4945,7 @@ def main():
     parser.add_argument('--lifecycle-scenario', choices=LIFECYCLE_SCENARIOS,
                         default='cancellation')
     parser.add_argument('--execution-class', choices=(MAIL_EXECUTION_CLASS,
-                                                      BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS))
+                                                      BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *complete_storage.EXECUTION_CLASSES))
     parser.add_argument('--workload-group', choices=WORKLOAD_GROUPS)
     parser.add_argument('--retired-authority-preparation', action='store_true')
     args = parser.parse_args()

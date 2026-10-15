@@ -24,6 +24,26 @@ SPEC.loader.exec_module(authority)
 
 @unittest.skipUnless(os.name == 'posix', 'Linux installed service authority')
 class SupervisorAuthorityTest(unittest.TestCase):
+    def test_budget_start_waits_for_actual_process_after_asynchronous_submission(self):
+        import pr320_original_acquisition as acquisition
+        states = [dict(ActiveState='inactive', MainPID='0', ControlGroup=''),
+                  dict(ActiveState='activating', MainPID='0', ControlGroup=''),
+                  dict(ActiveState='active', MainPID='123',
+                       ControlGroup='/system.slice/' + acquisition.BUDGET_UNIT)]
+        with patch.object(acquisition, '_verify_unit'), \
+             patch.object(acquisition, '_manager', side_effect=states) as manager, \
+             patch.object(authority.time, 'sleep'), \
+             patch.object(authority, '_service_state', return_value='running') as service:
+            authority._await_budget_service()
+        self.assertEqual(3, manager.call_count)
+        service.assert_called_once_with(budget=True)
+        with patch.object(acquisition, '_verify_unit'), \
+             patch.object(acquisition, '_manager', return_value=states[0]), \
+             patch.object(authority.time, 'monotonic', side_effect=[0, 0, 21]), \
+             patch.object(authority.time, 'sleep'), \
+             self.assertRaisesRegex(ValueError, 'start-not-observed'):
+            authority._await_budget_service()
+
     def service_process(self, command, *, installed=True, uid=62002, verified=True):
         result = SimpleNamespace(stdout='ActiveState=active\nSubState=running\nMainPID=123\n'
                                  'ControlGroup=/system.slice/' + authority.UNIT + '\n')

@@ -13,6 +13,8 @@ _ACTIVE = ContextVar('restricted_configuration', default=None)
 
 
 def closure(method, reader):
+    if method.startswith('budget-acquisition-'):
+        return {BASE + 'pr320-original-acquisition.json'}
     if method == 'baseline-approve':
         return {ORIGIN}
     if method != 'baseline-prepare':

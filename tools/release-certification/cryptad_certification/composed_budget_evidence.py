@@ -1147,8 +1147,18 @@ def derive(value, *, workload_digest, product_digest, source_commit, app_cohort_
             'releaseEligible': False}
 
 
-def derive_journal(plan, events):
+def derive_journal(plan, events, *, campaign_members=None, prospective=False):
     """Recompute process-bound originals; fixed-case union never adds process-local counts."""
+    if prospective or campaign_members is not None:
+        from .composed_budget_journal_member import resolve_journal_members
+        prospective = resolve_journal_members(plan, events, members=campaign_members)
+        historical_plan = {key: value for key, value in plan.items() if key != 'budgetCampaignInputs'}
+        historical_events = [event for event in events if 'composedBudgetCampaignMember' not in event]
+        historical = derive_journal(historical_plan, historical_events)
+        return {'schemaVersion': 1, 'kind': 'pr320-private-budget-journal-assessment',
+            'legacyCoverage': historical, 'prospectiveMembers': prospective,
+            'fullAppBudgets': 'not-observed', 'originalAuthentication': 'not-established',
+            'releaseEligible': False, 'phaseComplete': False}
     attached = [event for event in events if 'composedBudgetEvidence' in event]
     if not attached:
         return None

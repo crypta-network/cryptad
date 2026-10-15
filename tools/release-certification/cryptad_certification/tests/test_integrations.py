@@ -2983,7 +2983,7 @@ class WorkflowIntegrationTest(unittest.TestCase):
         )
         self.assertIn("persist-credentials: false", release)
         upload = release.split(
-            "- name: Upload release certification artifacts", maxsplit=1
+            "- name: Upload exact public certification artifacts", maxsplit=1
         )[1]
         self.assertNotIn("stable-vulnerability-promotion-input", upload)
         self.assertNotIn("stable-vulnerability-summary-", upload)
@@ -3035,7 +3035,14 @@ class WorkflowIntegrationTest(unittest.TestCase):
         self.assertIn("interopSmoke: $interop_smoke", release)
         self.assertIn("interopExtended: $interop_extended", release)
         self.assertIn("performanceSmoke: $performance_smoke", release)
-        self.assertIn("build/release-certification-history/", release)
+        upload = release.split("- name: Upload exact public certification artifacts", 1)[1].split(
+            "  certify-release-candidate:", 1
+        )[0]
+        self.assertIn("steps.public-export.outcome == 'success'", upload)
+        self.assertIn("${{ runner.temp }}/certification-public-${{ github.run_id }}-${{ github.run_attempt }}/", upload)
+        self.assertNotIn("build/release-certification/", upload)
+        self.assertNotIn("build/release-certification-history/", upload)
+        self.assertIn("Verify transferred members and publish validated summary", release)
         self.assertNotIn(
             'interopSmoke: "build/interop-smoke/summary.json"',
             release,

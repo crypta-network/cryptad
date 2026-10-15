@@ -86,9 +86,9 @@ def _fingerprint(response):
 
 def _case(adapter, case, variant, before_raw, before, during, after, recovery,
           graph_before, graph_after, graph_recovery, request_status, recovery_status,
-          final_raw, *, selected_fingerprint, admin_receipt=None, time_plan=None):
+          final_raw, *, selected_fingerprint, admin_receipt=None, time_plan=None, uri=False):
     events = transport._events(final_raw, before["sequence"])
-    kind = "COMPOSED_URI_IMPORT_START" if case == "window-crossing" else "COMPOSED_DIRECT_IMPORT_START"
+    kind = "COMPOSED_URI_IMPORT_START" if case == "window-crossing" or uri else "COMPOSED_DIRECT_IMPORT_START"
     parents = transport._composed_parents(events, kind)
     if not parents:
         transport.fail("storage-operation-unobserved")
@@ -145,7 +145,8 @@ def _filesystem_case(adapter, handle, statement, case, administrator, checkpoint
         admin_receipt={"restriction": restriction, "restoration": restoration})
 
 
-def _boundary_case(adapter, handle, statement, selected, checkpoint=lambda value: None):
+def _boundary_case(adapter, handle, statement, selected, checkpoint=lambda value: None,
+                   *, contender=None, recovery_handle=None, selected_fingerprint=None):
     boundary = selected["boundaryEpochSecond"]
     margin = selected["startMarginSeconds"]
     now = time.time()
@@ -196,19 +197,183 @@ def _boundary_case(adapter, handle, statement, selected, checkpoint=lambda value
         while time.time() < boundary:
             time.sleep(min(.05, boundary - time.time()))
         released = time.time()
+        if contender is not None and _request(adapter, contender, statement) != 200:
+            transport.fail("storage-contested-charge-unobserved")
         transport._publish(adapter, key, statement)
         status = client.result()["status"]
     after_raw, after = _snapshot(handle)
     graph_after = _graph(handle)
-    recovery_response = _request(adapter, handle, statement, response=True)
+    recovery_response = _request(adapter, recovery_handle or handle, statement, response=True)
     recovery_status = recovery_response["status"]
     final_raw, recovery = _snapshot(handle)
-    row = _case(adapter, "window-crossing", "available-capacity", before_raw, before,
+    row = _case(adapter, "window-crossing", "contested-capacity" if contender else "available-capacity", before_raw, before,
         during, after, recovery, graph_before, graph_after, _graph(handle), status,
-        recovery_status, final_raw, selected_fingerprint=_fingerprint(recovery_response),
+        recovery_status, final_raw, selected_fingerprint=selected_fingerprint or _fingerprint(recovery_response),
         time_plan={**selected,
             "observedReservationEpochSecond": observed, "releasedAtEpochSecond": released})
     return row, {"caseId": "window-crossing", "status": "executed"}
+
+
+def _uri_filesystem_variant(adapter, handle, statement, case, variant, administrator, checkpoint):
+    """Deny a real child write, post-fetch commit, or URI graph write without quota mutation."""
+    prime = _request(adapter, handle, statement, response=True)
+    if prime["status"] != 200:
+        transport.fail("storage-prime-failed")
+    fingerprint = _fingerprint(prime)
+    key = transport._new_content_key(adapter)
+    deferred = variant == "uri-import-commit-denial"
+    if not deferred:
+        transport._publish(adapter, key, statement)
+    graph_before = _graph(handle)
+    before_raw, before = _snapshot(handle)
+    checkpoint({"caseId": case, "phase": "before", "native": before_raw,
+                "graph": graph_before, "selectedFingerprint": fingerprint})
+    restriction = None
+    task = {"method": "POST", "path": "/api/v1/trust-graph/import-uri",
+            "parameters": {"uri": key["uri"]}}
+    with transport._start_client(adapter, handle.context, task) as client:
+        try:
+            if deferred:
+                client.release()
+                active = transport._wait_for(adapter, handle, before["sequence"],
+                    lambda _snapshot, events: any(e["kind"] == "FETCH_INVOKED" for e in events)
+                    and not any(e["kind"] in {"FETCH_SUCCEEDED", "FETCH_FAILED"} for e in events))
+                if active is None:
+                    transport.fail("storage-commit-fetch-premise-unobserved")
+            restriction = administrator(case + ":restrict")
+            checkpoint({"caseId": case, "phase": "restricted", "receipt": restriction})
+            _, during = _snapshot(handle)
+            if deferred:
+                transport._publish(adapter, key, statement)
+            else:
+                client.release()
+            status = client.result()["status"]
+            after_raw, after = _snapshot(handle)
+            graph_after = _graph(handle)
+            checkpoint({"caseId": case, "phase": "response", "native": after_raw,
+                        "graph": graph_after, "requestStatus": status})
+        finally:
+            if restriction is not None:
+                restoration = administrator(case + ":restore")
+                checkpoint({"caseId": case, "phase": "restored", "receipt": restoration})
+    if status != 503:
+        transport.fail("storage-denial-unobserved")
+    _, restored = _snapshot(handle)
+    if not restored["budgetValid"] or restored["rates"] != after["rates"]:
+        transport.fail("storage-readback-incomplete")
+    recovery_status = _request(adapter, handle, statement, key["uri"])
+    final_raw, recovery = _snapshot(handle)
+    return _case(adapter, case, variant, before_raw, before, during, after, recovery,
+        graph_before, graph_after, _graph(handle), status, recovery_status, final_raw,
+        selected_fingerprint=fingerprint,
+        admin_receipt={"restriction": restriction, "restoration": restoration}, uri=True)
+
+
+def run_complete_storage_variant(adapter, administrator, *, leave_running_for_administrator=False,
+                                 on_start_failure=None):
+    """Run one prospectively selected direction; compose separate originals in the owner campaign."""
+    import pr320_storage_contract as contract
+    from cryptad_certification.composed_budget_storage_evidence import derive_complete_storage
+    if not contract.verify_selection_contract(adapter.plan, adapter.private, adapter.authorization):
+        transport.fail("complete-storage-selection-invalid")
+    selected = contract.selected_profile(adapter.authorization["executionClass"])
+    checkpoint = lambda value: _checkpoint(adapter.root, value)
+    completed = False
+    try:
+        for role in runtime.ROLES:
+            adapter.start(role)
+        adapter.connect()
+        handles, statement = transport._bootstrap_apps(adapter)
+        handle = handles[transport.APP_IDS[0]]
+        if transport._snapshot(handle).get("budgetConfiguration") != selected["normalizedConfiguration"]["budgetConfiguration"]:
+            transport.fail("complete-storage-effective-configuration-mismatch")
+        case, variant = selected["caseId"], selected["variant"]
+        if case == "window-crossing":
+            kwargs = {}
+            if variant == "contested-capacity":
+                prime = _request(adapter, handles["budget-importer"], statement, response=True)
+                if prime["status"] != 200:
+                    transport.fail("storage-contested-prime-failed")
+                kwargs = {"contender": handle, "recovery_handle": handles["budget-no-fetch"],
+                          "selected_fingerprint": _fingerprint(prime)}
+            row, attempt = _boundary_case(adapter, handle, statement,
+                adapter.authorization["budgetSelection"]["timePlan"], checkpoint, **kwargs)
+        elif variant.startswith("uri-"):
+            row = _uri_filesystem_variant(adapter, handle, statement, case, variant, administrator, checkpoint)
+            attempt = {"caseId": case, "status": "executed"}
+        else:
+            row = _filesystem_case(adapter, handle, statement, case, administrator, checkpoint)
+            attempt = {"caseId": case, "status": "executed"}
+        component = {"schemaVersion": 1, "kind": "composed-budget-storage-component",
+                     "storageCases": [] if row is None else [row]}
+        coverage = derive_complete_storage(component)
+        private = {"schemaVersion": 1, "kind": "pr320-private-storage-budget",
+            "selectionDigest": adapter.authorization["selectionDigest"],
+            "executionClass": selected["executionClass"],
+            "contexts": {app: transport._context_evidence(value.context) for app, value in handles.items()},
+            "attempts": [attempt], "storageComponent": component, "storageCoverage": coverage}
+        checkpoint({"phase": "attempt-completed", "attempt": attempt, "row": row})
+        # Same safe exclusive writer, independent fixed filename and separate public projection.
+        raw = json.dumps(private, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        if len(raw) > 4 * 1024 * 1024:
+            transport.fail("complete-storage-private-size-limit")
+        descriptor = os.open(Path(adapter.root) / "pr320-storage-budget.private.json",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(raw)
+            output.flush()
+            os.fsync(output.fileno())
+        from cryptad_certification.composed_budget_journal_member import append_member
+        final_epoch = transport._snapshot(handle)['work']['collectorEpoch'] if row is None else row['collectorEpoch']
+        append_member(adapter.journal, 'storage-component', json.dumps(
+            component, sort_keys=True, separators=(',', ':'), allow_nan=False).encode(), collector_epoch=final_epoch)
+        completed = True
+        return {"schemaVersion": 1, "kind": "pr320-installed-storage-budget-observation",
+            "executionClass": selected["executionClass"], "selectionDigest": private["selectionDigest"],
+            "privateEvidenceDigest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+            "evidenceClass": "installed-real-time-filesystem", "caseId": case, "variant": variant,
+            "status": "executed" if row else "not-observed", "fullAppBudgets": "not-observed",
+            "phaseComplete": False, "releaseEligible": False,
+            "cleanupState": "administrator-required" if leave_running_for_administrator else "observer-owned"}
+    except Exception:
+        if getattr(adapter, "active_start_role", None) is not None and on_start_failure is not None:
+            on_start_failure(adapter.active_start_role, getattr(adapter, "active_start_stage", "unavailable"))
+        checkpoint({"phase": "interrupted", "status": "unknown"})
+        raise
+    finally:
+        if (not completed or not leave_running_for_administrator) and adapter.cleanup() != "complete":
+            transport.fail("complete-storage-cleanup-required")
+
+
+def validate_complete_guest_observation(value, expected_selection_digest=None):
+    import pr320_storage_contract as contract
+    fields = {"schemaVersion", "kind", "executionClass", "selectionDigest",
+        "privateEvidenceDigest", "evidenceClass", "caseId", "variant", "status",
+        "fullAppBudgets", "phaseComplete", "releaseEligible", "cleanupState"}
+    if not isinstance(value, dict) or set(value) != fields:
+        transport.fail("complete-storage-observation-invalid")
+    selected = contract.selected_profile(value["executionClass"])
+    if (type(value["schemaVersion"]) is not int or value["schemaVersion"] != 1
+            or value["kind"] != "pr320-installed-storage-budget-observation"
+            or (value["caseId"], value["variant"]) != (selected["caseId"], selected["variant"])
+            or value["evidenceClass"] != "installed-real-time-filesystem"
+            or value["status"] not in {"executed", "not-observed"}
+            or value["fullAppBudgets"] != "not-observed"
+            or value["releaseEligible"] is not False or value["phaseComplete"] is not False
+            or value["cleanupState"] not in {"administrator-required", "observer-owned", "completed"}
+            or any(re.fullmatch(r"sha256:[0-9a-f]{64}", str(value[name])) is None
+                   for name in ("selectionDigest", "privateEvidenceDigest"))
+            or expected_selection_digest is not None and value["selectionDigest"] != expected_selection_digest):
+        transport.fail("complete-storage-observation-invalid")
+    return value
+
+
+def attach_complete_guest_context(value, identity, runtime_policy, campaign_deadline):
+    validate_complete_guest_observation(value)
+    return {**value, "identity": identity, "runtimePolicy": runtime_policy,
+        "campaignDeadlineMonotonicNs": campaign_deadline,
+        "workloadAcceptance": "incomplete-pr320-private-evidence-not-verified",
+        "protectedExecutionEnabled": False}
 
 
 def run_storage_lane(adapter, administrator, *, leave_running_for_administrator=False,

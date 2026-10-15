@@ -71,7 +71,26 @@ def summary_for_release(release_id: str) -> dict[str, Any]:
     return summary
 
 
-def validate(summary: dict[str, Any]) -> list[str]:
+def validate(summary: dict[str, Any], *, budget_campaign=None, plan=None) -> list[str]:
+    if summary.get('kind') == 'network-scale-with-budget-campaign':
+        from cryptad_certification.composed_budget_campaign_evidence import validate_coverage
+        if set(summary) != {'schemaVersion', 'kind', 'networkScale', 'budgetCampaignCoverage'} or type(summary['schemaVersion']) is not int or summary['schemaVersion'] != 2:
+            return ['network-scale-budget-campaign-wrapper-invalid']
+        try:
+            coverage = validate_coverage(summary['budgetCampaignCoverage'])
+            if coverage['originalAuthentication'] != 'not-established':
+                from cryptad_certification.phase_12_runtime_adapters import _protected
+                owner = _protected('composed_budget_campaign_admission')
+                if type(budget_campaign) is not owner.OriginalBudgetCampaign:
+                    return ['network-scale-budget-original-capability-required']
+                if not isinstance(plan, dict) or not isinstance(plan.get('nodes'), list):
+                    return ['network-scale-budget-original-plan-required']
+                budget_campaign.bind(plan)
+                if coverage != budget_campaign.coverage():
+                    return ['network-scale-budget-original-substituted']
+        except (ValueError, TypeError, KeyError, StopIteration):
+            return ['network-scale-budget-campaign-invalid']
+        return validate(summary['networkScale'])
     errors: list[str] = []
     if summary.get("mode") not in {"simulated-rc-soak", "live-rc-soak"}:
         errors.append("mode must be simulated-rc-soak or live-rc-soak")
@@ -115,6 +134,36 @@ def validate(summary: dict[str, Any]) -> list[str]:
             if value.get(key) != expected:
                 errors.append(f"{section}.{key} must be {expected}")
     return errors
+
+
+def with_budget_campaign(summary, selection, members, *, expected_subject, expected_bindings):
+    """Recompute finite original member details alongside the independent soak calculation."""
+    from cryptad_certification.composed_budget_campaign_evidence import derive_campaign, validate_coverage
+    if validate(summary):
+        raise ValueError('network-scale-budget-base-invalid')
+    coverage = derive_campaign(selection, members, expected_subject=expected_subject,
+                               expected_bindings=expected_bindings)
+    return {'schemaVersion': 2, 'kind': 'network-scale-with-budget-campaign',
+            'networkScale': json.loads(json.dumps(summary)), 'budgetCampaignCoverage': validate_coverage(coverage)}
+
+
+def with_authenticated_budget_campaign(summary, budget_campaign, *, plan):
+    """Consume the original owner's capability for budgets alongside independent soak facts."""
+    from cryptad_certification.phase_12_runtime_adapters import _protected
+    owner = _protected('composed_budget_campaign_admission')
+    if type(budget_campaign) is not owner.OriginalBudgetCampaign or validate(summary):
+        raise ValueError('network-scale-budget-original-capability-required')
+    if not isinstance(plan, dict) or not isinstance(plan.get('nodes'), list):
+        raise ValueError('network-scale-budget-original-plan-required')
+    try:
+        budget_campaign.bind(plan)
+    except (ValueError, TypeError, KeyError, StopIteration):
+        raise ValueError('network-scale-budget-original-plan-invalid') from None
+    result = {'schemaVersion': 2, 'kind': 'network-scale-with-budget-campaign',
+              'networkScale': json.loads(json.dumps(summary)), 'budgetCampaignCoverage': budget_campaign.coverage()}
+    if validate(result, budget_campaign=budget_campaign, plan=plan):
+        raise ValueError('network-scale-budget-original-invalid')
+    return result
 
 
 def run_self_test() -> None:

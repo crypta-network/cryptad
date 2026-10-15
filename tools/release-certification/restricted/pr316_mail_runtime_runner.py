@@ -224,7 +224,7 @@ def launch_remaining_bytes(required, prepared):
     return max(reserve, required - prepared)
 
 
-def wait_pressure_watcher(args, root, output, suite, source_commit, prepared, remaining):
+def wait_pressure_watcher(args, root, output, suite, source_commit, prepared, remaining, *, execution_class=None):
     """Require fresh PVE admission, inventory and watcher at the launch boundary."""
     not_before = time.monotonic_ns()
     retained_runner._save(output / 'awaiting-pressure-watcher.private.json', {
@@ -234,7 +234,8 @@ def wait_pressure_watcher(args, root, output, suite, source_commit, prepared, re
         'preparedAttemptBytes': prepared,
         'requiredRemainingBytes': remaining,
         'requiredHostAdmissionPhase': 'launch',
-        'requiredPveInventoryPhase': 'launch'})
+        'requiredPveInventoryPhase': 'launch',
+        **({'executionClass': execution_class} if execution_class is not None else {})})
     deadline = time.monotonic() + 120
     admission_path = root / 'host-admission' / host_admission.receipt_name(
         suite, 'launch')
@@ -270,7 +271,8 @@ def wait_pressure_watcher(args, root, output, suite, source_commit, prepared, re
         output / 'launch-pve-inventory.private.json', inventory)
     while True:
         try:
-            return pressure_watch.verify_launch_ready(suite, source_commit)
+            return (pressure_watch.verify_launch_ready(suite, source_commit) if execution_class is None
+                    else pressure_watch.verify_launch_ready(suite, source_commit, execution_class=execution_class))
         except (FileNotFoundError, OSError, ValueError):
             if time.monotonic() >= deadline:
                 raise ValueError('pr316-pve-host-monitor-unavailable') from None

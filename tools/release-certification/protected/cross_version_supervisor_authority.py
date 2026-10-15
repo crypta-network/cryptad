@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import datetime as dt
 from contextlib import nullcontext
+from contextvars import ContextVar
 import io
 import json
 import os
@@ -35,6 +36,7 @@ CONFIG = Path('/etc/cryptad-certification')
 UNIT = 'cryptad-cross-version-soak.service'
 WORKFLOW = '.github/workflows/cross-version-live-network-soak.yml'
 _SEAL = object()
+_BUDGET_REPORT = ContextVar('budget_supervisor_report', default=False)
 
 # Isolated Python invocation deliberately imports only the installed reviewed helper trees.
 HERE = Path(__file__).resolve().parent
@@ -170,7 +172,8 @@ def selected_inputs():
         raise AuthorityError('protected-selected-root-not-private')
     values, hashes = read_selected(STATE, uid)
     plan = validate_plan(values['plan'])
-    if plan['profile'] != 'protected-long-live':
+    budget = is_budget_selection(plan, values['private-config'], values['authorization'])
+    if plan['profile'] != 'protected-long-live' and not budget:
         raise AuthorityError('protected-selected-profile-invalid')
     identifier = plan['experimentId']
     root = STATE / 'experiments' / identifier
@@ -189,13 +192,44 @@ def selected_inputs():
     if plan['producer'] != identity:
         raise AuthorityError('protected-installed-producer-mismatch')
     selection = values['service-selection']
-    bindings = {'serviceDigest': file_digest(CHECKOUT / 'tools/interop/cross_version_service.py'),
+    service = ('tools/release-certification/protected/pr320_original_acquisition.py'
+               if budget else 'tools/interop/cross_version_service.py')
+    bindings = {'serviceDigest': file_digest(CHECKOUT / service),
                 'planDigest': hashes['plan'],
                 'privateConfigDigest': hashes['private-config'],
                 'authorizationDigest': hashes['authorization']}
     if selection != {'schemaVersion': 1, **bindings}:
         raise AuthorityError('protected-service-selection-mismatch')
+    if budget:
+        from pr320_original_acquisition import verify_prepared_selection
+        verify_prepared_selection(plan, private, authorization)
     return plan, private, authorization, uid, bindings
+
+
+def is_budget_selection(plan, private, authorization):
+    """Recognize only source-owned prospective selections; old workload gates stay closed."""
+    if 'budgetCampaignInputs' not in plan:
+        return False
+    from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES
+    execution = authorization.get('executionClass')
+    if execution not in PROSPECTIVE_EXECUTION_CLASSES:
+        raise AuthorityError('protected-budget-selection-class-invalid')
+    from pr320_budget_contract import PRIVACY_EXECUTION_CLASS, CANCELLATION_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, ROUTE_EXECUTION_CLASSES
+    if execution == PRIVACY_EXECUTION_CLASS:
+        import pr320_privacy_contract as contract
+    elif execution == CANCELLATION_EXECUTION_CLASS:
+        import pr320_cancellation_contract as contract
+    elif execution == RESTART_EXECUTION_CLASS:
+        import pr320_restart_contract as contract
+    elif execution in ROUTE_EXECUTION_CLASSES:
+        import pr320_route_contract as contract
+    else:
+        import pr320_storage_contract as contract
+    if not contract.verify_selection_contract(plan, private, authorization):
+        raise AuthorityError('protected-budget-selection-contract-invalid')
+    from cryptad_certification.composed_budget_journal_member import validate_selected_sources
+    validate_selected_sources(plan, authorization['budgetSelection']['toolIdentities'])
+    return True
 
 
 def boot_id():
@@ -216,6 +250,20 @@ def run_identity():
 
 
 def validate_report(report):
+    if isinstance(report, dict) and report.get('schemaVersion') == 9:
+        from pr320_supervisor_projection import validate
+        return validate(report)
+    if isinstance(report, dict) and report.get('schemaVersion') == 8:
+        from composed_budget_campaign_admission import validate_public_receipt
+        base = report.get('budgetCampaignBaseVersion')
+        if type(base) is not int or base not in {2, 3, 4, 5, 6, 7} or report.get('operation') != 'finish':
+            raise AuthorityError('protected-budget-campaign-report-invalid')
+        validate_public_receipt(report.get('budgetCampaignReceipt'))
+        historical = {key: value for key, value in report.items() if key not in
+                      {'budgetCampaignBaseVersion', 'budgetCampaignReceipt'}}
+        historical['schemaVersion'] = base
+        validate_report(historical)
+        return report
     common = {'schemaVersion', 'kind', 'operation', 'experimentId', 'planDigest', 'producer',
               'job', 'purpose', 'releaseEligible', 'selectionDigest'}
     variants = {
@@ -282,6 +330,9 @@ def authenticate_report(coordinates, private_root):
     if report.get('job') != {key: coordinates[key] for key in ('sourceCommit', 'runId', 'runAttempt')}:
         raise AuthorityError('protected-supervisor-report-original-job-mismatch')
     validate_report(report)
+    if report['schemaVersion'] == 9:
+        from pr320_supervisor_projection import reopen
+        report = reopen(report)
     return report, original.coordinates
 
 
@@ -319,7 +370,16 @@ def stop_owned_service():
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def _service_state():
+def _service_state(*, budget=False):
+    if budget:
+        from pr320_original_acquisition import _manager, _verify_unit, BUDGET_UNIT
+        _verify_unit()
+        manager = _manager()
+        if manager['ActiveState'] in {'activating', 'active'}:
+            if manager['ControlGroup'] != '/system.slice/' + BUDGET_UNIT or int(manager['MainPID']) <= 1:
+                raise AuthorityError('protected-budget-service-identity-mismatch')
+            return 'running'
+        return 'stopped'
     completed = subprocess.run(['/usr/bin/systemctl', 'show', UNIT, '--property=ActiveState,SubState,MainPID,ControlGroup', '--no-pager'],
                                capture_output=True, text=True, timeout=20, check=True, env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'})
     values = dict(line.split('=', 1) for line in completed.stdout.splitlines() if '=' in line)
@@ -338,6 +398,24 @@ def _service_state():
         if command != expected + [b''] or Path(f'/proc/{pid}').stat().st_uid != pwd.getpwnam('cryptad-soak').pw_uid:
             raise AuthorityError('protected-service-process-not-selected')
     return 'running' if active else 'stopped'
+
+
+def _await_budget_service():
+    """Observe the asynchronous fixed unit's actual process before attesting start."""
+    from pr320_original_acquisition import _manager, _verify_unit, BUDGET_UNIT
+    _verify_unit()
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        manager = _manager()
+        if manager['ActiveState'] in {'active', 'activating'} and int(manager['MainPID']) > 1:
+            if manager['ControlGroup'] != '/system.slice/' + BUDGET_UNIT:
+                raise AuthorityError('protected-budget-service-identity-mismatch')
+            if _service_state(budget=True) == 'running':
+                return
+        if manager['ActiveState'] == 'failed':
+            break
+        time.sleep(0.05)
+    raise AuthorityError('protected-budget-service-start-not-observed')
 
 
 class AuthenticatedRunner:
@@ -472,12 +550,14 @@ class TerminalEvidence:
         self._boot_id = boot_id()
         self._expires = time.monotonic_ns() + 120 * 10**9
         self._closed = False
+        self._budget = activation.get('budgetAcquisitionUnit') is not None
         self.require(activation)
 
     def require(self, activation):
         if (self._closed or os.geteuid() != 0 or digest(activation) != self._activation_digest
                 or boot_id() != self._boot_id or activation.get('bootId') != self._boot_id
-                or time.monotonic_ns() > self._expires or _service_state() != 'stopped'):
+                or time.monotonic_ns() > self._expires
+                or (_service_state(budget=True) if self._budget else _service_state()) != 'stopped'):
             raise AuthorityError('protected-terminal-evidence-lifetime-or-service-mismatch')
 
     def rows(self, activation):
@@ -597,7 +677,7 @@ def _admit_product_rows(plan, private):
 
 
 def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False, activation=None, terminal=None,
-             baseline_selection=None, baseline_scope=None):
+             baseline_selection=None, baseline_scope=None, supervisor_report=None):
     expected_uid = pwd.getpwnam('cryptad-soak').pw_uid if expected_uid is None else expected_uid
     maximum = plan['policy']['maxEvents']
     from cryptad_certification.cross_version_evidence import event_byte_limit
@@ -667,6 +747,14 @@ def snapshot(plan, root, previous=None, *, expected_uid=None, require_eof=False,
         if baseline_scope is not None and not baseline_arguments:
             from maintenance_runtime_projection import without_current_baseline
             result['maintenanceMeasurements'] = without_current_baseline(result['maintenanceMeasurements'], baseline_scope)
+        if require_eof and 'budgetCampaignInputs' in plan:
+            from composed_budget_campaign_admission import retain_owned_members
+            if supervisor_report is None:
+                raise AuthorityError('protected-budget-campaign-report-context-required')
+            base = result['maintenanceMeasurements']['schemaVersion'] + 1
+            plain = {**supervisor_report, **result, 'schemaVersion': base}
+            result['budgetCampaignReceipt'] = retain_owned_members(plan, events, checkpoint, activation, plain, terminal)
+            result['budgetCampaignBaseVersion'] = base
     return result
 
 
@@ -674,6 +762,9 @@ def control(operation):
     if pwd is None or os.name != 'posix' or os.geteuid() != 0 or operation not in {'authorize', 'start', 'checkpoint', 'finish'}:
         raise AuthorityError('protected-control-fixed-root-operation-required')
     plan, private, authorization, uid, bindings = selected_inputs()
+    budget = is_budget_selection(plan, private, authorization)
+    _BUDGET_REPORT.set(budget)
+    service_state = lambda: _service_state(budget=True) if budget else _service_state()
     job = run_identity()
     if job['sourceCommit'] != plan['producer']['sourceCommit']:
         raise AuthorityError('protected-workflow-installed-source-mismatch')
@@ -703,7 +794,7 @@ def control(operation):
         if not baseline._time(approved_baseline.decision()['approvalCompletedBy']) <= baseline._time(selected_baseline['selectedAt']) <= dt.datetime.now(dt.timezone.utc):
             raise AuthorityError('protected-runtime-baseline-preselection-invalid')
     if operation == 'authorize':
-        if _service_state() != 'stopped' or Path(private['root']).exists():
+        if service_state() != 'stopped' or Path(private['root']).exists():
             raise AuthorityError('protected-authorization-topology-not-new')
         report['approvedBounds'] = {key: authorization[key] for key in ('maxSeconds', 'maxOperations', 'syntheticContent')}
         report['plan'] = plan
@@ -733,8 +824,8 @@ def control(operation):
             raise AuthorityError('protected-start-requires-original-authorization')
         intent_path = AUTHORITY / 'runtime-reference-start.json'
         resuming = reference_campaign is not None and os.path.lexists(intent_path)
-        service_state = _service_state()
-        if not resuming and (service_state != 'stopped' or Path(private['root']).exists()):
+        current_service_state = service_state()
+        if not resuming and (current_service_state != 'stopped' or Path(private['root']).exists()):
             raise AuthorityError('protected-start-topology-not-new')
         product_rows, private_product_rows = _admit_product_rows(plan, private)
         if ((private_product_rows is not None or private_runtime) != sealed_authorization
@@ -751,6 +842,10 @@ def control(operation):
                       'ownerUid': uid, 'bootId': boot_id(),
                       'startedMonotonicNs': now, 'deadlineMonotonicNs': now + authorization['maxSeconds'] * 10**9,
                       'products': product_rows}
+        if budget:
+            from pr320_original_acquisition import BUDGET_UNIT
+            activation['budgetAcquisitionUnit'] = BUDGET_UNIT
+            activation['deadlineMonotonicNs'] += 900 * 10**9
         if sealed_authorization:
             activation.update(schemaVersion=2, selectionDigest=report['selectionDigest'])
             activation.pop('privateConfigDigest')
@@ -791,7 +886,7 @@ def control(operation):
             _create_or_verify(AUTHORITY / 'activation.json', activation, 0o644)
         else:
             _atomic(AUTHORITY / 'activation.json', activation, 0o644)
-        recovered_terminal = resuming and service_state == 'stopped' and os.path.lexists(private['root'])
+        recovered_terminal = resuming and current_service_state == 'stopped' and os.path.lexists(private['root'])
         if recovered_terminal:
             # A launched execution is never restarted. Recover its start handoff only after
             # verifying and retaining the stopped original terminal evidence for normal finish.
@@ -802,12 +897,17 @@ def control(operation):
                 snapshot(plan, Path(private['root']), expected_uid=uid, require_eof=True,
                          activation=activation, terminal=terminal)
                 terminal.require(activation)
-        elif not (resuming and service_state == 'running'):
+        elif not (resuming and current_service_state == 'running'):
             if reference_campaign is not None:
                 _reference_launch_permitted(activation, private)
-            subprocess.run(['/usr/bin/systemctl', 'start', UNIT], check=True, timeout=30,
-                           env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        report['serviceState'] = _service_state()
+            if budget:
+                from pr320_original_acquisition import begin_owned
+                begin_owned()
+                _await_budget_service()
+            else:
+                subprocess.run(['/usr/bin/systemctl', 'start', UNIT], check=True, timeout=30,
+                               env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        report['serviceState'] = service_state()
         if report['serviceState'] != ('stopped' if recovered_terminal else 'running'):
             raise AuthorityError('protected-service-start-not-observed')
         report['approvalOrigin'] = origin
@@ -835,7 +935,7 @@ def control(operation):
         report['admittedProductsDigest'] = bound_digest
     report['approvalOrigin'] = expected_origin
     report['approvalReportDigest'] = activation['approvalReportDigest']
-    report['serviceState'] = _service_state()
+    report['serviceState'] = service_state()
     if operation == 'finish' and report['serviceState'] != 'stopped':
         raise AuthorityError('protected-finish-service-still-running')
     baseline_selection = None
@@ -854,8 +954,12 @@ def control(operation):
                     raise
                 # Current eligibility cannot erase an already-executed observation. Without a
                 # capability, projection retains the historical reviewed-baseline blocker.
-    terminal = TerminalEvidence(_SEAL, activation) if operation == 'finish' and activation.get('schemaVersion') == 2 else None
+    terminal = TerminalEvidence(_SEAL, activation) if operation == 'finish' and (activation.get('schemaVersion') == 2 or budget) else None
     with terminal if terminal is not None else nullcontext():
+        if budget and operation == 'finish':
+            from pr320_original_acquisition import completed_owned
+            from composed_budget_campaign_admission import capture_owned_inputs
+            capture_owned_inputs(completed_owned(activation, plan, terminal=terminal), activation, plan, terminal)
         if activation.get('products') and any('runtimeBinding' in row or 'sealedRuntimeBinding' in row for row in activation['products']):
             if terminal is not None:
                 terminal.validate_selection(activation, plan, private)
@@ -867,10 +971,11 @@ def control(operation):
                                require_eof=operation == 'finish', activation=activation,
                                **({'baseline_scope': selected_baseline['scope']} if selected_baseline is not None else {}),
                                **({'baseline_selection': baseline_selection} if baseline_selection is not None else {}),
+                               **({'supervisor_report': report} if 'budgetCampaignInputs' in plan else {}),
                                **({'terminal': terminal} if terminal is not None else {})))
         if terminal is not None:
             terminal.require(activation)
-    report['schemaVersion'] = report['maintenanceMeasurements']['schemaVersion'] + 1
+    report['schemaVersion'] = 8 if 'budgetCampaignReceipt' in report else report['maintenanceMeasurements']['schemaVersion'] + 1
     # Collection precedes redaction, stdout, original attestation and artifact upload. Retain
     # immutable private inputs so any failed handoff can retry the same terminal observation.
     # Removal belongs to explicit operator reconciliation after durable original evidence exists.
@@ -885,14 +990,19 @@ def execute_owned(operation):
     service checks stay in ``control``. This result does not transfer an internal capability.
     """
     previous_umask = os.umask(0o077)
+    budget_context = _BUDGET_REPORT.set(False)
     try:
         result = control(operation)
+        if _BUDGET_REPORT.get():
+            from pr320_supervisor_projection import retain
+            result = retain(result)
         if scan_value(result):
             if result.get('operation') in {'start', 'checkpoint'} and result.get('serviceState') == 'running':
                 stop_owned_service()
             raise AuthorityError('protected-supervisor-public-redaction-failed')
         return result
     finally:
+        _BUDGET_REPORT.reset(budget_context)
         os.umask(previous_umask)
 
 
@@ -910,6 +1020,13 @@ def dispatch_owned(method):
     baselines = {'baseline-prepare': 'prepare', 'baseline-approve': 'approve'}
     if method in supervisors:
         return execute_owned(supervisors[method])
+    if method.startswith('budget-acquisition-'):
+        from pr320_original_acquisition import prepare_owned, begin_owned, collect_owned
+        acquisition = {'budget-acquisition-prepare': prepare_owned,
+                       'budget-acquisition-begin': begin_owned,
+                       'budget-acquisition-collect': collect_owned}
+        if method in acquisition:
+            return acquisition[method]()
     if method in baselines:
         from runtime_baseline_approval import execute_owned as baseline_execute
         return baseline_execute(baselines[method])

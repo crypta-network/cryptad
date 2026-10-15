@@ -18,6 +18,13 @@ CONTROLLED = 'controlled-native-file-backed'
 INSTALLED = 'installed-real-time-filesystem'
 GRAPH_FIELDS = {'documentFingerprint', 'payloadHash', 'signatureVerified', 'source',
                 'sourceLabel', 'sourceUriHash', 'subscriptionId', 'importedAt', 'updatedAt'}
+COMPLETE_VARIANTS = {
+    'window-crossing': ('available-capacity', 'contested-capacity'),
+    'partial-rate-write': ('direct-readable-directory-denial', 'uri-child-write-denial',
+                           'uri-import-commit-denial'),
+    'graph-store-unavailable': ('direct-readable-directory-denial',
+                              'uri-readable-directory-denial'),
+}
 
 
 def _fail(reason):
@@ -730,3 +737,191 @@ def derive_variants(value, observation_time=None):
     return {'evidenceClass': INSTALLED, 'verifiedVariants': verified,
             'unobservedVariants': missing, 'fullAppBudgets': 'not-observed',
             'originalAuthentication': 'not-established', 'releaseEligible': False}
+
+
+def _contested_time_plan(plan, events, parent):
+    _closed(plan, {'boundaryEpochSecond', 'startMarginSeconds', 'requestDeadlineMillis',
+                   'selectedAtEpochSecond', 'observedReservationEpochSecond', 'releasedAtEpochSecond'})
+    _need(all(type(v) in {int, float} and math.isfinite(v) and v >= 0 for v in plan.values()),
+          'time-plan-invalid')
+    boundary = plan['boundaryEpochSecond']
+    _need(boundary % 3600 == 0 and plan['startMarginSeconds'] == 10
+          and plan['requestDeadlineMillis'] == 45000
+          and plan['selectedAtEpochSecond'] < boundary - 10
+          <= plan['observedReservationEpochSecond'] < boundary
+          <= plan['releasedAtEpochSecond'] < boundary + 35, 'time-plan-invalid')
+    w0, w1 = _window(events, parent)
+    _need(w0 == boundary - 3600 and w1 == boundary, 'import-hour-not-crossed')
+    _, links = _roots(events)
+    selected = [e for e in events if e['operationId'] == parent or links.get(e['operationId']) == parent]
+    reservations = [e for e in selected if e['kind'] == 'RATE_RESERVED'
+                    and e['operation'] == 'trust_graph_import']
+    denials = [e for e in selected if e['kind'] == 'RATE_LIMIT_REACHED'
+              and e['operation'] == 'trust_graph_import']
+    _need(reservations and denials
+          and all(boundary - 10 <= _stamp(e['observedAt']) < boundary for e in reservations)
+          and max(_stamp(e['observedAt']) for e in reservations) <= plan['observedReservationEpochSecond']
+          and all(_stamp(e['observedAt']) >= plan['releasedAtEpochSecond'] for e in denials)
+          and _stamp(selected[-1]['observedAt']) - _stamp(selected[0]['observedAt']) <= 45
+          and (selected[-1]['elapsedNanos'] - selected[0]['elapsedNanos']) / 1e9 <= 45,
+          'real-boundary-unobserved')
+
+
+def _successor_row(row, observation_time):
+    """Verify prospective URI/contested directions without changing historical v4 admission."""
+    fields = {'caseId', 'variant', 'evidenceClass', 'operationId', 'collectorEpoch', 'nodeEpoch',
+              'roleGeneration', 'before', 'during', 'after', 'recoveryAfter', 'events',
+              'adminReceipt', 'timePlan', 'requestStatus', 'recoveryStatus',
+              'graphBefore', 'graphAfter', 'graphRecovery', 'selectedFingerprint'}
+    _closed(row, fields)
+    case, variant = row['caseId'], row['variant']
+    _need(case in COMPLETE_VARIANTS and variant in COMPLETE_VARIANTS[case]
+          and row['evidenceClass'] == INSTALLED
+          and type(row['operationId']) is int and row['operationId'] > 0
+          and isinstance(row['collectorEpoch'], str)
+          and re.fullmatch('[0-9a-f-]{36}', row['collectorEpoch'])
+          and isinstance(row['nodeEpoch'], str) and re.fullmatch('[0-9a-f]{32}', row['nodeEpoch'])
+          and isinstance(row['roleGeneration'], str)
+          and re.fullmatch('[0-9a-f]{64}', row['roleGeneration']), 'component-binding-invalid')
+    snapshots = {name: _snapshot(row[name]) for name in
+                 ('before', 'during', 'after', 'recoveryAfter')}
+    start, split, end = (row[name]['sequence'] for name in ('before', 'after', 'recoveryAfter'))
+    _need(start <= row['during']['sequence'] <= split < end, 'snapshot-order-invalid')
+    events = _events(row['events'], start, end, observation_time=observation_time)
+    validate_writes(events)
+    if any(rates is None or row[name]['droppedEvents'] for name, (rates, _) in snapshots.items()):
+        return False
+    _need(not any(snapshots[name][1] for name in ('before', 'after', 'recoveryAfter')),
+          'foreign-holds-present')
+    _holds(events, checkpoints={row[name]['sequence']: snapshots[name][1] for name in snapshots})
+    before, after, recovered = (snapshots[name][0] for name in
+                               ('before', 'after', 'recoveryAfter'))
+    initial = [e for e in events if e['sequence'] <= split]
+    recovery = [e for e in events if e['sequence'] > split]
+    # Actual OS ambiguity is reconciled from readback; no decorator cutpoint is inferred.
+    attempts, acknowledged, unknown = _ledger(before, after, initial)
+    _ledger(after, recovered, recovery)
+    _ledger(before, snapshots['during'][0],
+            [e for e in initial if e['sequence'] <= row['during']['sequence']])
+    roots, links = _roots(events)
+    ids = {e['operationId'] for e in events if e['operationId']}
+    _need(ids <= {e['operationId'] for e in roots} | set(links), 'unattributed-operation')
+    initial_roots, _ = _roots(initial)
+    recovery_roots, _ = _roots(recovery)
+    parent = row['operationId']
+    _need(any(e['operationId'] == parent and e['kind'] == 'COMPOSED_URI_IMPORT_START'
+              for e in initial_roots), 'component-primary-route-invalid')
+    _need(len(recovery_roots) == 1 and row['recoveryStatus'] == 200,
+          'recovery-unobserved')
+    _route(recovery, recovery_roots[0]['operationId'])
+    primary = [e for e in initial if e['operationId'] == parent or links.get(e['operationId']) == parent]
+    if case == 'window-crossing':
+        _need(variant == 'contested-capacity' and row['adminReceipt'] is None
+              and row['requestStatus'] == 429 and not unknown
+              and len(initial_roots) == 2, 'contested-variant-invalid')
+        _window(initial, parent)
+        contender = next(e for e in initial_roots if e['operationId'] != parent)
+        _route(initial, contender['operationId'])
+        _contested_time_plan(row['timePlan'], initial, parent)
+        # A legitimate contender may update the selected graph. Verify its actual native verdict.
+        _graph_reconcile(row['graphBefore'], row['graphAfter'], row['graphRecovery'],
+            cutpoint=None, failed=False, controlled=False, selected=row['selectedFingerprint'],
+            initial_events=[e for e in initial if e['operationId'] == contender['operationId']],
+            recovery_events=recovery)
+    else:
+        _need(row['timePlan'] is None and row['requestStatus'] == 503
+              and len(initial_roots) == 1, 'filesystem-variant-invalid')
+        _receipt(row['adminReceipt'], case, row['roleGeneration'])
+        own, group = _route(initial, parent, failed=True,
+                            graph_failure=case == 'graph-store-unavailable')
+        reserved = [e for e in group if e['kind'] == 'RATE_RESERVED'
+                    and e['operation'] == 'trust_graph_import']
+        released = [e for e in group if e['kind'] == 'RATE_RESERVATION_RELEASED'
+                    and e['operation'] == 'trust_graph_import']
+        scope = own[0]['scope']
+        _need(len(reserved) == len(released) == 2
+              and {e['scope'] for e in reserved} == {1, scope}
+              and len({e['operationId'] for e in reserved}) == 1
+              and {(e['operationId'], _key(e)) for e in reserved} ==
+                  {(e['operationId'], _key(e)) for e in released}
+              and all(e['value'] == 1 for e in reserved)
+              and all(e['value'] == 0 for e in released)
+              and max(e['sequence'] for e in reserved) < min(e['sequence'] for e in released),
+              'component-reservation-invalid')
+        import_id = reserved[0]['operationId']
+        stages = [e for e in group if e['operationId'] != import_id] + [e for e in own
+                  if e['kind'].startswith(('PARSE_', 'GRAPH_STORE_'))
+                  and e['kind'] != 'GRAPH_STORE_UNKNOWN']
+        _need(owner._concurrency_covers(initial, import_id, owner.IMPORT, scope, stages),
+              'component-import-lifetime-invalid')
+        if case == 'partial-rate-write':
+            child = variant == 'uri-child-write-denial'
+            _need(len(attempts) == (2 if child else 4)
+                  and len(acknowledged) == len(attempts) - 1 and len(unknown) == 1
+                  and unknown[0]['kind'] == 'RATE_WRITE_UNKNOWN'
+                  and unknown[0]['scope'] == 1
+                  and unknown[0]['operation'] == ('content_fetch_global' if child else
+                                                 'trust_graph_import'), 'partial-prefix-invalid')
+            fault_id = unknown[0]['operationId']
+            _need(not any(e['kind'] == 'BUDGET_COMMITTED' and e['operationId'] in {fault_id, import_id}
+                          for e in initial), 'failed-budget-committed')
+            _need(sum(e['kind'] == 'FETCH_INVOKED' for e in primary) == (0 if child else 1),
+                  'partial-fetch-phase-invalid')
+            _graph_reconcile(row['graphBefore'], row['graphAfter'], row['graphRecovery'],
+                cutpoint='before-delegate', failed=True, controlled=False,
+                selected=row['selectedFingerprint'], initial_events=initial, recovery_events=recovery)
+        else:
+            _need(variant == 'uri-readable-directory-denial' and len(attempts) == 4
+                  and len(acknowledged) == 4 and not unknown, 'graph-budget-unconfirmed')
+            _graph_reconcile(row['graphBefore'], row['graphAfter'], row['graphRecovery'],
+                cutpoint='before-delegate', failed=True, controlled=False,
+                selected=row['selectedFingerprint'], initial_events=initial, recovery_events=recovery)
+    for name, graph in (('before', row['graphBefore']), ('after', row['graphAfter']),
+                        ('recoveryAfter', row['graphRecovery'])):
+        _need(row[name]['retainedStatements'] == len(graph), 'graph-count-substituted')
+    return True
+
+
+def derive_complete_storage(component, observation_time=None):
+    """Recompute a closed seven-direction component; authority is supplied by its owning campaign."""
+    _closed(component, {'schemaVersion', 'kind', 'storageCases'})
+    _need(type(component['schemaVersion']) is int and component['schemaVersion'] == 1
+          and component['kind'] == 'composed-budget-storage-component'
+          and isinstance(component['storageCases'], list)
+          and len(component['storageCases']) <= 7
+          and len(json.dumps(component, allow_nan=False).encode()) <= 7 * 1024 * 1024,
+          'component-invalid')
+    verified, seen, event_ids, operation_ids, epoch_nodes = set(), set(), set(), set(), {}
+    for row in component['storageCases']:
+        _need(isinstance(row, dict), 'component-row-invalid')
+        case, variant = row.get('caseId'), row.get('variant')
+        _need(case in COMPLETE_VARIANTS and variant in COMPLETE_VARIANTS[case]
+              and (case, variant) not in seen, 'component-variant-replayed')
+        seen.add((case, variant))
+        _need(len(json.dumps(row, allow_nan=False).encode()) <= 1024 * 1024, 'byte-limit')
+        if variant in {'available-capacity', 'direct-readable-directory-denial'}:
+            value = {'storageCases': [row], 'collectorEpoch': row.get('collectorEpoch'),
+                     'nodeEpoch': row.get('nodeEpoch')}
+            valid = case in derive_cases(value, {}, observation_time)
+        else:
+            valid = _successor_row(row, observation_time)
+        epoch = row['collectorEpoch']
+        _need(epoch not in epoch_nodes or epoch_nodes[epoch] == row['nodeEpoch'],
+              'component-epoch-substituted')
+        epoch_nodes[epoch] = row['nodeEpoch']
+        identities = {(epoch, e['sequence']) for e in row['events']}
+        operations = {(epoch, e['operationId']) for e in row['events'] if e['operationId']}
+        _need(not identities & event_ids and not operations & operation_ids, 'component-native-replayed')
+        event_ids |= identities
+        operation_ids |= operations
+        if valid:
+            verified.add((case, variant))
+    required = {(case, variant) for case, variants in COMPLETE_VARIANTS.items() for variant in variants}
+    observed = sorted(case for case, variants in COMPLETE_VARIANTS.items()
+                      if {(case, variant) for variant in variants} <= verified)
+    return {'observedCases': observed,
+        'verifiedVariants': [{'caseId': case, 'variant': variant} for case, variant in sorted(verified)],
+        'unobservedVariants': [{'caseId': case, 'variant': variant}
+                               for case, variant in sorted(required - verified)],
+        'evidenceClass': INSTALLED, 'originalAuthentication': 'not-established',
+        'fullAppBudgets': 'not-observed', 'releaseEligible': False}

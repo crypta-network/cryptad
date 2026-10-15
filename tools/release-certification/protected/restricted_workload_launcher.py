@@ -4,12 +4,17 @@ import os
 from pathlib import Path
 import pwd
 import re
+import signal
 import hashlib
 import json
 import stat
 import subprocess
 import sys
 import time
+sys.dont_write_bytecode = True
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES as COMPLETE_STORAGE_CLASSES
 
 ROOT = Path('/var/lib/cryptad-restricted-workload')
 ROLES = ('candidate-sender', 'candidate-recipient', 'previous', 'relay-no-apps')
@@ -93,10 +98,12 @@ def launcher_policy():
 
 def budget_launcher_policy(execution_class=BUDGET_EXECUTION_CLASS):
     """Additional class-bound environment; legacy and Mail policy identities stay unchanged."""
-    if execution_class not in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
+    if execution_class not in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *COMPLETE_STORAGE_CLASSES):
         raise ValueError('workload-budget-class-invalid')
-    return {'executionClass': execution_class,
-            'environment': dict(BUDGET_ENVIRONMENT)}
+    from pr320_budget_contract import prospective_profile as selected_profile
+    environment = (selected_profile(execution_class)['environment']
+                   if execution_class in COMPLETE_STORAGE_CLASSES else dict(BUDGET_ENVIRONMENT))
+    return {'executionClass': execution_class, 'environment': environment}
 
 
 def _trusted_probe_request(spec):
@@ -281,7 +288,7 @@ def verify_wrapper_options(package):
 
 
 def command(role, execution_class=None):
-    if role not in ROLES or execution_class not in (None, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
+    if role not in ROLES or execution_class not in (None, BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *COMPLETE_STORAGE_CLASSES):
         raise ValueError('workload-role-invalid')
     inputs, state = ROOT / 'roles' / role, ROOT / 'state' / role
     arguments = ['/usr/bin/bwrap', '--unshare-user', '--unshare-pid', '--unshare-ipc',
@@ -311,8 +318,8 @@ def command(role, execution_class=None):
     environment = {'PATH': '/jdk/bin:/usr/bin:/bin', 'JAVA_HOME': '/jdk', 'HOME': '/node',
         'LANG': 'C.UTF-8', 'TMPDIR': '/tmp', 'CRYPTAD_APPHOST_SANDBOX_PROVIDER': 'bubblewrap',
         'CRYPTAD_APPHOST_TRUSTED_KEYS_FILE': '/inputs/public/trusted-app-keys.properties'}
-    if execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS):
-        environment.update(BUDGET_ENVIRONMENT)
+    if execution_class in (BUDGET_EXECUTION_CLASS, STORAGE_EXECUTION_CLASS, RESTART_EXECUTION_CLASS, *COMPLETE_STORAGE_CLASSES):
+        environment.update(budget_launcher_policy(execution_class)['environment'])
     return arguments + ['--', *child], environment
 
 
@@ -329,14 +336,15 @@ def main():
         raise ValueError('workload-identity-invalid')
     if Path('/proc/self/cgroup').read_text().strip() != '0::/system.slice/cryptad-workload@' + role + '.service':
         raise ValueError('workload-cgroup-invalid')
+    invocation = os.environ.get('INVOCATION_ID')
     os.environ.clear()
     os.umask(0o077)
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from restricted_native_launcher import _trusted_read, tree_identity
     spec = _trusted_read(ROOT / 'roles' / role / 'launch.json')
     remaining = spec['deadlineMonotonicNs'] / 1e9 - time.monotonic()
     if (spec['role'] != role or spec['bootId'] != Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-            or not 0 < remaining <= 3600):
+            or not 0 < remaining <= (
+                7200 if spec.get('executionClass') == 'pr320-installed-budget-privacy-v1' else 3600)):
         raise ValueError('workload-expired')
     # ExecStartPre already recorded the real launch. The root-selected fault is
     # before a daemon and before repeating the controller's expensive tree scan.
@@ -356,21 +364,59 @@ def main():
     if spec['deadlineMonotonicNs'] <= time.monotonic_ns():
         raise ValueError('workload-expired')
     # A main-process exit causes systemd to terminate the entire nondelegated role cgroup.
-    # Candidate stdout/stderr are discarded, avoiding a privileged candidate-file collector.
-    process = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+    capture = None
+    if spec.get('executionClass') in COMPLETE_STORAGE_CLASSES:
+        from pr320_stdio_capture import Capture
+        if not isinstance(invocation, str) or re.fullmatch('[0-9a-f]{32}', invocation) is None:
+            raise ValueError('workload-capture-invocation-invalid')
+        capture = Capture(ROOT / 'state' / role, generation=invocation)
+        def terminate(_signum, _frame):
+            raise SystemExit(0)
+        signal.signal(signal.SIGTERM, terminate)
+    try:
+        process = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+            stderr=subprocess.PIPE if capture else subprocess.DEVNULL, close_fds=True)
+        if capture:
+            capture.bind(process)
+    except BaseException:
+        if capture:
+            capture.status = 'launch-failed'
+            try:
+                capture.receipt()
+            finally:
+                capture.close()
+        raise
     probe = None
-    while True:
-        remaining = spec['deadlineMonotonicNs'] / 1e9 - time.monotonic()
-        if remaining <= 0:
-            raise ValueError('workload-expired')
-        try:
-            return process.wait(timeout=min(.25, remaining))
-        except subprocess.TimeoutExpired:
-            if role == 'candidate-sender' and 'probeIdentity' in spec and probe is None:
-                probe = _start_probe(role, spec)
-            if probe is not None and probe.poll() is not None:
-                raise ValueError('workload-role-probe-exited')
+    try:
+        while True:
+            remaining = spec['deadlineMonotonicNs'] / 1e9 - time.monotonic()
+            if remaining <= 0:
+                raise ValueError('workload-expired')
+            try:
+                if capture:
+                    capture.pump()
+                status = process.wait(timeout=min(.25, remaining))
+                if capture:
+                    capture.finish()
+                return status
+            except subprocess.TimeoutExpired:
+                if role == 'candidate-sender' and 'probeIdentity' in spec and probe is None:
+                    probe = _start_probe(role, spec)
+                if probe is not None and probe.poll() is not None:
+                    raise ValueError('workload-role-probe-exited')
+    finally:
+        if capture:
+            try:
+                if capture.status == 'in-progress':
+                    try:
+                        capture.finish()
+                    except ValueError:
+                        # The fixed receipt preserves actual tail loss; readers cannot accept it.
+                        pass
+                capture.receipt()
+            finally:
+                capture.close()
 
 
 if __name__ == '__main__':

@@ -245,10 +245,17 @@ def _diagnostic_case(adapter, handles, statement, administrator, state, variant,
     return row
 
 
-def run_restart_lane(adapter, administrator, *, leave_running_for_administrator=False, on_start_failure=None):
-    from pr319_restart_contract import verify_selection_contract
-    if not verify_selection_contract(adapter.plan, adapter.private, adapter.authorization):
-        transport.fail('restart-selection-invalid')
+def run_restart_lane(adapter, administrator, *, leave_running_for_administrator=False, on_start_failure=None,
+                     execution_class=EXECUTION_CLASS):
+    with runtime.fixed_helper_imports():
+        from pr319_restart_contract import verify_selection_contract
+        from pr320_budget_contract import RESTART_EXECUTION_CLASS as prospective_class
+        if execution_class == prospective_class:
+            from pr320_restart_contract import verify_selection_contract
+        elif execution_class != EXECUTION_CLASS:
+            transport.fail('restart-class-invalid')
+        if not verify_selection_contract(adapter.plan, adapter.private, adapter.authorization):
+            transport.fail('restart-selection-invalid')
     state = {'bindings': [], 'phaseReceipts': [], 'epochContexts': []}
     completed = False
     try:
@@ -320,8 +327,12 @@ def run_restart_lane(adapter, administrator, *, leave_running_for_administrator=
         fd = os.open(Path(adapter.root) / PRIVATE_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, 'wb') as stream:
             stream.write(encoded); stream.flush(); os.fsync(stream.fileno())
+        if execution_class == prospective_class:
+            from cryptad_certification.composed_budget_journal_member import append_member
+            append_member(adapter.journal, 'legacy-attachment', json.dumps(
+                attachment, sort_keys=True, separators=(',', ':'), allow_nan=False).encode())
         completed = True
-        return {'schemaVersion': 1, 'kind': 'pr319-installed-restart-budget-observation', 'executionClass': EXECUTION_CLASS,
+        return {'schemaVersion': 1, 'kind': 'pr319-installed-restart-budget-observation', 'executionClass': execution_class,
             'selectionDigest': private['selectionDigest'], 'privateEvidenceDigest': 'sha256:' + hashlib.sha256(encoded).hexdigest(),
             'evidenceClass': oracle.INSTALLED, 'observedCases': [c for c in CASES if c in coverage['observedCases']],
             'fullAppBudgets': 'not-observed', 'phaseComplete': False, 'releaseEligible': False,
@@ -361,11 +372,11 @@ def run_observer(adapter, channel, deadline, diagnostic):
         leave_running_for_administrator=True, on_start_failure=diagnostic)
 
 
-def validate_guest_observation(value, expected_selection_digest=None):
+def validate_guest_observation(value, expected_selection_digest=None, *, execution_class=EXECUTION_CLASS):
     fields = {'schemaVersion', 'kind', 'executionClass', 'selectionDigest', 'privateEvidenceDigest',
         'evidenceClass', 'observedCases', 'fullAppBudgets', 'phaseComplete', 'releaseEligible', 'cleanupState'}
     if (not isinstance(value, dict) or set(value) != fields or type(value['schemaVersion']) is not int or value['schemaVersion'] != 1
-            or value['kind'] != 'pr319-installed-restart-budget-observation' or value['executionClass'] != EXECUTION_CLASS
+            or value['kind'] != 'pr319-installed-restart-budget-observation' or value['executionClass'] != execution_class
             or value['evidenceClass'] != oracle.INSTALLED or value['fullAppBudgets'] != 'not-observed'
             or value['phaseComplete'] is not False or value['releaseEligible'] is not False
             or value['cleanupState'] not in {'administrator-required', 'observer-owned', 'completed'}
