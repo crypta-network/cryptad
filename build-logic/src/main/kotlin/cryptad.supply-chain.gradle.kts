@@ -1,3 +1,4 @@
+import cryptad.ActiveSourceFiles
 import cryptad.ExportStableSupplyChainResolution
 import cryptad.ExportStableSupplyChainResolutionFragment
 import cryptad.StableConfigurationSpec
@@ -133,9 +134,10 @@ val stableMaterialFiles =
       include("gradle/verification-keyring.keys")
       include("src/main/kotlin/**")
     },
-    fileTree(rootDir) {
-      include("**/gradle.lockfile")
-      exclude(".gradle/**", "**/build/**")
+    providers.provider {
+      ActiveSourceFiles.repository(rootDir)
+        .filter { it == "gradle.lockfile" || it.endsWith("/gradle.lockfile") }
+        .map { rootDir.resolve(it) }
     },
     fileTree("src/jpackage") { include("**/*") },
     fileTree("tools/flatpak") { include("**/*") },

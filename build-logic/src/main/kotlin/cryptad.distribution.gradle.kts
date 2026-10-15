@@ -1,3 +1,4 @@
+import cryptad.ActiveSourceFiles
 import cryptad.PortableArchiveNormalizer
 import java.net.HttpURLConnection
 import java.net.URI
@@ -778,22 +779,31 @@ val copyTestResourcesToClasses2 by tasks.registering {
 
 tasks.compileTestJava { dependsOn(copyResourcesToClasses2, copyTestResourcesToClasses2) }
 
-// Build a source release, excluding build directories
-tasks.register<Tar>("tar") {
+// Package only the selected source roster. Unknown source exports fail rather than recursively
+// importing local files; installation exports retain their separate authenticated owner policy.
+tasks.register("tar") {
   group = "distribution"
-  description = "Build a source release, excluding build directories and Gradle caches"
-  compression = Compression.BZIP2
-  archiveBaseName.set("freenet-sources")
-  from(project.rootDir) { exclude("**/build", "build", ".gradle") }
-  into(archiveBaseName.get())
-  isPreserveFileTimestamps = true
-  isReproducibleFileOrder = true
-  destinationDirectory.set(layout.buildDirectory)
-  archiveFileName.set("${archiveBaseName.get()}.tgz")
+  description = "Build a source release from the exact selected source roster"
+  val selectedSources = lazy { ActiveSourceFiles.repository(project.rootDir) }
+  val sourceRoster = layout.buildDirectory.file("source-export/${ActiveSourceFiles.SOURCE_ROSTER}")
+  val archiveFile = layout.buildDirectory.file("freenet-sources.tgz")
+  inputs.files(providers.provider { selectedSources.value.map { project.rootDir.resolve(it) } })
+  outputs.file(archiveFile)
+  outputs.upToDateWhen { false }
+  outputs.doNotCacheIf(
+    "Source export records the current commit and working-source classification"
+  ) {
+    true
+  }
   doLast {
-    ant.invokeMethod(
-      "checksum",
-      mapOf("file" to "${destinationDirectory.get()}/${archiveFileName.get()}"),
+    ActiveSourceFiles.writeRoster(project.rootDir, selectedSources.value, sourceRoster.get().asFile)
+    ActiveSourceFiles.writeArchive(
+      project.rootDir,
+      selectedSources.value,
+      sourceRoster.get().asFile,
+      archiveFile.get().asFile,
+      "freenet-sources",
     )
+    ant.invokeMethod("checksum", mapOf("file" to archiveFile.get().asFile.absolutePath))
   }
 }

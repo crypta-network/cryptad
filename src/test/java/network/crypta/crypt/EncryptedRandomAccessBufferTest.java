@@ -455,7 +455,8 @@ class EncryptedRandomAccessBufferTest {
     }
   }
 
-  @ParameterizedTest
+  @ParameterizedTest(
+      name = "restoreRAFFrom_whenWrongSecret_onWindows_releasesUnderlyingFileHandle [{index}] {0}")
   @MethodSource("types")
   @DisplayName("restoreRAFFrom_whenWrongSecret_onWindows_releasesUnderlyingFileHandle")
   void restoreRAFFrom_whenWrongSecret_onWindows_releasesUnderlyingFileHandle(

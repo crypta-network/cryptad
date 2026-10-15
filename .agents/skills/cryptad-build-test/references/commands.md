@@ -53,6 +53,20 @@ Use a pollable process with a total execution allowance longer than 15 minutes f
   - `./gradlew :runtime-spi:test :adapter-http-legacy-admin:test`
   - `./gradlew :test --tests '*LegacyCoreUpdateActionPortTest' --tests '*CoreActionToadletTest'`
 
+## Fresh CI evidence
+
+Use `./gradlew build errorproneReport -Pphase12Evidence=true` for the Linux final evidence
+cohort. The fixed macOS ARM64 and Windows AMD64 lanes use
+`./gradlew test spotbugsMain spotbugsTest errorproneReport -Pphase12Evidence=true`.
+This opt-in mode forces selected test/analyzer execution and full Error Prone compilation;
+normal developer caching remains available. A filtered `--tests` run is partial evidence.
+
+Private task observations are written to `build/phase12/task-evidence.json` and the included
+build's `build-logic/build/phase12/task-evidence.json`, including failed/incomplete states.
+Retain raw XML and these manifests privately. Use the existing Phase 12 CI adapter for safe
+per-lane facts; inspect analyzer findings and missing classes even when Gradle succeeds.
+See [PR-321 evidence semantics](../../../../docs/pr-321-supported-platform-exact-source-ci.md).
+
 ## Compile-only / quick checks
 - Compile only:
   - `./gradlew compileJava`

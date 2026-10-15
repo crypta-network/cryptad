@@ -68,7 +68,79 @@ MAX_INPUT_TOTAL = 1536 * 1024 * 1024
 # This pin covers the reviewed acceptance scope, independently of implementation byte pins.
 # Updating code/test evidence cannot shrink a cohort or weaken a mandatory dimension. A scope
 # revision requires an explicit reviewed code change as well as a new inventory version.
-ACCEPTANCE_SCOPE_DIGEST = "sha256:812562601b3fdb598b420a8357b6cd3e77b0e932026fa4d654e5cb09743d9734"
+ACCEPTANCE_SCOPE_DIGEST = "sha256:8cf84ec5cd704b12d8f6f436f11c6d59f40bada0d374dafc1a9fb80087e3edc7"
+SUCCESSOR_BASELINE = ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr320.json"
+SUCCESSOR_BASELINE_DIGEST = "sha256:ee545d3c9ba2cadb69d461b7a30c26ee2afe8fcca1f0a0c6727d9d0941d82648"
+SUCCESSOR_SOURCE = "tools/release-certification/cryptad_certification/active_source.py"
+SUCCESSOR_SOURCE_TEST = "tools/release-certification/cryptad_certification/tests/test_active_source.py"
+SUCCESSOR_EVIDENCE_ASSERTIONS = {
+    SUCCESSOR_SOURCE: "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
+    SUCCESSOR_SOURCE_TEST: "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
+    "build-logic/src/main/kotlin/cryptad/Phase12TaskEvidence.kt": "PR-321 private Gradle observations bind actual task outcomes, selected source/class bytes, analyzer policy, runtime facts and bounded completion report snapshots; bounded public projection and original authentication remain independent admission requirements.",
+    "build-logic/src/test/kotlin/cryptad/Phase12TaskEvidenceTest.kt": "PR-321 task-observation regression source verifies execution/reuse classification and stable input handling; local test results do not establish original hosted execution.",
+    "build-logic/build.gradle.kts": "PR-321 included-build static and precompiled-script sources follow the exact selected roster before plugin discovery; private test completion snapshots participate in the required cohort without substituting root-project results for build-logic tests.",
+    "tools/release-certification/cryptad_certification/tests/test_phase_12_ci_v2.py": "PR-321 complete fixed-lane CI graph and substitution, freshness, exact source/class coverage, completion report bytes, analyzer policy, applicability and safe-projection regressions exercise original admission through declared external provider fixtures; they do not establish actual hosted execution.",
+    "build-logic/src/main/kotlin/cryptad/ActiveSourceFiles.kt": "PR-321 static build and source distribution inputs follow the exact selected roster, preserve tracked or export-declared members and configured generated roots, and refuse unsupported source-export selection without admitting unlisted static files.",
+    "build-logic/src/test/kotlin/cryptad/ActiveSourceFilesTest.kt": "PR-321 static and packaging roster regressions retain selected history names, exclude unlisted ordinary export files, preserve configured generated roots and reject missing or escaping source members; source review does not assert native distribution execution.",
+    "build-logic/src/main/kotlin/cryptad.distribution.gradle.kts": "PR-321 source distribution selection follows the explicit source owner roster; installer, signed release and independently authenticated artifact member policies retain their existing owners.",
+    "build-logic/src/main/kotlin/cryptad.supply-chain.gradle.kts": "PR-321 supply-chain lockfile selection uses the active-source owner roster without admitting untracked history; protected supply-chain and independent-build authority requirements remain unchanged.",
+    "build-logic/src/main/kotlin/cryptad.spotless.gradle.kts": "PR-321 formatter targets follow the exact build-owned active-source roster, preserve explicitly selected tracked or exported history-named members and exclude unlisted static files without changing independently supplied archive policy.",
+    "tools/release-certification/cryptad_certification/selftest.py": "PR-321's fixed Phase 12 self-test registry explicitly includes source-selection and CI v2 regression suites; registry membership is separate from their actual execution and original evidence.",
+    "kernel-content/src/main/java/network/crypta/client/filter/M3UFilter.java": "PR-321 repairs the verified unchecked bulk-read finding through unsigned single-byte stream reads while preserving URI byte limits, CRLF, EOF and filtering behavior.",
+    "src/test/java/network/crypta/client/filter/M3UFilterTest.java": "PR-321 playlist regressions cover zero-return bulk delegates, unsigned bytes, exact and exceeded limits, CRLF, unterminated EOF and empty input; source review does not imply native analyzer clearance.",
+    "tools/interop/cross_version_workload.py": "PR-321 permits unrelated offline parser imports without POSIX account modules while requiring the fixed Linux provider before installed controller, account, kernel and private-file side effects; supported Linux workload and budget authority contracts remain unchanged.",
+    "tools/interop/test_cross_version_workload.py": "PR-321 import/provider regressions distinguish unsupported OS from missing Linux prerequisites and verify rejection before socket or file mutation; declared root-peer tests remain separate provider execution.",
+}
+SUCCESSOR_BOUNDARY_TESTS = (
+    "platform-api/src/test/java/network/crypta/platform/api/PlatformApiBoundaryTest.java",
+    "platform-apphost/src/test/java/network/crypta/platform/apphost/AppHostBoundaryTest.java",
+    "platform-appdist/src/test/java/network/crypta/platform/appdist/AppDistributionBoundaryTest.java",
+    "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellBoundaryTest.java",
+)
+for _boundary in SUCCESSOR_BOUNDARY_TESTS:
+    SUCCESSOR_EVIDENCE_ASSERTIONS[_boundary] = "PR-321 boundary tests consume the exact build-owned main-Java source roster, reject unsafe or replaced roster/member paths and preserve explicitly selected tracked members despite local history pollution. No production path policy changes."
+SUCCESSOR_PILOT_TEST = "platform-apphost/src/test/java/network/crypta/platform/apphost/PilotPublisherApprovalReaderTest.java"
+SUCCESSOR_EVIDENCE_ASSERTIONS[SUCCESSOR_PILOT_TEST] = "PR-321 prepares the real owned temporary fixture root and verifies legitimate resolved aliases while raw malicious link ancestors remain rejected. Provider absence is distinct from denied or broken setup."
+SUCCESSOR_APPLICABILITY_TESTS = (
+    "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/LocalProcessAppHostTest.java",
+    "platform-appdist/src/test/java/network/crypta/platform/appdist/AppBundleDigestWriterTest.java",
+    "src/test/java/network/crypta/support/io/NativeThreadTest.java",
+    "src/test/java/network/crypta/support/io/FallocateTest.java",
+    "src/test/java/network/crypta/support/io/PaddedRandomAccessBufferTest.java",
+    "src/test/java/network/crypta/crypt/EncryptedRandomAccessBufferTest.java",
+)
+for _applicability in SUCCESSOR_APPLICABILITY_TESTS:
+    SUCCESSOR_EVIDENCE_ASSERTIONS[_applicability] = "PR-321 reviews exact platform-conditional test identities for the fixed applicability registry. Only the source-owned complementary OS branch is not applicable; missing capabilities, failed setup, unknown names and duplicate rule occurrences remain blocking. No production format or path policy changes."
+SUCCESSOR_PROVIDER_TESTS = (
+    "src/test/java/network/crypta/crypt/JceLoaderTest.java",
+    "src/test/java/network/crypta/client/CodeTest.java",
+)
+SUCCESSOR_EVIDENCE_ASSERTIONS[SUCCESSOR_PROVIDER_TESTS[0]] = "PR-321 executes required BouncyCastle algorithm coverage on the supported JDK instead of retaining an obsolete JRE21-23 guard; unavailable required provider state is an assertion failure rather than an approved skip."
+SUCCESSOR_EVIDENCE_ASSERTIONS[SUCCESSOR_PROVIDER_TESTS[1]] = "PR-321 evidence mode executes the sole opt-in FEC smoke benchmark; this no-throw test supplies execution coverage, never a timing baseline or performance approval."
+SUCCESSOR_EVIDENCE_ADDITIONS = {
+    identity: {"sourceEvidence": [SUCCESSOR_SOURCE], "testEvidence": [SUCCESSOR_SOURCE_TEST]}
+    for identity in ("p12-302-bundle", "p12-302-deployment", "p12-302-observation", "p12-303-ci")
+}
+SUCCESSOR_EVIDENCE_ADDITIONS["p12-303-ci"]["sourceEvidence"] += [
+    "build-logic/src/main/kotlin/cryptad/Phase12TaskEvidence.kt", "build-logic/build.gradle.kts",
+    "build-logic/src/main/kotlin/cryptad/ActiveSourceFiles.kt",
+    "build-logic/src/main/kotlin/cryptad.distribution.gradle.kts",
+    "build-logic/src/main/kotlin/cryptad.supply-chain.gradle.kts",
+    "build-logic/src/main/kotlin/cryptad.spotless.gradle.kts",
+    "tools/release-certification/cryptad_certification/selftest.py",
+    "kernel-content/src/main/java/network/crypta/client/filter/M3UFilter.java",
+    "tools/interop/cross_version_workload.py"]
+SUCCESSOR_EVIDENCE_ADDITIONS["p12-303-ci"]["testEvidence"] += [
+    "build-logic/src/test/kotlin/cryptad/Phase12TaskEvidenceTest.kt",
+    "build-logic/src/test/kotlin/cryptad/ActiveSourceFilesTest.kt",
+    "tools/release-certification/cryptad_certification/tests/test_phase_12_ci_v2.py",
+    *SUCCESSOR_BOUNDARY_TESTS, SUCCESSOR_PILOT_TEST,
+    "src/test/java/network/crypta/client/filter/M3UFilterTest.java",
+    "tools/interop/test_cross_version_workload.py",
+    *SUCCESSOR_APPLICABILITY_TESTS, *SUCCESSOR_PROVIDER_TESTS]
+for _identity in ("p12-300-adapters", "p12-300-consumers"):
+    SUCCESSOR_EVIDENCE_ADDITIONS[_identity] = {
+        "testEvidence": ["tools/interop/test_cross_version_workload.py"]}
 
 
 def fail(code):
@@ -110,14 +182,11 @@ def ordered(rows, key="id", edges="prerequisites"):
     return result
 
 
-def policy():
-    raw = read_file(POLICY)
-    value = parse(raw)
-    if value.get("schemaVersion") != 1 or value.get("kind") != "phase-12-acceptance-policy":
-        fail("policy-version")
+def _acceptance_scope(value):
+    """Separate accepted obligations from implementation-file byte commitments."""
     scope_fields = ("id", "pr", "assertion", "dimensions", "subjects", "prerequisites", "mandatory",
                     "operatingClass", "applicability", "limitations", "closure")
-    scope = {"version": value["version"], "requirements": [
+    return {"version": value["version"], "requirements": [
         {**{field: row[field] for field in scope_fields},
          "ownerAuthority": {key: item for key, item in row["authority"].items() if key != "policyDigest"},
          "implementationState": row["implementation"]["state"],
@@ -126,8 +195,54 @@ def policy():
         for row in value["requirements"]],
         "residuals": value["residuals"], "history": value["history"],
         "scopeDecisions": value.get("scopeDecisions", [])}
-    if digest(canonical(scope)) != ACCEPTANCE_SCOPE_DIGEST:
+
+
+def _preserve_successor_obligations(value):
+    """A recomputed scope constant cannot authorize weakening the accepted inventory."""
+    raw = read_file(SUCCESSOR_BASELINE)
+    if digest(raw) != SUCCESSOR_BASELINE_DIGEST:
+        fail("successor-baseline-pin-drift")
+    baseline = parse(raw)
+    if (value["version"] != 7 or baseline["version"] != 6
+            or value["auditedSource"] != baseline["auditedSource"]
+            or value["residuals"] != baseline["residuals"]
+            or value["history"] != baseline["history"] + [
+                {"path": SUCCESSOR_BASELINE.relative_to(ROOT).as_posix(),
+                 "digest": SUCCESSOR_BASELINE_DIGEST}]
+            or value["scopeDecisions"][:-1] != baseline["scopeDecisions"]
+            or len(value["scopeDecisions"]) != len(baseline["scopeDecisions"]) + 1):
+        fail("successor-obligation-drift")
+    before = copy.deepcopy(baseline["requirements"])
+    after = copy.deepcopy(value["requirements"])
+    for row in after:
+        for group, paths in SUCCESSOR_EVIDENCE_ADDITIONS.get(row["id"], {}).items():
+            additions = [item for item in row["implementation"][group] if item["path"] in paths]
+            if (sorted(item["path"] for item in additions) != sorted(paths)
+                    or any(item["assertion"] != SUCCESSOR_EVIDENCE_ASSERTIONS[item["path"]]
+                           or not DIGEST.fullmatch(item["digest"]) for item in additions)):
+                fail("successor-obligation-drift")
+            row["implementation"][group] = [
+                item for item in row["implementation"][group] if item["path"] not in paths]
+    # Byte commitments may advance only through the explicit successor review. Everything
+    # around those bytes, including each evidence assertion and roster, stays mandatory.
+    for rows in (before, after):
+        for row in rows:
+            row["authority"].pop("policyDigest", None)
+            for group in ("sourceEvidence", "testEvidence"):
+                for item in row["implementation"][group]:
+                    item.pop("digest", None)
+    if before != after:
+        fail("successor-obligation-drift")
+
+
+def policy():
+    raw = read_file(POLICY)
+    value = parse(raw)
+    if value.get("schemaVersion") != 1 or value.get("kind") != "phase-12-acceptance-policy":
+        fail("policy-version")
+    if digest(canonical(_acceptance_scope(value))) != ACCEPTANCE_SCOPE_DIGEST:
         fail("unreviewed-acceptance-scope")
+    _preserve_successor_obligations(value)
     rows = value["requirements"]
     if len(rows) > 96 or {r["pr"] for r in rows} != {f"PR-{i}" for i in range(291, 304)}:
         fail("policy-domain-coverage")
@@ -157,11 +272,16 @@ def checkout():
         fail("checkout-identity")
     # PR-302's renderer identity intentionally covers fewer protected helpers. These additional
     # original authentication/consumer files are part of the audit tool, including local edits.
-    protected = POLICY.parent / "protected"
-    original_helpers = {p.relative_to(protected).as_posix(): digest(read_file(p))
-                        for p in sorted(protected.rglob("*.py"))}
+    from .active_source import source_roster, read_source
+    roster = source_roster(ROOT)
+    if (roster.source_commit, roster.source_tree) != (commit, tree):
+        fail("checkout-selected-source-mismatch")
+    prefix = "tools/release-certification/protected/"
+    original_helpers = {name.removeprefix(prefix): digest(read_source(ROOT, name))
+                        for name in roster.paths if name.startswith(prefix) and name.endswith(".py")}
     effective_tool = digest(canonical({"certificationAndSchemas": tool_identity(),
-                                       "originalHelpers": original_helpers}))
+                                       "originalHelpers": original_helpers,
+                                       "selectedSourceClass": roster.source_class}))
     return {"commit": commit, "tree": tree, "toolDigest": effective_tool,
             "binding": "checkout-and-effective-tool-files;historical-products-separate"}
 

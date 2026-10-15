@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import socket
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -23,6 +24,69 @@ HANDLE = 'a' * 64
 JDK = 'sha256:' + 'b' * 64
 EPOCH = {'handle': HANDLE, 'generation': 'c' * 64, 'managerInvocation': 'd' * 32,
          'bootId': '12345678-1234-1234-1234-123456789abc'}
+
+
+class PortableWorkloadModuleTests(unittest.TestCase):
+    def test_offline_parser_and_test_discovery_import_without_posix_accounts_or_effective_uid(self):
+        script = '''import builtins, os, sys
+original = builtins.__import__
+def portable_import(name, *args, **kwargs):
+    if name == "pwd":
+        raise ModuleNotFoundError("No module named 'pwd'", name="pwd")
+    return original(name, *args, **kwargs)
+builtins.__import__ = portable_import
+os.__dict__.pop("geteuid", None)
+sys.path.insert(0, sys.argv[1])
+import cross_version_workload as workload
+assert workload._object([("portable", True)]) == {"portable": True}
+assert workload.private_app_runtime_diagnostic(ValueError()) is None
+try:
+    workload._object([("duplicate", 1), ("duplicate", 2)])
+except workload.runtime.RuntimeFailure as error:
+    assert str(error) == "workload-response-duplicate-field"
+else:
+    raise AssertionError("ambiguous parser input admitted")
+import test_cross_version_workload
+assert test_cross_version_workload.TransportTests.__unittest_skip__
+'''
+        result = subprocess.run([sys.executable, '-c', script, str(Path(workload.__file__).parent)],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def installed_actions(self):
+        connected = mock.Mock()
+        return (
+            lambda: workload.WorkloadClient().request('observe', HANDLE),
+            lambda: workload.WorkloadClient().drop_start_response(HANDLE),
+            lambda: workload.InstalledWorkloadAdapter({}, {}, {}, mock.Mock(), {}),
+            lambda: workload.ConnectedFcpClient(connected, 'fixed', Path('/unused'), mock.Mock()),
+            lambda: workload._save_mail_private(Path('/unused'), {'value': True}),
+            lambda: workload.principal_row('candidate-sender', {}, JDK),
+            lambda: workload.daemon_kernel_record('candidate-sender', {}, {}),
+            lambda: workload.kernel_roster({}, {}))
+
+    def test_unsupported_provider_rejects_installed_actions_before_mutation(self):
+        with mock.patch.object(sys, 'platform', 'win32'), \
+                mock.patch.object(workload.socket, 'socket', side_effect=AssertionError('socket allocated')) as socket_open, \
+                mock.patch.object(workload.os, 'open', side_effect=AssertionError('file opened')) as file_open:
+            for index, action in enumerate(self.installed_actions()):
+                with self.subTest(action=index), self.assertRaisesRegex(
+                        workload.runtime.RuntimeFailure, '^workload-linux-provider-required$'):
+                    action()
+            socket_open.assert_not_called()
+            file_open.assert_not_called()
+
+    def test_missing_account_module_rejects_installed_actions_before_mutation(self):
+        with mock.patch.object(sys, 'platform', 'linux'), \
+                mock.patch.object(workload, 'pwd', None), \
+                mock.patch.object(workload.socket, 'socket', side_effect=AssertionError('socket allocated')) as socket_open, \
+                mock.patch.object(workload.os, 'open', side_effect=AssertionError('file opened')) as file_open:
+            for index, action in enumerate(self.installed_actions()):
+                with self.subTest(action=index), self.assertRaisesRegex(
+                        workload.runtime.RuntimeFailure, '^workload-linux-provider-unavailable$'):
+                    action()
+            socket_open.assert_not_called()
+            file_open.assert_not_called()
 
 
 def sample():
@@ -1451,7 +1515,8 @@ class PeerConnectionTests(unittest.TestCase):
         endpoints['candidate-recipient'].send.assert_not_called()
 
 
-@unittest.skipUnless(os.geteuid() == 0, 'actual UNIX controller peer must be root')
+@unittest.skipUnless(sys.platform == 'linux' and hasattr(os, 'geteuid') and os.geteuid() == 0,
+                     'actual Linux controller peer must be root')
 class TransportTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='workload-client-')

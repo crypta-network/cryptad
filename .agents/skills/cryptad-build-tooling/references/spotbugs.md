@@ -4,7 +4,7 @@ Read for SpotBugs (Gradle) usage. Commands and unlinked source paths are relativ
 
 ## SpotBugs (Gradle) usage
 ### Current repo wiring
-- Version catalog pins SpotBugs at `6.4.8` and exposes a plugin alias in `gradle/libs.versions.toml`.
+- Version catalog pins the SpotBugs Gradle plugin at `6.5.11` and exposes a plugin alias in `gradle/libs.versions.toml`.
 - Build logic includes the plugin marker dependency in `build-logic/build.gradle.kts`.
 - The shared convention plugin applies `com.github.spotbugs` in build logic.
 - Default behavior is non-blocking: `spotbugs { ignoreFailures = true }`.

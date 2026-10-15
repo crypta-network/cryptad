@@ -149,15 +149,22 @@ def inventory(root):
 
 
 def tool_identity():
+    from .active_source import active_files, read_source
     directory = Path(__file__).parent
     root = directory.parent
-    files = [path for path in directory.rglob('*.py') if 'tests' not in path.parts]
-    files += list((root / 'schemas').glob('*.json'))
-    files += [root / 'protected' / 'original_artifact_authentication.py']
-    assets = root.parent / 'ecosystem-transparency' / 'assets'
-    files += list(assets.glob('*')) if assets.exists() else []
-    return digest(canonical({str(p.relative_to(root.parent)): digest(p.read_bytes())
-                             for p in sorted(files) if p.is_file()}))
+    repository = root.parent.parent
+    files = []
+    for name in active_files(repository):
+        parts = Path(name).parts
+        if ((name.startswith('tools/release-certification/cryptad_certification/')
+             and name.endswith('.py') and 'tests' not in parts)
+                or (name.startswith('tools/release-certification/schemas/')
+                    and name.endswith('.json') and len(parts) == 4)
+                or name == 'tools/release-certification/protected/original_artifact_authentication.py'
+                or (name.startswith('tools/ecosystem-transparency/assets/') and len(parts) == 4)):
+            files.append(name)
+    return digest(canonical({Path(name).relative_to('tools').as_posix():
+                             digest(read_source(repository, name)) for name in files}))
 
 
 def make_index(package):

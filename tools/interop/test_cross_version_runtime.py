@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import signal
+import subprocess
+import sys
 import tarfile
 import tempfile
 from types import SimpleNamespace
@@ -121,7 +123,7 @@ class PrivateProcessIdentityTest(unittest.TestCase):
 
     def test_new_record_ignores_forged_node_record_and_preserves_historical_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             legacy = root / "node/run/process-identity.json"
             legacy.parent.mkdir(parents=True)
             legacy.write_text(json.dumps({**self.identity(), "jvm": {"pid": 999}}))
@@ -138,7 +140,7 @@ class PrivateProcessIdentityTest(unittest.TestCase):
 
     def test_missing_new_record_never_falls_back_to_legacy_node_record(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             legacy = root / "node/run/process-identity.json"
             legacy.parent.mkdir(parents=True)
             legacy.write_text(json.dumps(self.identity()))
@@ -155,7 +157,7 @@ class PrivateProcessIdentityTest(unittest.TestCase):
         )
         for payload in payloads:
             with self.subTest(payload=payload), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve(strict=True)
                 runtime.write_process_identity(root, "previous", self.identity())
                 (root / "runtime/control/processes/previous.json").write_text(payload)
                 with self.assertRaisesRegex(runtime.RuntimeFailure, "identity-json-invalid"):
@@ -164,7 +166,7 @@ class PrivateProcessIdentityTest(unittest.TestCase):
     def test_link_fifo_hardlink_permissions_and_oversized_record_are_rejected(self):
         for attack in ("symlink", "fifo", "hardlink", "permissions", "oversized"):
             with self.subTest(attack=attack), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve(strict=True)
                 runtime.write_process_identity(root, "previous", self.identity())
                 target = root / "runtime/control/processes/previous.json"
                 if attack == "symlink":
@@ -184,7 +186,7 @@ class PrivateProcessIdentityTest(unittest.TestCase):
 
     def test_symlinked_ancestor_cannot_redirect_reads_or_writes(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             runtime.write_process_identity(root, "previous", self.identity())
             control = root / "runtime/control"
             control.rename(root / "outside")
@@ -196,9 +198,26 @@ class PrivateProcessIdentityTest(unittest.TestCase):
                 runtime.write_process_identity(root, "previous", self.identity())
             self.assertEqual(original, (root / "outside/processes/previous.json").read_bytes())
 
+    def test_owned_fixture_resolves_its_alias_once_without_admitting_linked_callers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory).resolve(strict=True)
+            real = fixture / 'owned root é'
+            real.mkdir(mode=0o700)
+            alias = fixture / 'fixture-alias'
+            alias.symlink_to(real, target_is_directory=True)
+            owned = alias.resolve(strict=True)
+            runtime.write_process_identity(owned, 'previous', self.identity())
+            self.assertEqual(self.identity(), runtime.read_process_identity(owned, 'previous'))
+            original = (owned / 'runtime/control/processes/previous.json').read_bytes()
+            with self.assertRaises(runtime.RuntimeFailure):
+                runtime.write_process_identity(alias, 'previous', self.identity())
+            with self.assertRaises(runtime.RuntimeFailure):
+                runtime.read_process_identity(alias, 'previous')
+            self.assertEqual(original, (owned / 'runtime/control/processes/previous.json').read_bytes())
+
     def test_replacement_during_read_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             runtime.write_process_identity(root, "previous", self.identity())
             target = root / "runtime/control/processes/previous.json"
             read = os.read
@@ -216,7 +235,7 @@ class PrivateProcessIdentityTest(unittest.TestCase):
 
     def test_ancestor_replacement_during_read_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             runtime.write_process_identity(root, "previous", self.identity())
             control = root / "runtime/control"
             read = os.read
@@ -233,7 +252,7 @@ class PrivateProcessIdentityTest(unittest.TestCase):
 
     def test_private_directory_permission_change_during_read_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             runtime.write_process_identity(root, "previous", self.identity())
             read = os.read
 
@@ -259,7 +278,7 @@ class PrivateProcessIdentityTest(unittest.TestCase):
 
     def test_authorized_legacy_checkpoint_cannot_acquire_new_layout(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             path = root / "runtime/runtime-state.json"
             path.parent.mkdir(mode=0o700)
             path.write_text(json.dumps({"schemaVersion": 1}))
@@ -276,6 +295,43 @@ class PrivateProcessIdentityTest(unittest.TestCase):
 
 
 class ProcessIdentityPlatformTest(unittest.TestCase):
+    def test_offline_helpers_import_without_posix_locking_module(self):
+        script = '''import builtins, sys
+original = builtins.__import__
+def portable_import(name, *args, **kwargs):
+    if name == "fcntl":
+        raise ModuleNotFoundError("No module named 'fcntl'", name="fcntl")
+    return original(name, *args, **kwargs)
+builtins.__import__ = portable_import
+sys.path.insert(0, sys.argv[1])
+import cross_version_runtime as runtime
+assert runtime.canonical_digest({"portable": True}).startswith("sha256:")
+assert runtime.ROLES[0] == "candidate-sender"
+'''
+        result = subprocess.run([sys.executable, '-c', script, str(Path(runtime.__file__).parent)],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_identity_write_requires_linux_before_creating_directories(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(runtime.os.__dict__):
+            runtime.os.__dict__.pop('O_PATH', None)
+            root = Path(directory).resolve(strict=True)
+            with patch.object(runtime.os, 'open') as opened, \
+                    patch.object(runtime.os, 'mkdir') as mkdir:
+                with self.assertRaisesRegex(runtime.RuntimeFailure, 'identity-linux-required'):
+                    runtime.write_process_identity(root, 'previous', {})
+                opened.assert_not_called()
+                mkdir.assert_not_called()
+
+    def test_unsupported_supervisor_rejects_before_umask_or_process_creation(self):
+        with patch.object(runtime.sys, 'platform', 'win32'), \
+                patch.object(runtime.os, 'umask') as umask, \
+                patch.object(runtime.subprocess, 'Popen') as start:
+            with self.assertRaisesRegex(runtime.RuntimeFailure, 'linux-supervisor-required'):
+                runtime.run({}, {}, {}, Mock())
+            umask.assert_not_called()
+            start.assert_not_called()
+
     def test_unsupported_platform_fails_before_opening_any_path(self):
         with patch.dict(runtime.os.__dict__):
             runtime.os.__dict__.pop('O_PATH', None)
@@ -304,7 +360,7 @@ class RuntimeSubjectBindingTest(unittest.TestCase):
 class ArchiveTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve(strict=True)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -466,6 +522,15 @@ class ArchiveTest(unittest.TestCase):
 
 
 class DeadlineTest(unittest.TestCase):
+    def test_unavailable_timer_rejects_before_changing_signal_state(self):
+        with patch.dict(runtime.signal.__dict__):
+            runtime.signal.__dict__.pop('SIGALRM', None)
+            with patch.object(runtime.signal, 'signal') as changed:
+                with self.assertRaisesRegex(runtime.RuntimeFailure, 'operation-deadline-unavailable'):
+                    with runtime.absolute_deadline(1):
+                        self.fail('unsupported timer entered')
+                changed.assert_not_called()
+
     def test_whole_operation_deadline_interrupts_slow_progress(self):
         with self.assertRaisesRegex(runtime.RuntimeFailure, "operation-deadline-exceeded"):
             with runtime.absolute_deadline(.01):
@@ -784,7 +849,7 @@ class SupervisorBehaviorTest(unittest.TestCase):
         instance.prepared = {"candidate-sender": ()}
         instance.stop = Mock()
         with tempfile.TemporaryDirectory() as directory:
-            instance.root = Path(directory)
+            instance.root = Path(directory).resolve(strict=True)
             (instance.root / "runtime").mkdir()
             state = instance.root / "runtime/runtime-state.json"
             state.write_text("original-private-reconciliation-record")
@@ -794,7 +859,7 @@ class SupervisorBehaviorTest(unittest.TestCase):
     def test_unauthenticated_or_replaced_private_state_never_attaches(self):
         instance = self.supervisor()
         with tempfile.TemporaryDirectory() as directory:
-            instance.root = Path(directory)
+            instance.root = Path(directory).resolve(strict=True)
             (instance.root / "runtime").mkdir()
             (instance.root / "runtime/runtime-state.json").write_text('{"nodes":{"previous":{"pid":123}}}')
             instance.authorization = {"runtimeStateDigest": "sha256:" + "0" * 64}
@@ -1017,7 +1082,7 @@ class MailPrivacyTest(unittest.TestCase):
     def test_log_scan_detects_canary_crossing_chunk_boundary_before_restart(self):
         supervisor = self.supervisor()
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             log = root / "run/apps/mail-prototype/process.log"
             log.parent.mkdir(parents=True)
             log.write_bytes(b"x" * 65530 + b"synthetic-private-body")
@@ -1183,7 +1248,7 @@ class BudgetIntegrationTest(unittest.TestCase):
                          'requires Linux O_PATH and genuine procfs')
     def test_resource_sample_records_only_partial_numeric_counters_from_selected_jvm(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             (root / "node/run").mkdir(parents=True)
             (root / "java/bin").mkdir(parents=True)
             (root / "java/bin/java").write_bytes(b"selected java")

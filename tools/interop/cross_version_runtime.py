@@ -10,7 +10,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import base64
-import fcntl
 import datetime as dt
 from html.parser import HTMLParser
 import importlib.util
@@ -31,6 +30,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+
+try:
+    import fcntl
+except ModuleNotFoundError:
+    fcntl = None
 
 import interop_smoke as interop
 
@@ -54,6 +58,8 @@ class RuntimeFailure(Exception):
 @contextmanager
 def _identity_directory(path, *, private_from=None, create=False):
     """Pin every directory component and reject replaced or symlinked ancestors."""
+    if sys.platform != "linux" or not hasattr(os, "O_PATH"):
+        raise RuntimeFailure("private-process-identity-linux-required")
     path = Path(path).absolute()
     if ".." in path.parts:
         raise RuntimeFailure("private-process-identity-path-invalid")
@@ -364,6 +370,9 @@ def absolute_deadline(seconds):
     """Bound whole operations including trickled FCP frames and response consumption."""
     if seconds <= 0:
         raise RuntimeFailure("experiment-deadline-exceeded")
+    if any(not hasattr(signal, name) for name in
+           ("SIGALRM", "ITIMER_REAL", "getitimer", "setitimer")):
+        raise RuntimeFailure("operation-deadline-unavailable")
     def timeout(_signal, _frame):
         raise RuntimeFailure("operation-deadline-exceeded")
     previous = signal.getsignal(signal.SIGALRM)
@@ -1135,8 +1144,7 @@ class Supervisor:
             self.prepare_catalog_selection()
 
     def _validate(self):
-        if os.name != "posix" or not Path("/proc/sys/kernel/random/boot_id").is_file():
-            raise RuntimeFailure("linux-supervisor-required")
+        _require_linux_supervisor()
         if self.plan.get("profile") not in {"bounded-live", "protected-long-live"} or self.plan.get("provenanceClass") not in {"source-build-comparison", "production-artifact-comparison"}:
             raise RuntimeFailure("protected-producer-admission-not-configured")
         if set(self.private) - {"migration", "productAdmission", "recovery", "budget", "catalog", "scheduler", "runtimeBaseline", "runtimePolicy"} != {"root", "nodes"}:
@@ -2520,6 +2528,11 @@ def runner_identity():
                                           "rev-parse", "HEAD"], cwd=root, text=True, timeout=10).strip()
     else:
         commit = installed['sourceCommit']
+    with fixed_helper_imports():
+        from cryptad_certification.active_source import source_roster, read_source
+    roster = source_roster(root)
+    if roster.source_commit != commit:
+        raise RuntimeFailure('runner-selected-source-mismatch')
     names = ["tools/interop/cross_version_runtime.py", "tools/mail-prototype/two_node_demo.py",
              "tools/interop/runtime_snapshot.py",
              "tools/release-certification/cryptad_certification/cross_version_evidence.py",
@@ -2554,17 +2567,23 @@ def runner_identity():
              "tools/interop/systemd/cryptad-cross-version-control.sudoers",
              ".github/workflows/cross-version-live-network-soak.yml",
              "platform-devtools/src/test/resources/network/crypta/platform/devtools/migration/sharesite/upstream-mixed.db"]
-    certification = root / "tools/release-certification"
-    names.extend(path.relative_to(root).as_posix() for path in (certification / "cryptad_certification").rglob("*.py")
-                 if "tests" not in path.relative_to(certification).parts)
-    names.extend(path.relative_to(root).as_posix() for path in (certification / "schemas").glob("*.json"))
-    names.extend(path.relative_to(root).as_posix() for path in certification.glob("*.json"))
-    execution = [["@executing-python-runtime", runner_python_identity()]]
+    for name in roster.paths:
+        parts = PurePosixPath(name).parts
+        if ((name.startswith('tools/release-certification/cryptad_certification/')
+             and name.endswith('.py') and 'tests' not in parts)
+                or (name.startswith('tools/release-certification/schemas/')
+                    and name.endswith('.json') and len(parts) == 4)
+                or (name.startswith('tools/release-certification/')
+                    and name.endswith('.json') and len(parts) == 3)):
+            names.append(name)
+    execution = [["@executing-python-runtime", runner_python_identity()],
+                 ["@selected-source-class", roster.source_class]]
     if installed is not None:
         execution.extend([["@installed-bundle", installed['bundleIdentity']],
                           ["@installed-execution-closure", installed['executionClosureDigest']]])
     return {"sourceCommit": commit,
-            "runnerDigest": canonical_digest([[name, digest_file(root / name)] for name in sorted(set(names))] + execution),
+            "runnerDigest": canonical_digest([[name, 'sha256:' + hashlib.sha256(read_source(root, name)).hexdigest()]
+                                              for name in sorted(set(names))] + execution),
             "adapterDigest": digest_file(Path(interop.__file__))}
 
 
@@ -2697,8 +2716,15 @@ def preflight(plan, private_config, authorization=None):
 
 def run(plan, private_config, authorization, journal):
     """Execute only a previously validated, explicitly authorized bounded disposable plan."""
+    _require_linux_supervisor()
     old_mask = os.umask(0o077)
     try:
         return Supervisor(plan, private_config, authorization, journal).execute()
     finally:
         os.umask(old_mask)
+
+
+def _require_linux_supervisor():
+    if (sys.platform != "linux" or fcntl is None
+            or not Path("/proc/sys/kernel/random/boot_id").is_file()):
+        raise RuntimeFailure("linux-supervisor-required")

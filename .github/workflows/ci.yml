@@ -27,6 +27,22 @@ jobs:
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+  native:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [macos-arm64, windows-amd64]
+    permissions:
+      contents: read
+      actions: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/build.yml
+    with:
+      git-ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      lane: ${{ matrix.lane }}
+
   interop-smoke:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -320,11 +336,21 @@ jobs:
       - name: Exercise isolated original runtime baseline and reviewer admission
         run: |
           sudo -n python3 - <<'PY'
+          import sys
           import unittest
+          sys.path[:0] = [
+              'tools/interop', 'tools/release-certification',
+              'tools/release-certification/protected', 'tools/release-certification/restricted']
           suite = unittest.defaultTestLoader.discover(
               'tools/release-certification/protected', pattern='test_*baseline*.py')
           suite.addTests(unittest.defaultTestLoader.discover(
               'tools/release-certification/protected', pattern='test_runtime_reference_*.py'))
+          for required in (
+              'test_cross_version_workload.TransportTests',
+              'test_pr320_role_lifetime.RoleLifetimeTest',
+              'test_pr320_supervisor_projection.BudgetSupervisorProjectionTest.test_private_report_retained_and_exact_public_receipt_reopens',
+              'test_pr320_supervisor_projection.BudgetSupervisorProjectionTest.test_original_member_job_and_attestation_are_checked_before_private_reopening'):
+              suite.addTests(unittest.defaultTestLoader.loadTestsFromName(required))
           result = unittest.TextTestRunner(verbosity=2).run(suite)
           if not result.wasSuccessful() or result.skipped or result.testsRun == 0:
               raise SystemExit(1)

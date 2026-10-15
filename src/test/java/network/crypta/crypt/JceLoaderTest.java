@@ -14,11 +14,8 @@ import java.util.Map;
 import java.util.StringJoiner;
 import javax.crypto.KeyAgreement;
 import org.jetbrains.annotations.NotNull;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledOnJre;
-import org.junit.jupiter.api.condition.JRE;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -102,12 +99,9 @@ class JceLoaderTest {
   }
 
   @Test
-  @EnabledOnJre({JRE.JAVA_21, JRE.JAVA_22, JRE.JAVA_23})
   @DisplayName("bouncyCastleAlgorithms_whenLoaded_expectRequiredAlgorithmsAvailable")
   void bouncyCastleAlgorithms_whenLoaded_expectRequiredAlgorithmsAvailable() throws Exception {
-    // If another test/JVM setting disabled BC, skip this test deterministically.
-    Assumptions.assumeTrue(
-        JceLoader.BouncyCastle != null, "BouncyCastle provider unexpectedly disabled in this JVM");
+    assertNotNull(JceLoader.BouncyCastle, "Required BouncyCastle provider unavailable in this JVM");
 
     assertNotNull(KeyAgreement.getInstance("ECDH", JceLoader.BouncyCastle));
     assertNotNull(Signature.getInstance("SHA256withECDSA", JceLoader.BouncyCastle));
@@ -162,8 +156,11 @@ class JceLoaderTest {
   /**
    * A tiny helper with a {@code main} entry to load {@link JceLoader} in an isolated JVM with
    * system properties controlled by the parent test.
+   *
+   * <p>Standard output carries provider and algorithm results to the parent test's assertions.
    */
   public static class ProbeMain {
+    @SuppressWarnings("JavaPrintToLogpoint")
     static void main() {
       boolean bc = JceLoader.BouncyCastle != null;
       boolean nss = JceLoader.NSS != null;

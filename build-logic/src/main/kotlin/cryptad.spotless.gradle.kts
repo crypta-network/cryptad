@@ -1,6 +1,25 @@
+import cryptad.ActiveSourceFiles
 import cryptad.SonarS8445ImportOrderFormatter
 
 plugins { id("com.diffplug.spotless") }
+
+val activeSourceRoster = ActiveSourceFiles.selectedRoster(rootProject)
+
+fun inactiveFormatterSource(element: FileTreeElement): Boolean =
+  ActiveSourceFiles.excludeUnselected(rootDir, element.file) {
+    activeSourceRoster.value
+  }
+
+val javaTargets =
+  fileTree(projectDir) {
+    include("src/**/*.java")
+    exclude { inactiveFormatterSource(it) }
+  }
+val kotlinTargets =
+  fileTree(projectDir) {
+    include("src/**/*.kt")
+    exclude { inactiveFormatterSource(it) }
+  }
 
 val kotlinGradleTargets =
   if (project == rootProject) {
@@ -11,12 +30,14 @@ val kotlinGradleTargets =
       include("build-logic/build.gradle.kts")
       include("build-logic/settings.gradle.kts")
       include("build-logic/src/**/*.gradle.kts")
+      exclude { inactiveFormatterSource(it) }
     }
   } else {
     fileTree(projectDir) {
       include("build.gradle.kts")
       include("settings.gradle.kts")
       include("src/**/*.gradle.kts")
+      exclude { inactiveFormatterSource(it) }
     }
   }
 
@@ -25,7 +46,7 @@ val libs: VersionCatalog = extensions.getByType<VersionCatalogsExtension>().name
 spotless {
   java {
     googleJavaFormat(libs.findVersion("googleJavaFormat").get().requiredVersion).reflowLongStrings()
-    target("src/**/*.java")
+    target(javaTargets)
     removeUnusedImports()
     importOrder("module ", "", "\\#").wildcardsLast(false)
     // Enforce Sonar java:S8445 grouping globally:
@@ -35,7 +56,7 @@ spotless {
   kotlin {
     // Restrict to source trees rather than scanning entire repo to avoid special FS entries
     // created by Flatpak builder (e.g., .flatpak-builder/**/host/proc/**/map_files).
-    target("src/**/*.kt")
+    target(kotlinTargets)
     ktfmt(libs.findVersion("ktfmt").get().requiredVersion).googleStyle()
     trimTrailingWhitespace()
     endWithNewline()

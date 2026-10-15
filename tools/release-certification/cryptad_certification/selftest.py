@@ -15,6 +15,8 @@ SUITE_MODULES = {
         "cryptad_certification.tests.test_phase_12_authority_context",
         "cryptad_certification.tests.test_phase_12_public",
         "cryptad_certification.tests.test_phase_12_ci",
+        "cryptad_certification.tests.test_phase_12_ci_v2",
+        "cryptad_certification.tests.test_active_source",
         "cryptad_certification.tests.test_phase_12_site_evidence",
         "cryptad_certification.tests.test_phase_12_federation_context",
     ],
