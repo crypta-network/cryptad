@@ -11,6 +11,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +32,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings({"java:S100"})
 @ExtendWith(MockitoExtension.class)
@@ -871,6 +877,185 @@ class LauncherControllerTest {
     assertTrue(controller.getState().isShuttingDown());
 
     controller.shutdownAndWait();
+  }
+
+  @Test
+  void start_whenTrackedProcessIsAlive_expectNoDuplicateLaunchQueued() throws Exception {
+    LauncherController controller = controller();
+    ExecutorService executor = replaceControllerExecutor(controller);
+    Process process = mock(Process.class);
+    when(process.isAlive()).thenReturn(true);
+    setTrackedProcess(controller, process);
+
+    try {
+      controller.start();
+
+      assertFalse(controller.getState().isRunning());
+      verifyNoInteractions(executor);
+    } finally {
+      setTrackedProcess(controller, null);
+      controller.shutdownAndWait();
+    }
+  }
+
+  @Test
+  void start_whenTrackedProcessHasExited_expectReplacementLaunchQueued() throws Exception {
+    LauncherController controller = controller();
+    ExecutorService executor = replaceControllerExecutor(controller);
+    Process process = mock(Process.class);
+    when(process.isAlive()).thenReturn(false);
+    setTrackedProcess(controller, process);
+
+    try {
+      controller.start();
+
+      verify(executor).execute(any(Runnable.class));
+      assertFalse(controller.getState().isRunning());
+    } finally {
+      setTrackedProcess(controller, null);
+      controller.shutdownAndWait();
+    }
+  }
+
+  @Test
+  void start_whenQueuedBeforeShutdown_expectNoLaunchAfterShutdownBegins() {
+    LauncherController controller = controller();
+    CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
+    controller.addLogListener(logs::add);
+
+    synchronized (controller) {
+      controller.start();
+      controller.shutdown();
+    }
+    controller.shutdownAndWait();
+
+    assertTrue(controller.getState().isShuttingDown());
+    assertFalse(controller.getState().isRunning());
+    assertTrue(
+        logs.isEmpty(), "A queued launch must not inspect executables after shutdown begins");
+  }
+
+  @Test
+  void shutdownAndWait_whenExecutorTimesOut_expectForcedShutdown() throws Exception {
+    LauncherController controller = controller();
+    ExecutorService executor = replaceControllerExecutor(controller);
+    when(executor.awaitTermination(10, TimeUnit.SECONDS)).thenReturn(false);
+
+    controller.shutdownAndWait();
+
+    assertTrue(controller.getState().isShuttingDown());
+    verify(executor).shutdown();
+    verify(executor).shutdownNow();
+  }
+
+  @Test
+  void shutdownAndWait_whenExecutorWaitIsInterrupted_expectForcedShutdownAndInterruptRestored()
+      throws Exception {
+    LauncherController controller = controller();
+    ExecutorService executor = replaceControllerExecutor(controller);
+    when(executor.awaitTermination(10, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+
+    try {
+      controller.shutdownAndWait();
+
+      assertTrue(controller.getState().isShuttingDown());
+      assertTrue(Thread.currentThread().isInterrupted());
+      verify(executor).shutdownNow();
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  private static ExecutorService replaceControllerExecutor(LauncherController controller)
+      throws ReflectiveOperationException {
+    Field field = LauncherController.class.getDeclaredField("io");
+    field.setAccessible(true);
+    ((ExecutorService) field.get(controller)).shutdownNow();
+    ExecutorService executor = mock(ExecutorService.class);
+    field.set(controller, executor);
+    return executor;
+  }
+
+  private static void setTrackedProcess(LauncherController controller, Process process)
+      throws ReflectiveOperationException {
+    Field field = LauncherController.class.getDeclaredField("process");
+    field.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    AtomicReference<Process> reference = (AtomicReference<Process>) field.get(controller);
+    reference.set(process);
+  }
+
+  @Test
+  void shutdownAndWait_whenReaderRespondsToInterrupt_expectReaderTerminatedBeforeReturn()
+      throws Exception {
+    LauncherController controller = controller();
+    CountDownLatch started = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    Thread reader =
+        Thread.ofPlatform()
+            .start(
+                () -> {
+                  started.countDown();
+                  try {
+                    release.await();
+                  } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                  }
+                });
+    try {
+      assertTrue(started.await(5, TimeUnit.SECONDS));
+      setLogTailer(controller, reader);
+
+      controller.shutdownAndWait();
+
+      assertFalse(reader.isAlive(), "Shutdown must finish joining the owned reader");
+      assertTrue(controller.getState().isShuttingDown());
+    } finally {
+      release.countDown();
+      reader.interrupt();
+      reader.join(TimeUnit.SECONDS.toMillis(5));
+      controller.shutdownAndWait();
+    }
+  }
+
+  @Test
+  void shutdownAndWait_whenReaderWaitIsInterrupted_expectCallerInterruptRestored()
+      throws Exception {
+    LauncherController controller = controller();
+    CountDownLatch started = new CountDownLatch(1);
+    CompletableFuture<Void> release = new CompletableFuture<>();
+    Thread reader =
+        Thread.ofPlatform()
+            .start(
+                () -> {
+                  started.countDown();
+                  release.join();
+                });
+    try {
+      assertTrue(started.await(5, TimeUnit.SECONDS));
+      setLogTailer(controller, reader);
+      Thread.currentThread().interrupt();
+
+      controller.shutdownAndWait();
+
+      assertTrue(Thread.currentThread().isInterrupted());
+      assertTrue(reader.isAlive(), "The controlled reader remains held until cleanup");
+    } finally {
+      Thread.interrupted();
+      release.complete(null);
+      reader.join(TimeUnit.SECONDS.toMillis(5));
+      controller.shutdownAndWait();
+    }
+    assertFalse(reader.isAlive());
+  }
+
+  private static void setLogTailer(LauncherController controller, Thread reader)
+      throws ReflectiveOperationException {
+    Field field = LauncherController.class.getDeclaredField("tailThread");
+    field.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    AtomicReference<Thread> reference = (AtomicReference<Thread>) field.get(controller);
+    reference.set(reader);
   }
 
   @Test

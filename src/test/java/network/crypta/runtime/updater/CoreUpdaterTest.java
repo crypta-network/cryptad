@@ -393,6 +393,44 @@ class CoreUpdaterTest {
   }
 
   @Test
+  void isWritableDirectory_whenPathIsNotDirectory_expectFalseWithoutCheckingWriteAccess()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    File directory = mock(File.class);
+    when(directory.isDirectory()).thenReturn(false);
+
+    boolean writable = updater.isWritableDirectory(directory);
+
+    assertFalse(writable);
+    verify(directory, never()).canWrite();
+  }
+
+  @Test
+  void isWritableDirectory_whenDirectoryIsReadOnly_expectFalse() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    File directory = mock(File.class);
+    when(directory.isDirectory()).thenReturn(true);
+    when(directory.canWrite()).thenReturn(false);
+
+    boolean writable = updater.isWritableDirectory(directory);
+
+    assertFalse(writable);
+    verify(directory).canWrite();
+  }
+
+  @Test
+  void isWritableDirectory_whenDirectoryAllowsWrites_expectTrue() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    File directory = mock(File.class);
+    when(directory.isDirectory()).thenReturn(true);
+    when(directory.canWrite()).thenReturn(true);
+
+    boolean writable = updater.isWritableDirectory(directory);
+
+    assertTrue(writable);
+  }
+
+  @Test
   void isUiDownloadAvailable_whenVersionDirectoryExistsButIsNotWritable_expectFalse()
       throws Exception {
     File nodeDir = Files.createTempDirectory("cryptad-core-updater").toFile();

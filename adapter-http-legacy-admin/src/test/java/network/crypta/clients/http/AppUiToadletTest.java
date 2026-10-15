@@ -419,6 +419,45 @@ class AppUiToadletTest {
   }
 
   @Test
+  void loopbackOrigin_whenRequestExecutorTimesOut_expectOriginsRemovedAndShutdownRequested()
+      throws Exception {
+    AppHost appHost = new InMemoryAppHost(staticApp(INDEX_ENTRY));
+    ExecutorService executor = mock(ExecutorService.class);
+    when(executor.awaitTermination(10, TimeUnit.SECONDS)).thenReturn(false);
+    try (AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> false, executor)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
+
+      originServer.close();
+
+      assertTrue(originServer.bindingForOrigin(binding.origin()).isEmpty());
+      verify(executor).shutdownNow();
+    }
+  }
+
+  @Test
+  void loopbackOrigin_whenWaitInterrupted_expectOriginsRemovedAndInterruptRestored()
+      throws Exception {
+    AppHost appHost = new InMemoryAppHost(staticApp(INDEX_ENTRY));
+    ExecutorService executor = mock(ExecutorService.class);
+    when(executor.awaitTermination(10, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+    try (AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> false, executor)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
+
+      originServer.close();
+
+      assertTrue(originServer.bindingForOrigin(binding.origin()).isEmpty());
+      assertTrue(Thread.currentThread().isInterrupted());
+      verify(executor).shutdownNow();
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  @Test
   void loopbackOrigin_whenClosed_waitsForRequestResourcesToBeReleased() throws Exception {
     Path asset = Files.writeString(tempDir.resolve(INDEX_ENTRY), HTML_BODY);
     AppHost appHost = new InMemoryAppHost(staticApp(INDEX_ENTRY));
