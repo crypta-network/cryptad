@@ -378,7 +378,7 @@ class LauncherControllerTest {
     AppState stopped = awaitState(controller, s -> !s.isRunning() && !s.isStopping());
     assertFalse(stopped.isRunning());
     assertFalse(stopped.isStopping());
-    awaitFileSizeStable(heartbeat, HEARTBEAT_STABLE_FOR);
+    awaitFileSizeStable(heartbeat);
 
     controller.shutdownAndWait();
   }
@@ -1130,8 +1130,8 @@ class LauncherControllerTest {
     throw new AssertionError("Timed out waiting for launcher heartbeat output");
   }
 
-  private static void awaitFileSizeStable(Path file, Duration stableFor) throws Exception {
-    long stableNs = stableFor.toNanos();
+  private static void awaitFileSizeStable(Path file) throws Exception {
+    long stableNs = HEARTBEAT_STABLE_FOR.toNanos();
     long stableSince = System.nanoTime();
     long previousSize = Files.exists(file) ? Files.size(file) : 0L;
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -1184,7 +1184,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     Path readinessDir = parentOrThrow(readinessFile);
     String runDir = readinessDir.toAbsolutePath().toString();
     Files.createDirectories(readinessDir);
@@ -1249,7 +1249,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String readinessPath = readinessFile.toAbsolutePath().toString();
 
     String content;
@@ -1308,7 +1308,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String readinessPath = readinessFile.toAbsolutePath().toString();
 
     String content;
@@ -1352,7 +1352,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
 
     String content;
     if (isWindows) {
@@ -1384,7 +1384,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
 
     String content;
@@ -1417,7 +1417,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String resolvedRunDir = runDir.toAbsolutePath().toString();
     String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
 
@@ -1453,7 +1453,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String readinessPath = readinessFile.toAbsolutePath().toString();
     String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
 
@@ -1497,7 +1497,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String readinessPath = readinessFile.toAbsolutePath().toString();
     String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
 
@@ -1545,7 +1545,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String wrapperLogPath = wrapperLogFile.toAbsolutePath().toString();
 
     String content;
@@ -1580,7 +1580,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
 
     String content;
     if (isWindows) {
@@ -1612,7 +1612,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String resolvedRunDir = runDir.toAbsolutePath().toString();
     String daemonLogPath = daemonLogFile.toAbsolutePath().toString();
 
@@ -1645,7 +1645,7 @@ class LauncherControllerTest {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
     boolean isWindows = new AppEnv().isWindows();
-    Path script = isWindows ? binDir.resolve("cryptad.bat") : binDir.resolve("cryptad");
+    Path script = binDir.resolve(isWindows ? "cryptad.bat" : "cryptad");
     String heartbeatPath = heartbeat.toAbsolutePath().toString();
 
     String content;

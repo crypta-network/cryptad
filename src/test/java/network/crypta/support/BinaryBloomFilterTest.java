@@ -235,13 +235,13 @@ class BinaryBloomFilterTest {
   @Test
   @DisplayName("createFilter_whenNegativeLength_expectIllegalArgumentException")
   void createFilter_whenNegativeLength_expectIllegalArgumentException() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> {
-          try (var _ = BloomFilter.createFilter(-8, 1, false)) {
-            fail("Filter creation should have thrown before entering try block");
-          }
-        });
+    assertThrows(IllegalArgumentException.class, BinaryBloomFilterTest::createNegativeLengthFilter);
+  }
+
+  private static void createNegativeLengthFilter() {
+    try (BloomFilter created = BloomFilter.createFilter(-8, 1, false)) {
+      assertNotNull(created, "Factory must return a filter if it does not throw");
+    }
   }
 
   @Test

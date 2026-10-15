@@ -1532,7 +1532,7 @@ public class LauncherController {
     }
   }
 
-  static record TimingConfig(
+  record TimingConfig(
       long tailBaseDelayMs,
       long tailMaxDelayMs,
       long tailCancelPollMs,
