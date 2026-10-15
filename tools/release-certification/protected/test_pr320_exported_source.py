@@ -331,7 +331,7 @@ print(json.dumps({'freshBrowserImports': 'passed'}))
 
 @unittest.skipUnless(os.name == 'posix', 'requires POSIX temporary-directory aliases')
 class AliasedTemporaryRootTests(unittest.TestCase):
-    def test_real_export_and_original_owners_accept_canonical_fixture_roots(self):
+    def test_canonical_fixture_roots_work_without_linux_boot_file(self):
         with tempfile.TemporaryDirectory(prefix='pr320-aliased-temp-') as temporary:
             root = Path(temporary).resolve()
             physical, alias = root / 'physical', root / 'alias'
@@ -343,6 +343,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 source = Path(sys.argv[1])
 sys.path[:0] = [str(source / relative) for relative in (
@@ -366,7 +367,16 @@ names = (
     'test_composed_budget_campaign_admission.OriginalCampaignAdmissionTest.test_authenticated_budget_capability_preserves_all_49_phase_requirements_and_other_blockers',
     'test_pr320_exported_source.PhysicalExportTests.test_physical_export_loads_all_fixed_factories_and_original_owners_from_measured_kit',
 )
-result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromNames(names))
+read_text = Path.read_text
+def no_linux_boot_file(path, *args, **kwargs):
+    if path == Path('/proc/sys/kernel/random/boot_id'):
+        raise FileNotFoundError('synthetic host without Linux boot identity')
+    return read_text(path, *args, **kwargs)
+
+with patch.object(Path, 'read_text', no_linux_boot_file):
+    with checks.assertRaisesRegex(evidence.EvidenceError, 'boot-identity-unavailable'):
+        evidence.boot_identity()
+    result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromNames(names))
 raise SystemExit(0 if result.wasSuccessful() else 1)
 '''
             result = subprocess.run([sys.executable, '-I', '-S', '-B', '-c', script, str(SOURCE)],

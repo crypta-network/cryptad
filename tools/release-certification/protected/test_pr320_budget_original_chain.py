@@ -1,9 +1,9 @@
 """Actual original budget chain verification with synthetic external artifact providers.
 
 The real journal, report validator, supervisor relationships, raw selection/activation checks,
-and native budget owner execute here. Artifact download, attestation and environment APIs
-are replaced; deterministic clocks create the local journal fixture. The production branch
-separately supplies an external original-product provider. These vectors prove acceptance
+and native budget owner execute here. Artifact download, attestation, environment APIs, and
+kernel boot identity are replaced; deterministic clocks create the local journal fixture.
+The production branch supplies an external original-product provider. These vectors prove acceptance
 and rejection paths, never protected execution.
 """
 from __future__ import annotations
@@ -31,6 +31,7 @@ from cryptad_certification import composed_budget_journal_member as members
 from cryptad_certification import cross_version_evidence as evidence
 
 CUTOFF = '2026-10-15T00:00:00Z'
+JOURNAL_BOOT_ID = '01234567-89ab-cdef-0123-456789abcdef'
 
 
 def chain_vector(original_fixture):
@@ -51,6 +52,7 @@ def chain_vector(original_fixture):
     with tempfile.TemporaryDirectory() as temporary, \
          patch.object(evidence.dt, 'datetime', FixedClock), \
          patch.object(evidence.time, 'monotonic_ns', side_effect=lambda: next(monotonic)), \
+         patch.object(evidence, 'boot_identity', return_value=JOURNAL_BOOT_ID), \
          evidence.Journal(Path(temporary).resolve(), plan) as journal:
         journal.append('start')
         for index, node in enumerate(plan['nodes']):

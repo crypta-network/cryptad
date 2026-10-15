@@ -3407,17 +3407,17 @@
           },
           {
             "path": "tools/release-certification/protected/test_pr320_budget_original_chain.py",
-            "digest": "sha256:43d4649f49f1755d6203760aa6c2668b6adbbcd578ac9bd723d1260d4aa6ff08",
+            "digest": "sha256:7515f6a3b756e2d926a7ac68dc2f506c571a13393d6057a98ac3c2f9acf31ab2",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
             "path": "tools/release-certification/protected/test_pr320_exported_source.py",
-            "digest": "sha256:2a2697975fc7e160787d6a9f927aba299d6838aef6f4f21c9b0a458674cbd36c",
+            "digest": "sha256:1dc3bb28f6b77f1404a6f47a2def34f6e251db4c519b897e808b71d37c9ebba5",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion. PR-320 second integration review binds every route campaign journal, resolves isolated browser imports across the verified product and kit, independently pins served-script and collector bytes, and verifies bounded support exports without Web Crypto. Offline checks grant no installed observation or original authority; acceptance obligations and historical bytes remain unchanged."
           },
           {
             "path": "tools/release-certification/protected/test_pr320_original_acquisition.py",
-            "digest": "sha256:1b3d7817f411780a8b39ec89e4141a3be4c370ba5d7a5f31e671e464ca6d46c8",
+            "digest": "sha256:bd394028ca56054242b17b4dcd2364f99e837b32be045f4315a255efa4b9a62d",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
@@ -4451,17 +4451,17 @@
           },
           {
             "path": "tools/release-certification/protected/test_pr320_budget_original_chain.py",
-            "digest": "sha256:43d4649f49f1755d6203760aa6c2668b6adbbcd578ac9bd723d1260d4aa6ff08",
+            "digest": "sha256:7515f6a3b756e2d926a7ac68dc2f506c571a13393d6057a98ac3c2f9acf31ab2",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {
             "path": "tools/release-certification/protected/test_pr320_exported_source.py",
-            "digest": "sha256:2a2697975fc7e160787d6a9f927aba299d6838aef6f4f21c9b0a458674cbd36c",
+            "digest": "sha256:1dc3bb28f6b77f1404a6f47a2def34f6e251db4c519b897e808b71d37c9ebba5",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion. PR-320 second integration review binds every route campaign journal, resolves isolated browser imports across the verified product and kit, independently pins served-script and collector bytes, and verifies bounded support exports without Web Crypto. Offline checks grant no installed observation or original authority; acceptance obligations and historical bytes remain unchanged."
           },
           {
             "path": "tools/release-certification/protected/test_pr320_original_acquisition.py",
-            "digest": "sha256:1b3d7817f411780a8b39ec89e4141a3be4c370ba5d7a5f31e671e464ca6d46c8",
+            "digest": "sha256:bd394028ca56054242b17b4dcd2364f99e837b32be045f4315a255efa4b9a62d",
             "assertion": "PR-320 reviewed prospective budget privacy/full-cohort source: actual native authorization, support/browser/artifact omission, finite installed drivers, root-owned original custody and exact 31-case/42-variant consumer binding. Historical attachment meanings, accounting, true callback release, censored tails and all mandatory Phase12 obligations remain. Source review grants no test execution, installed/protected observation, release-product authority or Phase12 completion."
           },
           {

@@ -13,6 +13,8 @@ from unittest.mock import patch
 import pr320_original_acquisition as acquisition
 import pr320_budget_contract as common
 
+JOURNAL_BOOT_ID = '01234567-89ab-cdef-0123-456789abcdef'
+
 
 def encode(value):
     return acquisition._encode(value)
@@ -372,7 +374,8 @@ class FixedServiceTests(unittest.TestCase):
         plan, component, _tools = fixture()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
-            with evidence.Journal(root, plan) as journal:
+            with patch.object(evidence, 'boot_identity', return_value=JOURNAL_BOOT_ID), \
+                    evidence.Journal(root, plan) as journal:
                 journal.append('node-start', role='candidate-sender', node_epoch=component['bindings']['nodeEpoch'])
                 members.append_member(journal, 'route-component', encode(component))
                 journal.checkpoint('partial')
@@ -421,7 +424,8 @@ class FixedServiceTests(unittest.TestCase):
         raw_member = encode(private['composedBudgetEvidence'])
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
-            with evidence.Journal(root, plan) as journal:
+            with patch.object(evidence, 'boot_identity', return_value=JOURNAL_BOOT_ID), \
+                    evidence.Journal(root, plan) as journal:
                 journal.append('node-start', role='candidate-sender', node_epoch=private['composedBudgetEvidence']['nodeEpoch'])
                 members.append_member(journal, 'legacy-attachment', raw_member)
                 journal.checkpoint('partial')
