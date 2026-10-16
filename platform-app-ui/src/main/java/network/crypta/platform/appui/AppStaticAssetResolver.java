@@ -79,7 +79,14 @@ public final class AppStaticAssetResolver {
     if (Files.isSymbolicLink(root)) {
       throw new AppStaticAssetException(400, "App UI asset path is unsafe.");
     }
-    Path realRoot = root.toRealPath(LinkOption.NOFOLLOW_LINKS);
+    // Ancestors may contain host aliases such as macOS /var -> /private/var.
+    // The bundle root itself and all paths within it must still be unaliased.
+    Path parent = root.getParent();
+    Path realRoot =
+        parent == null ? root : parent.toRealPath().resolve(root.getFileName()).normalize();
+    if (!root.toRealPath().equals(realRoot)) {
+      throw new AppStaticAssetException(400, "App UI asset path is unsafe.");
+    }
     Path current = root;
     Path relative = root.relativize(candidate);
     for (Path segment : relative) {
