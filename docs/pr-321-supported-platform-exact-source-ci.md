@@ -110,6 +110,29 @@ Retention binds standard project outputs to fresh source-owned producers and dep
 the reviewed verification metadata and, where required, offline signatures with the pinned keyring.
 Unsupported generated inputs or unavailable verification material retain unavailable coverage.
 
+Classpath membership and order come from the committed
+[`phase-12-classpaths.json`](../tools/release-certification/phase-12-classpaths.json), which binds
+210 standard Java task classpaths to 73 build-configuration files. Entries identify project paths
+or complete dependency coordinates and filenames; host/cache prefixes are omitted. Retention checks
+the roster and configuration bytes against the source commit before comparing the observed ordered
+list. A captured list cannot provide its own expected roster. Missing, additional, duplicate or
+reordered entries are invalid; absent/stale authority and unsupported bootstrap/generated profiles
+remain unavailable. Artifact-byte and fresh-producer verification still apply after membership matches.
+
+After a reviewed build-configuration change, prepare a candidate from a checkout without additional
+init scripts or dependency overrides:
+
+```sh
+./gradlew --init-script tools/release-certification/phase-12-classpaths.init.gradle phase12ClasspathCandidate
+PYTHONPATH=tools/release-certification python3 -m cryptad_certification.phase_12_classpaths \
+  --input build/phase12-classpath-tasks.json --output build/phase12-classpaths.review.json
+```
+
+Use a fresh output filename on subsequent attempts. Review the configuration changes and complete
+ordered artifact lists before replacing the committed roster. Candidate generation alone grants no
+admission. V2 producers that predate this authority cannot establish the new ordered-classpath
+contract; historical v1 evidence retains its separate original semantics.
+
 The private task manifest records native execution/reuse/no-source/failure state, original listener
 clocks, actual source identities, class coverage, report paths and selected filters. At task completion,
 both recorders capture the exact bounded report member roster, sizes and byte digests privately.

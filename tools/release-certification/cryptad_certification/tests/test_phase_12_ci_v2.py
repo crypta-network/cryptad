@@ -16,6 +16,7 @@ from unittest.mock import patch
 import zipfile
 
 from cryptad_certification import phase_12_ci as ci
+from cryptad_certification import phase_12_classpaths as classpaths
 from .test_active_source import windows_source_metadata
 from .test_phase_12_ci import OriginalAPI, AS_OF, SHA, SOURCE, encoded, xml as _legacy_xml
 
@@ -44,6 +45,18 @@ def xml(kind, module="."):
             b'<FindBugsSummary total_bugs="0" total_classes="1"><PackageStats package="network.crypta" total_types="1">'
             b'<ClassStats class="network.crypta.Example"/></PackageStats></FindBugsSummary>')
     return raw
+
+
+def errorprone_inputs():
+    policy = {"enabled": True, "allErrorsAsWarnings": True, "disableAllChecks": False,
+        "disableAllWarnings": False, "allSuggestionsAsWarnings": False, "allDisabledChecksAsWarnings": False,
+        "disableWarningsInGeneratedCode": False, "ignoreUnknownCheckNames": False, "ignoreSuppressionAnnotations": False,
+        "compilingTestOnlyCode": False, "excludedPaths": None, "checks": {}, "checkOptions": {}, "extraArgs": [],
+        "compilerArgumentProviders": ["net.ltgt.gradle.errorprone.ErrorPronePlugin$ErrorProneCompilerArgumentProvider"],
+        "forkJvmArgumentProviders": ["net.ltgt.gradle.errorprone.ErrorPronePlugin$ErrorProneJvmArgumentProvider"],
+        "forkJvmArguments": [], "errorproneArgumentProviders": 0, "argumentFiles": []}
+    return {"analyzerConfiguration": policy, "incremental": False, "classpath": [],
+        "compilerArguments": ["-Xlint:deprecation", "-Xlint:unchecked", "-Xmaxwarns", "10000", "-Xmaxerrs", "10000"]}
 
 
 class NativeAPI(OriginalAPI):
@@ -477,7 +490,7 @@ class PrivateEvidenceBoundaryTests(unittest.TestCase):
             policy = {"effort": None, "reportLevel": None, "extraArgs": [], "jvmArgs": [], "pluginJarFiles": []}
             original = {"analyzerConfiguration": policy, "auxClasspath": [], "excludeFilter": [{"path": path, "digest": ci.digest(b"reviewed-filter")}],
                         **{name: [] for name in ("includeFilter", "baseline", "onlyAnalyze", "visitors", "omitVisitors", "chooseVisitors")}}
-            self.assertEqual("matched", ci._private_analyzer_configuration({"inputs": original}, "spotbugs-main", root, {}))
+            self.assertEqual("unavailable", ci._private_analyzer_configuration({"inputs": original}, "spotbugs-main", root, {}))
             for classpath in (None, [{"path": "unobserved.jar", "kind": "file", "size": 0, "digest": ci.digest(b"")}]):
                 changed = {**original, "auxClasspath": classpath}
                 self.assertNotEqual("matched", ci._private_analyzer_configuration({"inputs": changed}, "spotbugs-main", root, {}))
@@ -496,16 +509,8 @@ class PrivateEvidenceBoundaryTests(unittest.TestCase):
             self.assertEqual("invalid", ci._private_analyzer_configuration({"inputs": original}, "spotbugs-main", root, {}))
 
     def test_errorprone_disable_filters_arguments_and_providers_cannot_claim_full_analysis(self):
-        policy = {"enabled": True, "allErrorsAsWarnings": True, "disableAllChecks": False,
-            "disableAllWarnings": False, "allSuggestionsAsWarnings": False, "allDisabledChecksAsWarnings": False,
-            "disableWarningsInGeneratedCode": False, "ignoreUnknownCheckNames": False, "ignoreSuppressionAnnotations": False,
-            "compilingTestOnlyCode": False, "excludedPaths": None, "checks": {}, "checkOptions": {}, "extraArgs": [],
-            "compilerArgumentProviders": ["net.ltgt.gradle.errorprone.ErrorPronePlugin$ErrorProneCompilerArgumentProvider"],
-            "forkJvmArgumentProviders": ["net.ltgt.gradle.errorprone.ErrorPronePlugin$ErrorProneJvmArgumentProvider"],
-            "forkJvmArguments": [], "errorproneArgumentProviders": 0, "argumentFiles": []}
-        original = {"analyzerConfiguration": policy, "incremental": False, "classpath": [],
-            "compilerArguments": ["-Xlint:deprecation", "-Xlint:unchecked", "-Xmaxwarns", "10000", "-Xmaxerrs", "10000"]}
-        self.assertEqual("matched", ci._private_analyzer_configuration({"inputs": original}, "errorprone-main", ci.ROOT, {}))
+        original = errorprone_inputs()
+        self.assertEqual("unavailable", ci._private_analyzer_configuration({"inputs": original}, "errorprone-main", ci.ROOT, {}))
         for classpath in (None, [{"path": "unobserved.jar", "kind": "file", "size": 0, "digest": ci.digest(b"")}]):
             changed = {**original, "classpath": classpath}
             self.assertNotEqual("matched", ci._private_analyzer_configuration({"inputs": changed}, "errorprone-main", ci.ROOT, {}))
@@ -756,8 +761,8 @@ class ClasspathEvidenceTests(unittest.TestCase):
         self.class_file = self.write("sample/build/classes/java/test/network/crypta/ExampleTest.class", b"compiled-source")
         self.resources = self.root / "sample/build/resources/test"
         self.resource_file = self.write("sample/build/resources/test/config.properties", b"reviewed-resource")
-        self.dependency = self.root.parent / "cache/dependency.jar"
-        self.dependency.parent.mkdir()
+        self.dependency = self.root.parent / "cache/modules-2/files-2.1/fixture/dependency/1/hash/dependency.jar"
+        self.dependency.parent.mkdir(parents=True)
         self.dependency.write_bytes(b"verified-dependency")
         self.metadata = self.write("gradle/verification-metadata.xml", (
             '<verification-metadata><components><component group="fixture" name="dependency" version="1">'
@@ -766,10 +771,22 @@ class ClasspathEvidenceTests(unittest.TestCase):
         self.compiler = self.producer(":sample:compileTestJava", "java-compile", [self.source], self.classes)
         self.compiler["inputs"]["classpath"] = []
         self.copier = self.producer(":sample:processTestResources", "resources", [self.resource], self.resources)
-        self.record = {"startedAt": 3, "inputClasses": 1, "inputs": {
+        self.record = {"taskPath": ":sample:test", "startedAt": 3, "inputClasses": 1, "inputs": {
             "testClasses": [self.file(self.class_file)], "candidateClasses": [self.file(self.class_file)],
             "classpath": [self.snapshot(self.classes), self.snapshot(self.resources), self.file(self.dependency)]}}
         self.producers = [self.compiler, self.copier]
+        expected = ["project:sample/build/classes/java/test", "project:sample/build/resources/test",
+                    "module:fixture:dependency:1:dependency.jar"]
+        self.rosters = {":sample:test": {"classpath": expected.copy()},
+                        ":sample:compileJava": {"classpath": expected.copy()},
+                        ":sample:compileTestJava": {"classpath": []},
+                        ":sample:spotbugsTest": {"auxClasspath": expected.copy()}}
+        self.authority = self.write(classpaths.ROSTER, b"")
+        self.write_roster()
+
+    def write_roster(self, configuration=None):
+        self.authority.write_text(json.dumps({"schemaVersion": 1, "kind": "phase-12-reviewed-classpaths",
+            "configuration": configuration or {}, "tasks": self.rosters}))
 
     def write(self, name, raw):
         path = self.root / name
@@ -796,7 +813,7 @@ class ClasspathEvidenceTests(unittest.TestCase):
     def context(self):
         return ci._classpath_context(self.producers,
             {("sample", "errorprone-test"): {self.name(self.source)}},
-            [self.name(p) for p in (self.source, self.resource, self.metadata)])
+            [self.name(p) for p in (self.source, self.resource, self.metadata, self.authority)])
 
     def coverage(self, record=None, field="classpath"):
         return ci._private_classpath_coverage(record or self.record, field, self.root, {}, self.context())
@@ -832,7 +849,7 @@ class ClasspathEvidenceTests(unittest.TestCase):
             '" group="fixture" name="dependency" version="1"/></trusted-keys></configuration></verification-metadata>')
         keyring = self.write("gradle/verification-keyring.gpg", b"fixture-public-keyring")
         cached = self.root.parent / "cache/modules-2/files-2.1/fixture/dependency/1/hash/dependency.jar"
-        cached.parent.mkdir(parents=True)
+        cached.parent.mkdir(parents=True, exist_ok=True)
         cached.write_bytes(b"signed-artifact-bytes")
         signature = cached.parent.parent / "signature/dependency.jar.asc"
         signature.parent.mkdir()
@@ -897,7 +914,8 @@ class ClasspathEvidenceTests(unittest.TestCase):
 
     def test_compiler_and_spotbugs_classpaths_use_the_same_origin_and_byte_validation(self):
         for field in ("classpath", "auxClasspath"):
-            record = {"startedAt": 3, "inputs": {field: copy.deepcopy(self.record["inputs"]["classpath"])}}
+            task = ":sample:compileJava" if field == "classpath" else ":sample:spotbugsTest"
+            record = {"taskPath": task, "startedAt": 3, "inputs": {field: copy.deepcopy(self.record["inputs"]["classpath"])}}
             self.assertEqual("matched", self.coverage(record, field))
             self.resource_file.write_bytes(b"stale-processed-resource")
             self.assertEqual("invalid", self.coverage(record, field))
@@ -909,10 +927,100 @@ class ClasspathEvidenceTests(unittest.TestCase):
                     "outputObservation": "complete", "sourceFiles": [self.file(self.class_file), self.file(self.resource_file)],
                     "inputs": {"kind": "jar"}, "producedOutputs": [self.file(jar)]}
         self.producers.append(producer)
-        record = {"startedAt": 5, "inputs": {"classpath": [self.file(jar)]}}
+        self.rosters[":sample:test"] = {"classpath": ["project:sample/build/libs/sample.jar"]}
+        self.write_roster()
+        record = {"taskPath": ":sample:test", "startedAt": 5, "inputs": {"classpath": [self.file(jar)]}}
         self.assertEqual("matched", self.coverage(record))
         self.copier["outcome"] = "up-to-date"
         self.assertEqual("unavailable", self.coverage(record))
+
+    def test_empty_removed_reordered_or_added_approved_entries_cannot_match(self):
+        extra = self.root.parent / "cache/modules-2/files-2.1/fixture/extra/1/hash/extra.jar"
+        extra.parent.mkdir(parents=True)
+        extra.write_bytes(b"also-approved")
+        component = ('<component group="fixture" name="extra" version="1"><artifact name="extra.jar">'
+                     '<sha256 value="' + hashlib.sha256(extra.read_bytes()).hexdigest() + '"/></artifact></component>')
+        self.metadata.write_text(self.metadata.read_text().replace('</components>', component + '</components>'))
+        self.assertEqual("matched", ci._verified_dependency({}, extra, extra.read_bytes(), self.root, self.context()))
+        original = self.record["inputs"]["classpath"]
+        for field, task in (("classpath", ":sample:test"), ("classpath", ":sample:compileJava"),
+                            ("auxClasspath", ":sample:spotbugsTest")):
+            for changed in ([], original[:-1], original[1:], list(reversed(original)),
+                            original + [self.file(extra)], original + original[:1]):
+                with self.subTest(field=field, task=task, entries=len(changed)):
+                    record = {"taskPath": task, "startedAt": 3, "inputs": {field: changed, "expectedClasspath": changed}}
+                    self.assertEqual("invalid", self.coverage(record, field))
+
+    def test_empty_classpath_requires_an_explicit_reviewed_empty_roster(self):
+        self.assertEqual("matched", self.coverage(self.compiler))
+        self.assertEqual("unavailable", ci._private_classpath_coverage(self.compiler, "classpath", self.root, {}))
+        self.compiler["taskPath"] = ":sample:unknown"
+        self.assertEqual("unavailable", self.coverage(self.compiler))
+
+    def test_analyzer_configuration_consumers_require_the_reviewed_ordered_membership(self):
+        filter_path = "build-logic/spotbugs-exclude-test.xml"
+        self.write(filter_path, b"reviewed-filter")
+        spotbugs = {"analyzerConfiguration": {"effort": None, "reportLevel": None,
+                    "extraArgs": [], "jvmArgs": [], "pluginJarFiles": []},
+                    "excludeFilter": [{"path": filter_path, "digest": ci.digest(b"reviewed-filter")}],
+                    **{name: [] for name in ("includeFilter", "baseline", "onlyAnalyze", "visitors", "omitVisitors", "chooseVisitors")}}
+        for kind, task, field, inputs in (("errorprone-main", ":sample:compileJava", "classpath", errorprone_inputs()),
+                                          ("spotbugs-test", ":sample:spotbugsTest", "auxClasspath", spotbugs)):
+            original = self.record["inputs"]["classpath"]
+            for entries, status in ((original, "matched"), ([], "invalid"), (list(reversed(original)), "invalid")):
+                with self.subTest(kind=kind, expected=status):
+                    record = {"taskPath": task, "startedAt": 3, "inputs": {**inputs, field: entries}}
+                    self.assertEqual(status, ci._private_analyzer_configuration(record, kind, self.root, {}, self.context()))
+
+    def test_missing_unselected_or_stale_authority_cannot_grant_coverage(self):
+        context = self.context()
+        context["selected"].remove(classpaths.ROSTER)
+        self.assertEqual("unavailable", ci._private_classpath_coverage(self.record, "classpath", self.root, {}, context))
+        script = self.write("build.gradle.kts", b"dependencies {}")
+        self.write_roster({"build.gradle.kts": ci.digest(script.read_bytes())})
+        context = self.context()
+        context["selected"].add("build.gradle.kts")
+        self.assertEqual("matched", ci._private_classpath_coverage(self.record, "classpath", self.root, {}, context))
+        script.write_bytes(b"dependencies { altered() }")
+        context = self.context()
+        context["selected"].add("build.gradle.kts")
+        self.assertEqual("unavailable", ci._private_classpath_coverage(self.record, "classpath", self.root, {}, context))
+        self.authority.unlink()
+        self.assertEqual("unavailable", self.coverage())
+
+    def test_private_observation_cannot_replace_committed_authority(self):
+        def git(*arguments):
+            return subprocess.check_output(["git", *arguments], cwd=self.root, stderr=subprocess.PIPE, text=True).strip()
+        git("init", "--quiet")
+        git("config", "user.name", "Source fixture")
+        git("config", "user.email", "fixture@example.invalid")
+        git("add", "--", self.name(self.source), self.name(self.resource), self.name(self.metadata), classpaths.ROSTER)
+        git("commit", "--quiet", "-m", "fixture: reviewed classpaths")
+        commit = git("rev-parse", "HEAD")
+        context = self.context()
+        context["sourceCommit"] = commit
+        self.assertEqual("matched", ci._private_classpath_coverage(self.record, "classpath", self.root, {}, context))
+        self.rosters[":sample:test"]["classpath"] = []
+        self.write_roster()
+        record = {"taskPath": ":sample:test", "inputs": {"classpath": [], "expectedClasspath": []}}
+        context = self.context()
+        context["sourceCommit"] = commit
+        self.assertEqual("invalid", ci._private_classpath_coverage(record, "classpath", self.root, {}, context))
+
+    def test_duplicate_authority_entries_are_invalid_and_unknown_profiles_are_unavailable(self):
+        self.rosters[":sample:test"]["classpath"] *= 2
+        self.write_roster()
+        self.assertEqual("invalid", self.coverage())
+        self.rosters[":sample:test"]["classpath"] = None
+        self.write_roster()
+        self.assertEqual("unavailable", self.coverage())
+
+    def test_cache_location_changes_preserve_coordinates_without_admitting_wrong_artifacts(self):
+        relative = "modules-2/files-2.1/fixture/dependency/1/other-hash/dependency.jar"
+        relocated = self.root.parent / "different-home" / relative
+        self.assertEqual("module:fixture:dependency:1:dependency.jar",
+                         classpaths.classpath_identity(self.root, str(relocated)))
+        self.assertIsNone(classpaths.classpath_identity(self.root, str(self.root / "../outside.jar")))
 
 
 if __name__ == "__main__":

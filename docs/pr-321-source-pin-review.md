@@ -561,3 +561,39 @@ unselected history. Workflow lint and 16 controlled wrapper/exit-code cases pass
 All 631 existing implementation-evidence commitments match current bytes. The separate assessment
 at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These local
 checks do not establish hosted CI, native macOS/Windows execution or original operational acceptance.
+
+## Ordered classpath membership review
+
+[Comment 4296591552](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4296591552)
+identified that authenticating each observed entry still admitted omitted, additional or reordered
+verification-approved dependencies. The previous validator incorrectly accepted 15 mutation cases
+in the new regression. Retention now compares the complete ordered list against a committed,
+source-owned roster before checking artifact bytes or fresh project producers.
+
+The reviewed roster covers 210 standard Java task classpaths, 73 build-configuration commitments,
+203 distinct project paths and 45 external artifact identities. It records project-relative paths
+and complete artifact coordinates/filenames, without host/cache prefixes. The task observations
+cannot supply their own authority. Both the roster and configuration files must match the selected
+source commit. A stale/missing roster or unsupported bootstrap/generated profile leaves coverage
+unavailable; an empty observed list matches only an explicitly reviewed empty expectation.
+Dependency signing/checksum policy, producer freshness, public redaction and applicability remain
+in force. No key or dependency checksum is added.
+
+The maintenance tool prepares a review candidate under `build/`; it does not replace the committed
+roster or grant admission. Repeated normal Gradle resolution reproduces the candidate byte for byte.
+Four real init-script mutations remove or reverse compiler, Test and SpotBugs classpaths. All four
+normal observations match the reviewed membership, and all four altered observations are invalid.
+Regressions also cover approved extra artifacts, duplicates, stale configuration, unknown authority,
+forged task expectations and alteration of a real Git-committed roster.
+
+Only the existing CI implementation and v2 test-source file commitments advance. Assertions,
+implementation states, acceptance scope and historical commitments remain unchanged. Private before
+bytes, mutation observations, digest review and verification logs remain under
+`build/pr1423-review4296591552/`, outside public upload rosters. These checks establish local
+consistency and rejection behavior; they do not establish original hosted/native admission.
+
+Local verification passes 230 focused Python tests, including the real-Git authority tampering
+regression and both analyzer-configuration consumers. All 631 implementation-evidence commitments
+match current bytes. The fixed-cutoff assessment retains 49 requirements, 47 unresolved and Phase 12
+incomplete; candidate generation, fixture results and local membership checks grant no original
+operational acceptance.

@@ -665,6 +665,10 @@ def _private_classpath_coverage(record, field, root, checked_sources, context=No
     entries = inputs.get(field)
     if type(entries) is not list or len(entries) > 4096:
         return "unavailable"
+    from .phase_12_classpaths import membership
+    roster = membership(record, field, entries, root, context)
+    if roster != "matched":
+        return roster
     seen = set()
     try:
         for entry in entries:
@@ -955,7 +959,9 @@ def _producer_identity(schema_version=2, *, source_commit=None):
              "build-logic/src/main/kotlin/cryptad.supply-chain.gradle.kts",
              "build-logic/src/main/kotlin/cryptad.spotless.gradle.kts",
              "build-logic/build.gradle.kts", ".github/workflows/ci.yml",
-             "tools/release-certification/cryptad_certification/active_source.py")
+             "tools/release-certification/cryptad_certification/active_source.py",
+             "tools/release-certification/cryptad_certification/phase_12_classpaths.py",
+             "tools/release-certification/phase-12-classpaths.json")
     elif schema_version != 1:
         _deny()
     def selected(name):
