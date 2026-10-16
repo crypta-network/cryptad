@@ -251,7 +251,7 @@ jobs:
         run: ${{ matrix.python_cmd }} -m unittest discover -s tools/perf -p test_runtime_baseline.py
 
   release-certification-self-test:
-    name: release certification self-test (${{ matrix.os }})
+    name: release certification self-test (${{ matrix.os }}, shard ${{ matrix.shard }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.timeout_minutes }}
     permissions:
@@ -259,6 +259,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
+        shard: [0, 1, 2, 3, 4, 5]
         include:
           - os: ubuntu-latest
             python_cmd: python3
@@ -283,19 +285,21 @@ jobs:
 
       - name: Run release certification self-tests
         shell: bash
-        run: ${{ matrix.python_cmd }} tools/release-certification/certify.py self-test all
+        run: ${{ matrix.python_cmd }} tools/release-certification/certify.py self-test all --shard-index ${{ matrix.shard }} --shard-count 6
 
       - name: Prepare protected helper namespace tests
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 0
         uses: ./.github/actions/setup-packaged-export-sandbox
 
       - name: Test protected producer boundaries offline
+        if: matrix.shard == 0
         shell: bash
         env:
           PYTHONPATH: tools/release-certification:tools/release-certification/protected:tools/release-certification/restricted:tools/interop
         run: ${{ matrix.python_cmd }} -m unittest discover -s tools/release-certification/protected -p 'test_*.py'
 
       - name: Reconcile Phase 12 without operational inputs
+        if: matrix.shard == 0
         shell: bash
         run: |
           ${{ matrix.python_cmd }} tools/release-certification/certify.py phase-12-closeout --mode evaluate --as-of 2026-09-10T20:00:00Z --output "$RUNNER_TEMP/phase12-private"

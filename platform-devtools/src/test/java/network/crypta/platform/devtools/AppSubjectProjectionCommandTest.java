@@ -43,7 +43,14 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+@org.junit.jupiter.api.condition.DisabledIf(
+    value = "isWindows",
+    disabledReason = "Private subject projections require POSIX owner-only directories")
 class AppSubjectProjectionCommandTest {
+  static boolean isWindows() {
+    return new network.crypta.fs.AppEnv().isWindows();
+  }
+
   @TempDir Path temporary;
 
   @Test

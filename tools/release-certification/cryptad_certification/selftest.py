@@ -30,6 +30,7 @@ SUITE_MODULES = {
     "core": [
         "cryptad_certification.tests.test_core",
         "cryptad_certification.tests.test_integrations",
+        "cryptad_certification.tests.test_selftest",
     ],
     "app-platform": ["cryptad_certification.tests.test_app_platform"],
     "app-platform-docs": ["cryptad_certification.tests.test_collectors"],
@@ -140,7 +141,25 @@ SUITE_MODULES = {
 }
 
 
-def run(suite_name: str) -> int:
+def shard_suite(suite: unittest.TestSuite, index: int, count: int) -> unittest.TestSuite:
+    """Select a stable, disjoint slice of test IDs, retaining complete coverage across shards."""
+    if count < 1 or not 0 <= index < count:
+        raise ValueError("self-test shard index must be within a positive shard count")
+
+    def flatten(items):
+        for item in items:
+            if isinstance(item, unittest.TestSuite):
+                yield from flatten(item)
+            else:
+                yield item
+
+    tests = sorted(flatten(suite), key=lambda test: test.id())
+    if count > len(tests):
+        raise ValueError("self-test shard count exceeds the number of tests")
+    return unittest.TestSuite(tests[index::count])
+
+
+def run(suite_name: str, *, shard_index: int = 0, shard_count: int = 1) -> int:
     """Run one focused suite or every certification test."""
 
     loader = unittest.defaultTestLoader
@@ -151,6 +170,7 @@ def run(suite_name: str) -> int:
         if module_names is None:
             raise ValueError(f"unknown self-test suite: {suite_name}")
     suite = unittest.TestSuite(loader.loadTestsFromName(name) for name in module_names)
+    suite = shard_suite(suite, shard_index, shard_count)
     previous = Path.cwd()
     workspace_root = Path(__file__).resolve().parents[3]
     try:

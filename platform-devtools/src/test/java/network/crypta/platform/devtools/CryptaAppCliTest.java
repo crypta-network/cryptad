@@ -851,7 +851,11 @@ class CryptaAppCliTest {
         "--version",
         "0.1.0");
     Path staticDir = appDir.resolve("static");
-    Files.writeString(staticDir.resolve("foo:bar.css"), "body {}\n", StandardCharsets.UTF_8);
+    try {
+      Files.writeString(staticDir.resolve("foo:bar.css"), "body {}\n", StandardCharsets.UTF_8);
+    } catch (java.nio.file.InvalidPathException _) {
+      // The HTML reference must still be rejected when the filesystem cannot represent its name.
+    }
     Path index = staticDir.resolve("index.html");
     Files.writeString(
         index,
@@ -3335,7 +3339,9 @@ class CryptaAppCliTest {
     CliResult result = runCli("--help");
 
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
-    assertTrue(result.out().contains("Usage: crypta-app"));
+    assertTrue(
+        result.out().replaceAll("\u001B\\[[0-9;]*m", "").contains("Usage: crypta-app"),
+        result.out());
     assertTrue(result.out().contains("init"));
     assertTrue(result.out().contains("validate"));
     assertTrue(result.out().contains("pack"));

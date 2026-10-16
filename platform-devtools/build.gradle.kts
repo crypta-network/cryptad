@@ -23,7 +23,10 @@ dependencies {
 
   testImplementation(mainSourceSet.map { it.output })
   testImplementation(project(":platform-api"))
+  testImplementation(project(":foundation-fs"))
   testImplementation(libs.junitJupiterApi)
+  testImplementation(libs.junitJupiterParams)
+  testImplementation(libs.mockitoCore)
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
 }

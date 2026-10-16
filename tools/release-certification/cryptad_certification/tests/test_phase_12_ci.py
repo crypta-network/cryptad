@@ -157,6 +157,50 @@ class Phase12HostedCITests(unittest.TestCase):
              patch.object(ci, "_historical_source", side_effect=self.api.legacy_source):
             return ci.verify(encoded(self.api.selection), SOURCE, AS_OF, collect_original=True)
 
+    def certification_shards(self):
+        response = self.api.responses["actions/runs/1/attempts/2/jobs?per_page=100"]
+        old = [job for job in response["jobs"] if job["name"].startswith("release certification self-test (")]
+        response["jobs"] = [job for job in response["jobs"] if job not in old]
+        shards = []
+        for index, (name, required) in enumerate(ci.CERTIFICATION_SHARD_STEPS.items()):
+            template = next(job for job in old if job["name"].split("(")[1].split(")")[0] in name)
+            job = copy.deepcopy(template)
+            job_id = 10000 + index
+            job.update(id=job_id, name=name,
+                       check_run_url=f"https://api.github.com/repos/{ci.REPOSITORY}/check-runs/{job_id}")
+            job["steps"] = [job["steps"][0]] + [{"name": step, "conclusion": "success"} for step in required]
+            self.api.responses[f"actions/jobs/{job_id}/logs"] = self.api.responses[f"actions/jobs/{template['id']}/logs"]
+            check = copy.deepcopy(self.api.responses[f"check-runs/{template['id']}"])
+            check.update(id=job_id, name=name)
+            self.api.responses[f"check-runs/{job_id}"] = check
+            self.api.responses[f"check-runs/{job_id}/annotations?per_page=100"] = []
+            shards.append(job)
+        response["jobs"].extend(shards)
+        response["total_count"] = len(response["jobs"])
+        return response, shards
+
+    def test_certification_shards_require_every_original_job(self):
+        self.certification_shards()
+        result = self.verify()
+        jobs = [job for record in result["records"] for job in record["jobs"]
+                if job["name"] in ci.CERTIFICATION_SHARD_STEPS]
+        self.assertEqual({job["name"] for job in jobs}, set(ci.CERTIFICATION_SHARD_STEPS))
+        self.assertTrue(all(job["execution"] == "executed-pass" for job in jobs))
+
+    def test_missing_certification_shard_cannot_be_accepted(self):
+        response, shards = self.certification_shards()
+        response["jobs"].remove(shards[-1])
+        response["total_count"] -= 1
+        with self.assertRaisesRegex(ValueError, "^phase12-original-ci-invalid$"):
+            self.verify()
+
+    def test_skipped_certification_shard_step_keeps_failure_visible(self):
+        _, shards = self.certification_shards()
+        shards[-1]["steps"][-1]["conclusion"] = "skipped"
+        result = self.verify()
+        self.assertIn("required-original-ci-job-not-executed-pass", result["blockers"])
+        self.assertNotEqual("executed-pass", result["ci"])
+
     def test_catalog_origin_integration_cannot_be_skipped_under_a_successful_job(self):
         self.api.complete_reports()
         jobs = self.api.responses["actions/runs/1/attempts/2/jobs?per_page=100"]["jobs"]

@@ -51,9 +51,13 @@ public class RealCompressor {
    * are created lazily when the first job is submitted.
    */
   public RealCompressor() {
-    this.executorService =
+    this(
         Executors.newFixedThreadPool(
-            getMaxRunningCompressionThreads(), new CompressorThreadFactory());
+            getMaxRunningCompressionThreads(), new CompressorThreadFactory()));
+  }
+
+  RealCompressor(ExecutorService executorService) {
+    this.executorService = java.util.Objects.requireNonNull(executorService);
   }
 
   /**

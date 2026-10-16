@@ -364,20 +364,13 @@ final class DeveloperKeyGenerator {
   }
 
   /**
-   * Applies best-effort owner-only permissions through {@link java.io.File} APIs.
+   * Applies owner-only permissions through the filesystem ACL view.
    *
    * @param file private key file on a filesystem without POSIX permission support
    * @throws IOException if the runtime reports that any permission change failed
    */
   private static void restrictPortableOwnerOnly(Path file) throws IOException {
-    java.io.File javaFile = file.toFile();
-    if (!javaFile.setReadable(false, false)
-        || !javaFile.setWritable(false, false)
-        || !javaFile.setExecutable(false, false)
-        || !javaFile.setReadable(true, true)
-        || !javaFile.setWritable(true, true)) {
-      throw new IOException("failed to restrict private key file permissions: " + file);
-    }
+    PrivateFilePermissions.restrictToOwner(file, false);
   }
 
   /**

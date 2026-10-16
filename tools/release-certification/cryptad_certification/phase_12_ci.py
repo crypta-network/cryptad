@@ -56,6 +56,13 @@ CI_STEPS = {
         "Reconcile Phase 12 without operational inputs") for system in ("ubuntu-latest", "macos-latest")},
 }
 # Explicit lane IDs are source-owned. A supplied platform list cannot shrink the graph.
+CERTIFICATION_SHARD_STEPS = {
+    f"release certification self-test ({system}, shard {index})":
+        ("Run release certification self-tests",) +
+        (("Test protected producer boundaries offline", "Reconcile Phase 12 without operational inputs")
+         if index == 0 else ())
+    for system in ("ubuntu-latest", "macos-latest") for index in range(6)
+}
 NATIVE_STEPS = {f"native ({lane}) / build": ("Run native Java verification",)
                 for lane in ("macos-arm64", "windows-amd64")}
 STEPS = {
@@ -1410,6 +1417,10 @@ def _run(client, requested, source, as_of):
         _deny()
     actual = {row["name"]: row for row in jobs["jobs"]}
     expected = dict(STEPS[run["path"]])
+    if run["path"] == ".github/workflows/ci.yml" and set(CERTIFICATION_SHARD_STEPS).intersection(actual):
+        for system in ("ubuntu-latest", "macos-latest"):
+            expected.pop(f"release certification self-test ({system})")
+        expected.update(CERTIFICATION_SHARD_STEPS)
     if run["path"] == ".github/workflows/ci.yml" and set(NATIVE_STEPS).intersection(actual):
         expected.update(NATIVE_STEPS)
     if (len(actual) != len(jobs["jobs"]) or not set(expected) <= set(actual)
