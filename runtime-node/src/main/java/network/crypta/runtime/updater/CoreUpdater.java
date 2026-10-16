@@ -368,9 +368,14 @@ public class CoreUpdater extends NodeUpdater {
   private boolean canPrepareDownloadTargetPath(DescriptorSelection selection) {
     File versionDir = updatesDir(selection);
     if (versionDir.exists()) {
-      return versionDir.isDirectory() && versionDir.canWrite();
+      return isWritableDirectory(versionDir);
     }
     return canPrepareAncestorDirectory(versionDir.getParentFile());
+  }
+
+  /** Observes filesystem write access separately from package and descriptor selection. */
+  boolean isWritableDirectory(File directory) {
+    return directory.isDirectory() && directory.canWrite();
   }
 
   private static boolean canPrepareAncestorDirectory(File directory) {

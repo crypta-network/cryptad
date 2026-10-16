@@ -208,13 +208,19 @@ class PlatformApiAppsIntegrationTest {
     assertEquals(409, reinstallResponse.statusCode());
     assertTrue(reinstallResponse.body().contains("\"code\":\"app_conflict\""));
 
-    router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+    try {
+      router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
 
-    PlatformApiResponse repeatedStartResponse =
-        router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
+      PlatformApiResponse repeatedStartResponse =
+          router.route(request("POST", List.of("apps", APP_ID, "start"), Map.of()));
 
-    assertEquals(409, repeatedStartResponse.statusCode());
-    assertTrue(repeatedStartResponse.body().contains("\"code\":\"app_conflict\""));
+      assertEquals(409, repeatedStartResponse.statusCode());
+      assertTrue(repeatedStartResponse.body().contains("\"code\":\"app_conflict\""));
+    } finally {
+      PlatformApiResponse stopResponse =
+          router.route(request("POST", List.of("apps", APP_ID, "stop"), Map.of()));
+      assertEquals(200, stopResponse.statusCode());
+    }
   }
 
   @Test
@@ -283,7 +289,7 @@ class PlatformApiAppsIntegrationTest {
         createRouter(signedHost(trustedKeys), catalogManager(trustedKeys));
     Path stagedV1 = stageSignedApp("catalog-v1", "1.0.0", keyPair);
     Path artifactV1 = zipDirectory(stagedV1, tempDir.resolve("catalog-v1.zip"));
-    Path catalog = writeSignedCatalog(artifactV1, "1.0.0", keyPair);
+    Path catalog = writeSignedCatalog(artifactV1, "1.0.0", keyPair, CATALOG_GENERATED_AT);
 
     PlatformApiResponse addResponse =
         productionRouter.route(
@@ -460,11 +466,6 @@ class PlatformApiAppsIntegrationTest {
     Path stagedDir = stageApp(stagedDirectoryName, appVersion);
     AppBundleSigner.sign(stagedDir, TRUSTED_KEY_ID, keyPair.getPrivate());
     return stagedDir;
-  }
-
-  private Path writeSignedCatalog(Path artifact, String appVersion, KeyPair keyPair)
-      throws Exception {
-    return writeSignedCatalog(artifact, appVersion, keyPair, CATALOG_GENERATED_AT);
   }
 
   private Path writeSignedCatalog(

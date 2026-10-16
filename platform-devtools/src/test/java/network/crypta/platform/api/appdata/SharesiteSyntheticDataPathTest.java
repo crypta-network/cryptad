@@ -39,7 +39,14 @@ import static org.junit.jupiter.api.Assertions.*;
  * No catalog authority, real user snapshot, managed-node observation, or network publication is
  * claimed. The ephemeral test signing key never enters the migration payload.
  */
+@org.junit.jupiter.api.condition.DisabledIf(
+    value = "isWindows",
+    disabledReason = "Sharesite export requires a POSIX owner-only workspace")
 class SharesiteSyntheticDataPathTest {
+  static boolean isWindows() {
+    return new network.crypta.fs.AppEnv().isWindows();
+  }
+
   private static final String APP = "site-publisher";
   private static final String NAMESPACE = "sharesite-drafts";
   private static final String OPERATION = "c2de6c66-411f-4d65-a94e-4e78b63368de";

@@ -1943,7 +1943,7 @@ class LocalProcessAppHostTest {
   void updateFromDirectory_whenAppIsRunning_expectFailure() throws IOException {
     AppHostLayout appHostLayout = layout();
     AppHost host = developmentHost(appHostLayout);
-    host.installFromDirectory(stageInstalledRunnerApp(DAEMONIZED_CHILD_PROCESS_SCRIPT));
+    host.installFromDirectory(stageInstalledRunnerApp(scriptContent(new AppEnv())));
     host.start(RUNNER_APP_ID);
     Path transactionRoot = Files.createDirectories(appHostLayout.appMutationTransactionsDir());
 
@@ -2518,7 +2518,7 @@ class LocalProcessAppHostTest {
   @Test
   void start_whenInstalledProcessExitsImmediately_expectFailureAndNoRunningState()
       throws IOException {
-    AppHost host = allowUnsignedHost();
+    AppHost host = immediateExitHost();
     host.installFromDirectory(stageInstalledRunnerApp(immediateExitScriptContent(new AppEnv())));
 
     Instant started = Instant.now();
@@ -2538,7 +2538,7 @@ class LocalProcessAppHostTest {
   @Test
   void start_whenInstalledProcessCrashesImmediately_expectCrashedRuntimeStatus()
       throws IOException {
-    AppHost host = allowUnsignedHost();
+    AppHost host = immediateExitHost();
     host.installFromDirectory(stageInstalledRunnerApp(IMMEDIATE_CRASH_SCRIPT));
 
     AppHostException exception =
@@ -2555,7 +2555,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = allowUnsignedHost();
+    AppHost host = immediateExitHost();
     host.installFromDirectory(stageInstalledRunnerApp(IMMEDIATE_TOKEN_CRASH_SCRIPT));
 
     assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
@@ -2926,6 +2926,8 @@ class LocalProcessAppHostTest {
     injectRunningProcess(
         host, RUNNER_APP_ID, snapshot, process, CompletableFuture.completedFuture(null));
 
+    // Start the child's observation clock before the capture window can expire.
+    assertEquals(AppRuntimeState.RUNNING, host.runtimeStatus(RUNNER_APP_ID).state());
     invokeCapturePostExitProcessTreeHandoff(host, process);
     childHandle.markExited();
 
@@ -3619,7 +3621,8 @@ class LocalProcessAppHostTest {
   void stop_whenRecoveredLateChildExitsWithinStopTimeout_expectCleanSuccess()
       throws IOException, ReflectiveOperationException {
     long recoveredChildPid = 84L;
-    LocalProcessAppHost host = allowUnsignedHost(Duration.ofMillis(200));
+    // The synthetic child exits after repeated refreshes, not after a fixed wall-clock delay.
+    LocalProcessAppHost host = allowUnsignedHost(Duration.ofSeconds(2));
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(
         host,
@@ -3850,7 +3853,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = allowUnsignedHost();
+    AppHost host = immediateExitHost();
     InstalledAppSnapshot installation =
         host.installFromDirectory(stageInstalledRunnerApp(SINGLE_RUN_EXIT_SCRIPT));
 
@@ -3922,7 +3925,7 @@ class LocalProcessAppHostTest {
     assertEquals(
         "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin:"
             + "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin",
-        environment.get("PATH"));
+        environment.get("PATH").replace('\\', '/'));
     assertEquals(DEFAULT_TOKEN, environment.get(APP_TOKEN_ENV_NAME));
     assertEquals(RUNNER_APP_ID, environment.get("CRYPTAD_APP_ID"));
     assertEquals("shell-panel", environment.get("CRYPTAD_APP_UI_MODE"));
@@ -3943,7 +3946,7 @@ class LocalProcessAppHostTest {
     assertEquals(
         "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin:"
             + "/opt/homebrew/bin:/opt/homebrew/sbin:/opt/local/bin:/opt/local/sbin",
-        environment.get("PATH"));
+        environment.get("PATH").replace('\\', '/'));
   }
 
   @Test
@@ -4497,6 +4500,27 @@ class LocalProcessAppHostTest {
 
   private LocalProcessAppHost allowUnsignedHost() {
     return allowUnsignedHost(Duration.ofSeconds(1));
+  }
+
+  private LocalProcessAppHost immediateExitHost() {
+    // Real shell initialization and the exit trap need scheduling margin on loaded CI hosts.
+    LocalProcessAppHost.TimingConfig timing =
+        new LocalProcessAppHost.TimingConfig(
+            Duration.ofSeconds(2),
+            TEST_TIMING.startupProcessCaptureWindow(),
+            Duration.ofSeconds(1),
+            TEST_TIMING.trackedProcessPostExitCaptureGracePeriod(),
+            TEST_TIMING.trackedProcessRefreshInterval(),
+            TEST_TIMING.startupProcessPollInterval(),
+            TEST_TIMING.startupHandoffPollInterval(),
+            TEST_TIMING.descendantReapGracePeriodLimit());
+    return new LocalProcessAppHost(
+        layout(),
+        Duration.ofSeconds(1),
+        new java.security.SecureRandom(),
+        new AppEnv(),
+        timing,
+        AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
   }
 
   private LocalProcessAppHost allowUnsignedHost(Duration stopTimeout) {
@@ -5065,7 +5089,7 @@ class LocalProcessAppHostTest {
       setlocal EnableExtensions
       set > "%CRYPTAD_APP_RUN_DIR%\\captured-env.txt"
       :loop
-      timeout /t 1 /nobreak >nul
+      ping -n 2 127.0.0.1 >nul
       goto loop
       """;
     }

@@ -160,22 +160,21 @@ public class M3UFilter implements ContentDataFilter {
   private record Line(String text, boolean terminated) {}
 
   private static Line readNextLine(DataInputStream dis) throws IOException {
-    byte[] one = new byte[1];
     boolean sawAny = false;
     boolean terminated = false;
     // Using a byte buffer to avoid incorrect char length accounting
     byte[] buf = new byte[MAX_URI_LENGTH + 1];
     int idx = 0;
 
-    while (dis.read(one) != -1) {
+    int value;
+    while ((value = dis.read()) != -1) {
       sawAny = true;
-      byte b = one[0];
-      if (b == '\n') {
+      if (value == '\n') {
         terminated = true;
         break;
       }
-      if (b != '\r' && idx < buf.length) {
-        buf[idx++] = b;
+      if (value != '\r' && idx < buf.length) {
+        buf[idx++] = (byte) value;
       }
     }
 

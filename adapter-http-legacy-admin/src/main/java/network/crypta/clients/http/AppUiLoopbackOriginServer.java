@@ -25,6 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import network.crypta.platform.api.PlatformApiPaths;
@@ -145,6 +146,21 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
       AppBrowserSessionIssuer sessionIssuer,
       String adminRoot,
       BooleanSupplier javascriptEnabled) {
+    this(
+        appHost,
+        sessionIssuer,
+        adminRoot,
+        javascriptEnabled,
+        Executors.newCachedThreadPool(new DaemonThreadFactory()));
+  }
+
+  /** Creates a registry that owns and shuts down the supplied request executor. */
+  AppUiLoopbackOriginServer(
+      AppHost appHost,
+      AppBrowserSessionIssuer sessionIssuer,
+      String adminRoot,
+      BooleanSupplier javascriptEnabled,
+      ExecutorService executor) {
     this.appHost = Objects.requireNonNull(appHost, "appHost");
     this.assetService = new AppStaticAssetService(appHost);
     this.bootstrapService = new AppUiBootstrapService(appHost, sessionIssuer);
@@ -153,7 +169,7 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     this.platformApiRoot = appendRootPath(normalizedAdminRoot, PlatformApiPaths.API_V1_PREFIX);
     this.shellRoot = appendRootPath(normalizedAdminRoot, WebShellPaths.SHELL_ROOT);
     this.javascriptEnabled = Objects.requireNonNull(javascriptEnabled, "javascriptEnabled");
-    this.executor = Executors.newCachedThreadPool(new DaemonThreadFactory());
+    this.executor = Objects.requireNonNull(executor, "executor");
   }
 
   /**
@@ -247,6 +263,7 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
    *
    * <p>The method is idempotent for normal shutdown paths. It does not stop the admin listener or
    * invalidate already-issued browser-session tokens; those remain owned by the session store.
+   * Request handlers have up to ten seconds to finish releasing their asset streams.
    */
   @Override
   public void close() {
@@ -255,6 +272,13 @@ final class AppUiLoopbackOriginServer implements AppUiOriginRegistry, AutoClosea
     byOrigin.clear();
     bootstrapNonces.clear();
     executor.shutdownNow();
+    try {
+      if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+        LOG.warn("Timed out waiting for app UI request handlers to stop.");
+      }
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   private BindingServer createBindingServer(InstalledAppSnapshot snapshot) {

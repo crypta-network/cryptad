@@ -118,6 +118,24 @@ class FederatedCatalogScopeBootstrapTest {
   }
 
   @Test
+  void bootstrap_whenInputAncestorIsSymlink_expectNoDestinationCreated() throws Exception {
+    Path input = handoff("fixture-app");
+    Path linkedParent = temporary.resolve("linked-parent");
+    Files.createSymbolicLink(linkedParent, temporary);
+    Path linkedInput = linkedParent.resolve(input.getFileName());
+    Path target = temporary.resolve("apps");
+    String expectedManifestDigest = manifestDigest(input);
+
+    assertThrows(
+        IOException.class,
+        () ->
+            FederatedCatalogScopeBootstrap.bootstrap(target, linkedInput, expectedManifestDigest));
+
+    assertFalse(Files.exists(target));
+    assertNoScratchDirectories();
+  }
+
+  @Test
   void bootstrap_whenDestinationExists_expectPreexistingStatePreserved() throws Exception {
     Path input = handoff("fixture-app");
     Path target = Files.createDirectory(temporary.resolve("apps"));

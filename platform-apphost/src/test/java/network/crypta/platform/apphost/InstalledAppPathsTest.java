@@ -26,7 +26,8 @@ class InstalledAppPathsTest {
         assertThrows(
             IllegalArgumentException.class, () -> paths.resolveInstalledPath(relativeEscape));
 
-    assertEquals("resolved path must stay under installedRoot: ../outside", exception.getMessage());
+    assertEquals(
+        "resolved path must stay under installedRoot: " + relativeEscape, exception.getMessage());
   }
 
   @Test
@@ -47,7 +48,9 @@ class InstalledAppPathsTest {
     IllegalArgumentException exception =
         assertThrows(IllegalArgumentException.class, () -> paths.executablePath(manifest));
 
-    assertEquals("resolved path must stay under installedRoot: /outside", exception.getMessage());
+    assertEquals(
+        "resolved path must stay under installedRoot: " + manifest.execPath(),
+        exception.getMessage());
   }
 
   @Test

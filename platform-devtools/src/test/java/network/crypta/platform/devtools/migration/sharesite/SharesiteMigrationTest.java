@@ -24,6 +24,10 @@ import picocli.CommandLine;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SharesiteMigrationTest {
+  static boolean isWindows() {
+    return new network.crypta.fs.AppEnv().isWindows();
+  }
+
   private static final UUID OPERATION = UUID.fromString("26c8bd03-cd47-44aa-ae02-b0ba6e9308de");
   private static final String CANARY = "SYNTHETIC_SECRET_CANARY_DO_NOT_EXPORT";
   @TempDir Path temporary;
@@ -269,6 +273,9 @@ class SharesiteMigrationTest {
   }
 
   @Test
+  @org.junit.jupiter.api.condition.DisabledIf(
+      value = "isWindows",
+      disabledReason = "Sharesite export requires a POSIX owner-only workspace")
   void cli_whenPlanThenExport_expectPrivateExactPayloadAndNoSourceMutation() throws Exception {
     Path source = temporary.resolve("private-source-name.db");
     byte[] original = encode(validFields());
@@ -294,6 +301,9 @@ class SharesiteMigrationTest {
   }
 
   @Test
+  @org.junit.jupiter.api.condition.DisabledIf(
+      value = "isWindows",
+      disabledReason = "Sharesite export requires a POSIX owner-only workspace")
   void cli_whenEligibleTextChangesAfterInspection_expectStaleInspectionAndNoPlan()
       throws Exception {
     Path source = temporary.resolve("Sharesite.db");
@@ -323,6 +333,9 @@ class SharesiteMigrationTest {
   }
 
   @Test
+  @org.junit.jupiter.api.condition.DisabledIf(
+      value = "isWindows",
+      disabledReason = "Sharesite export requires a POSIX owner-only workspace")
   void cli_whenChangedSnapshotOrUnsafeWorkspace_expectNoExport() throws Exception {
     Path source = temporary.resolve("Sharesite.db");
     Files.write(source, encode(validFields()));
@@ -383,6 +396,9 @@ class SharesiteMigrationTest {
   }
 
   @Test
+  @org.junit.jupiter.api.condition.DisabledIf(
+      value = "isWindows",
+      disabledReason = "Sharesite export requires a POSIX owner-only workspace")
   void convert_whenCommittedDatasetAtSizeBoundary_expectControllerAcceptsAndNextByteRejected()
       throws Exception {
     List<Integer> selectedIds = List.of(0, 1, 2);
@@ -503,6 +519,9 @@ class SharesiteMigrationTest {
   }
 
   @Test
+  @org.junit.jupiter.api.condition.DisabledIf(
+      value = "isWindows",
+      disabledReason = "Sharesite export requires a POSIX owner-only workspace")
   void cli_whenPrivateOutputIsLinkOrExistingTarget_expectNoOverwrite() throws Exception {
     Path source = temporary.resolve("Sharesite.db");
     byte[] original = encode(validFields());

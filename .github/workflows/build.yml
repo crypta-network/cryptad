@@ -9,6 +9,13 @@ on:
       jdk-version:
         type: string
         default: '25'
+      lane:
+        type: string
+        default: linux-amd64
+      run-spotbugs:
+        description: Run the complete analyzer cohort required for Phase 12 admission
+        type: boolean
+        default: true
     outputs:
       artifact-id:
         description: The artifact-id for built cryptad.jar
@@ -20,7 +27,7 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.lane == 'linux-amd64' && 'ubuntu-latest' || inputs.lane == 'macos-arm64' && 'macos-latest' || 'windows-latest' }}
     permissions:
       contents: read
       actions: write # required for actions/cache to reserve/upload caches
@@ -30,11 +37,21 @@ jobs:
     # Expose selected secrets as env so we can use them in step `if:`
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      RUN_SPOTBUGS: ${{ inputs.run-spotbugs }}
 
     outputs:
       artifact-id: ${{ steps.upload-artifact.outputs.artifact-id}}
 
     steps:
+      - name: Validate fixed native lane
+        shell: bash
+        env:
+          PHASE12_LANE: ${{ inputs.lane }}
+        run: |
+          case "$PHASE12_LANE" in
+            linux-amd64|macos-arm64|windows-amd64) ;;
+            *) exit 1 ;;
+          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: crypta-network/cryptad
@@ -46,6 +63,12 @@ jobs:
         with:
           java-version: ${{ inputs.jdk-version }}
           distribution: 'temurin'
+
+      - name: Set up Python
+        id: setup-python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14.7'
 
       # Cache SonarQube packages to speed up analysis
       - name: Cache SonarQube packages
@@ -64,48 +87,87 @@ jobs:
         uses: ./.github/actions/setup-gradle-properties
 
       - name: Prepare bounded CI report retention
+        shell: bash
         env:
           PYTHONPATH: tools/release-certification
-        run: python3 -m cryptad_certification.phase_12_ci --prepare "$RUNNER_TEMP/phase12-report-start.json"
+          PYTHON3: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          "$PYTHON3" -m cryptad_certification.phase_12_ci --prepare "$RUNNER_TEMP/phase12-report-start.json"
 
+      # Callers can bound routine builds; only full analyzer execution can satisfy admission.
       - name: Build and analyze (Gradle)
-        if: ${{ env.SONAR_TOKEN != '' }}
+        if: ${{ inputs.lane == 'linux-amd64' && env.SONAR_TOKEN != '' }}
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-        run: ./gradlew build errorproneReport sonar --warning-mode all
+        run: |
+          exclusions=()
+          if [[ "$RUN_SPOTBUGS" != "true" ]]; then
+            exclusions=(-x spotbugsMain -x spotbugsTest)
+          fi
+          ./gradlew build errorproneReport sonar -Pphase12Evidence=true "${exclusions[@]}" --warning-mode all
 
       - name: Build (no Sonar token)
-        if: ${{ env.SONAR_TOKEN == '' }}
+        if: ${{ inputs.lane == 'linux-amd64' && env.SONAR_TOKEN == '' }}
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./gradlew build errorproneReport
+        run: |
+          exclusions=()
+          if [[ "$RUN_SPOTBUGS" != "true" ]]; then
+            exclusions=(-x spotbugsMain -x spotbugsTest)
+          fi
+          ./gradlew build errorproneReport -Pphase12Evidence=true "${exclusions[@]}"
 
-      # The producer exports only typed counts and public source identities. Raw JUnit output,
-      # diagnostic messages, source paths and private-payload hashes never become artifacts.
+      - name: Run native Java verification
+        if: ${{ inputs.lane != 'linux-amd64' }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          wrapper=./gradlew
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            wrapper=./gradlew.bat
+          fi
+          tasks=(test)
+          if [[ "$RUN_SPOTBUGS" == "true" ]]; then
+            tasks+=(spotbugsMain spotbugsTest)
+          else
+            tasks+=(-x spotbugsMain -x spotbugsTest)
+          fi
+          "$wrapper" "${tasks[@]}" errorproneReport -Pphase12Evidence=true --continue
+
+      # Failed jobs also retain fixed typed facts. Raw XML, diagnostics, names and payload hashes
+      # remain private; authentic failed/incomplete evidence never grants acceptance.
       - name: Retain typed CI test and analyzer facts
-        if: success() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        shell: bash
         env:
           PYTHONPATH: tools/release-certification
-        run: python3 -m cryptad_certification.phase_12_ci --retain "$RUNNER_TEMP/phase12-report-facts" --started "$RUNNER_TEMP/phase12-report-start.json"
+          PHASE12_LANE: ${{ inputs.lane }}
+          PYTHON3: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          "$PYTHON3" -m cryptad_certification.phase_12_ci --retain "$RUNNER_TEMP/phase12-report-facts" --started "$RUNNER_TEMP/phase12-report-start.json" --lane "$PHASE12_LANE"
 
       - name: Attest exact CI report facts
-        if: success() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/phase12-report-facts/phase-12-ci-reports.json
 
       - name: Upload bounded CI report facts
-        if: success() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: phase-12-ci-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          name: phase-12-ci-reports-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.lane }}
           path: ${{ runner.temp }}/phase12-report-facts/phase-12-ci-reports.json
           if-no-files-found: error
           retention-days: 14
           include-hidden-files: false
 
       - name: Upload cryptad.jar
+        if: ${{ success() && inputs.lane == 'linux-amd64' }}
         id: upload-artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -113,6 +175,7 @@ jobs:
           path: build/libs/cryptad.jar
 
       - name: Upload jlink tarball
+        if: ${{ success() && inputs.lane == 'linux-amd64' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cryptad-jlink

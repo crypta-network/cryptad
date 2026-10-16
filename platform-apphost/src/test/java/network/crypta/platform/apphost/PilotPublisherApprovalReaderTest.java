@@ -1,10 +1,13 @@
 package network.crypta.platform.apphost;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,6 +24,11 @@ class PilotPublisherApprovalReaderTest {
       "sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
   @TempDir Path tempDir;
+
+  @BeforeEach
+  void prepareOwnedFixtureRoot() throws Exception {
+    tempDir = tempDir.toRealPath();
+  }
 
   @Test
   void read_whenExactClosedApprovalDigestMatches_expectRuntimeProjection() throws Exception {
@@ -76,7 +84,7 @@ class PilotPublisherApprovalReaderTest {
     Path approvalFile = actualDirectory.resolve("publisher-approval.json");
     Files.writeString(approvalFile, approvalJson(""), StandardCharsets.UTF_8);
     Path symlinkDirectory = tempDir.resolve("linked");
-    Files.createSymbolicLink(symlinkDirectory, actualDirectory);
+    createFixtureAlias(symlinkDirectory, actualDirectory);
     Path linkedApproval = symlinkDirectory.resolve(approvalFile.getFileName());
 
     AppHostConfigurationException exception =
@@ -87,6 +95,37 @@ class PilotPublisherApprovalReaderTest {
                     linkedApproval, sha256(Files.readAllBytes(approvalFile))));
 
     assertTrue(exception.getMessage().contains("must not use symbolic links"));
+  }
+
+  @Test
+  void read_whenFixtureOwnsTempAlias_expectResolvedRootAcceptedAndRawAliasRejected()
+      throws Exception {
+    Path ownedDirectory = Files.createDirectory(tempDir.resolve("owned approval é"));
+    Path aliasDirectory = createFixtureAlias(tempDir.resolve("fixture-alias"), ownedDirectory);
+    Path realFixtureRoot = aliasDirectory.toRealPath();
+    Path approvalFile = realFixtureRoot.resolve("publisher-approval.json");
+    Files.writeString(approvalFile, approvalJson(""), StandardCharsets.UTF_8);
+    String authenticatedDigest = sha256(Files.readAllBytes(approvalFile));
+
+    PilotPublisherVerificationPolicy.Approval approval =
+        PilotPublisherApprovalReader.read(approvalFile, authenticatedDigest);
+
+    assertEquals("pilot-294", approval.pilotId());
+    AppHostConfigurationException exception =
+        assertThrows(
+            AppHostConfigurationException.class,
+            () ->
+                PilotPublisherApprovalReader.read(
+                    aliasDirectory.resolve("publisher-approval.json"), authenticatedDigest));
+    assertTrue(exception.getMessage().contains("must not use symbolic links"));
+  }
+
+  private static Path createFixtureAlias(Path alias, Path target) throws IOException {
+    try {
+      return Files.createSymbolicLink(alias, target);
+    } catch (UnsupportedOperationException _) {
+      return Assumptions.abort("filesystem-provider-symbolic-links-unsupported");
+    }
   }
 
   private static String approvalJson(String trailingWhitespace) {

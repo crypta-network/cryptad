@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppBundleSignature;
 import network.crypta.platform.appdist.AppBundleSigner;
 import network.crypta.platform.appdist.AppBundleVerification;
@@ -246,7 +247,10 @@ class VerifiedInstalledBundleGuardTest {
   private Path bundle(String version) throws IOException {
     Path staged = Files.createDirectories(temporary.resolve("stage-" + version));
     Files.createDirectories(staged.resolve("bin"));
-    Files.writeString(staged.resolve("bin/launch"), "#!/bin/sh\nexit 0\n");
+    boolean windows = new AppEnv().isWindows();
+    String launcher = windows ? "bin/launch.cmd" : "bin/launch";
+    Files.writeString(
+        staged.resolve(launcher), windows ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n");
     Files.writeString(staged.resolve("content.txt"), "bundle " + version);
     Files.writeString(
         staged.resolve("cryptad-app.properties"),
@@ -255,13 +259,14 @@ class VerifiedInstalledBundleGuardTest {
         app.id=site-publisher
         app.name=Site Publisher
         app.version=${version}
-        app.exec=bin/launch
+        app.exec=${launcher}
         app.ui.entry=/
         app.permissions=app.data.read,app.data.write
         quota.data.bytes=1048576
         quota.cache.bytes=1024
         """
-            .replace("${version}", version));
+            .replace("${version}", version)
+            .replace("${launcher}", launcher));
     return staged;
   }
 }

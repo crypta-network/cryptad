@@ -1,0 +1,776 @@
+# PR-321 source-pin review
+
+This review binds the supported-platform successor to selected implementation bytes while preserving
+the accepted Phase 12 obligations and historical assessments.
+
+## Selected source and historical relationship
+
+The starting integration is `82fbe160454cde9cce821d1d0acf305314036235`, tree
+`c9c97be3836ff35d0e03cb4eef5d6be615f3b645`. PR-320's final head
+`dc5f9c7e6dbc06daedc33386c56a5a719fea7851` has that identical tree. Its earlier planning head
+`e35d5fc969a4be8662cf2bb7b5b57d6403023a9d` is a historical working point, rather than the integrated
+product. The final 14-file delta adds private fixture/source-export corrections and CI import paths;
+its production Java change replaces the `signature` literal with the existing identical constant.
+The corresponding PR-320 pins already cover those final bytes.
+
+The immutable [PR-320 inventory](../tools/release-certification/history/phase-12-acceptance-policy-pr320.json)
+is retained with SHA-256 `ee545d3c9ba2cadb69d461b7a30c26ee2afe8fcca1f0a0c6727d9d0941d82648`.
+The successor inventory is version 7. All 49 mandatory IDs, assertions, dimensions, subjects,
+prerequisites, owners, existing evidence assertions and entries, implementation states, residuals and
+clocks remain unchanged. The source roster adds the reviewed active-source helper/test for CI and
+the three public-site owners. CI also adds the Gradle recorder/test, source-package selector/test,
+included-build/distribution/supply-chain/formatter configuration, explicit self-test registry, four
+boundary test repairs, the pilot fixture, the narrow playlist read repair/regressions, and exact
+source owners for platform applicability, required BouncyCastle algorithms and opt-in FEC execution.
+The verifier binds
+these exact additions and their assertions independently of the scope constant. These are CI
+implementation review entries; they grant no separate pilot, independent-build or budget authority.
+The original `auditedSource` continues to identify the original scope review;
+it does not identify this working source or a newly tested product.
+
+The closeout verifier now compares those obligations independently against the immutable inventory.
+Changing its scope constant alone cannot approve a deleted requirement, smaller or unrelated roster,
+weaker matrix, changed owner or promoted implementation state. The historical inventory is itself
+bound by an independent exact-byte pin.
+
+## Inherited runtime and integration pins
+
+The following owner assertions refer to the same three changed files in several rows. Updating only
+the budget rows would leave the catalog-origin and product owners unreviewed.
+
+| Selected file | Previous exact revision | Affected owners | Semantic delta and disposition |
+| --- | --- | --- | --- |
+| `tools/interop/cross_version_runtime.py` | `7008f19c9f573b94c53d7b5381fc8f41ad07be87` | `p12-295-origin`, `p12-300-adapters`, `p12-300-consumers` | Prospective observer-owned process identity v2, descriptor-bound private reads, bounded deadlines, fixed PR-315 content and source-local control, paired peer observation and snapshot identity. Legacy process bytes remain historical-only. Platform regression changes are reviewed separately below. |
+| `tools/interop/federated_catalog_runtime.py` | `214f863bc166412cb8a9e657dbb41fc4aed46c84` | `p12-295-origin`, `p12-300-adapters`, `p12-300-consumers` | Bounded native pipes and fixed failure classifications replace unbounded captured output. Installed tree hashing delegates to the bounded no-follow snapshot owner. Selected native contract/catalog policy verification remains required. |
+| `tools/release-certification/cryptad_certification/tests/test_pr304_product_consumer_integration.py` | `ffd8b227e7dbc88bad22b469f14cea9f2089d742` | `p12-300-products`, `p12-300-consumers` | An excluded test harness may supply independently prepared signed inputs; exact product/release/build binding is checked before reuse. Ordinary execution still generates signatures and calls real packaged/native owners. This test source grants no protected runtime authority. |
+
+The prior runtime pin is `sha256:f6fa44a493ae338133837f61964b88fcec119b61892f64e340ae1fe062f5fe53`;
+the catalog pin is `sha256:481b454a3487617a89537d2a75f8781f8975b374c7ebbf381ab6f0316337e96e`;
+the PR-304 test pin is `sha256:9c0971708f4a2a67a67a02e507656871ad5a37e6cae7d17536a5ede1462e459f`.
+Their current selected commitments are recorded in every affected inventory row. These commitments
+describe source review; they do not assert a test result or installed observation.
+
+The platform successor makes `fcntl` optional only during module import. Linux supervisor and
+private identity operations reject missing Linux prerequisites before changing the umask or creating
+files. Missing whole-operation signal deadlines reject explicitly. Tests prepare their owned real
+temporary roots once; untrusted paths still reject link ancestors. Runtime/tool identities select
+Git working/committed files or exact source-export manifests through the shared bounded reader,
+and bind the selected source class into the runtime digest. External archive member rejection is a
+separate owner policy. Windows reparse/handle checks remain observations with stated race limits;
+they do not claim persistent descriptor confinement on an unavailable provider.
+
+Git-less full-source exports use the fixed `.cryptad-source-roster.json` contract, including the
+selected commit/tree, working/committed declaration and exact per-member bytes, sizes and executable
+bits. The separate production-only `.restricted-manifest.json` retains its existing contract.
+An invalid selected full-source roster cannot fall back to the restricted roster. Both export
+forms return `manifest-source-export`, regardless of their declarations; consistency cannot mint
+committed-source, installed, approval or original execution authority.
+
+The final workload portability correction starts from exact integrated bytes
+`sha256:b55b287563bc8b1340d65367c541c7609d9f4b3216b649612c85c81a8edc8fb1` at the starting
+integration. Its owning budget source entries are `p12-300-adapters` and `p12-300-consumers`; both
+remain partial. Optional `pwd` import permits unrelated pure parsers and offline test discovery.
+A fixed prerequisite guard rejects unsupported OS separately from missing Linux APIs/accounts
+before installed controller requests, adapter construction, FCP setup/logging, private Mail writes
+and kernel/principal observations. Existing supported Linux transport and budget processing follow
+the same owners after that guard. CI binds this source/test pair, and both budget owners add its
+exact regression source. The platform audit passed 319 cross-version tests with nine root-peer
+skips, then executed those nine actual root-peer tests separately without skips; this establishes
+local Linux behavior and import seams, without native Windows or installed acceptance.
+
+## Other inherited drift discovered by the full owner scan
+
+| File or authority | Prior exact source | Owners | Review and remaining scope |
+| --- | --- | --- | --- |
+| `tools/mail-prototype/two_node_demo.py` and its test | `cde5319829274b7df6517e37ab73ce72f8f71a18` | `p12-299-delivery`, `p12-299-privacy-review` | Explicit bounded transport/deadlines, uncertain mutation reconciliation, closed JSON/Base64 results, fixed-role causal observations, fresh initialization and replay/restart checks, and bounded encoded-canary scanning. The 15 offline tests pass. Mail privacy remains partial; independent review and live lifecycle evidence remain absent. |
+| PR-307 product-consumer integration test | `31dc975ef5b65b7ec56e835e287b2ffa8a4a7342` | `p12-300-products` | Excluded harness phase/timing hooks and prepared fixtures preserve the real native product and CMS boundaries. Additional wrong-recipient, tampered-envelope and subject-substitution checks execute the owner. Native execution requires rebuilt distribution and restricted exporter prerequisites; source review does not establish their execution. |
+| `cross_version_evidence.py` owner-policy pin | `1dc69847ea86e61db2d674e05a09b6b5150ae27b` | `p12-300-adapters`, `p12-300-72h` | Additive composed-budget and campaign plan/journal bindings validate exact product/source/epoch/collector/configuration ownership. Budget-only app cohorts are admitted only under the fixed budget profile. The 72-hour obligation, historical scenarios and original authority remain unchanged. |
+| `maintenance_runtime_projection.py` owner-policy pin | Original digest `sha256:fb94261c2d8384c13af30022c4c7e8c11b1a4d041f3221259b60e77bca1a265b`; exact historical bytes unavailable in reachable Git revisions | `p12-300-consumers` | Retain this mismatched authority pin. PR-320's separate source-evidence commitment covers the current implementation, and projection regressions pass, but neither proves an exact semantic delta from the missing recorded working bytes. The owner-policy drift remains explicit and blocking. |
+
+No declared implementation state advances. In particular, both budget parent rows remain partial;
+the consumer's assessed implementation remains unknown while its authority pin is mismatched. All 31
+budget cases, 42 variants and 19 campaign members retain their existing owner contracts.
+
+The final source selection review covers both compilation and formatting. A shared lazy build
+roster selects all static files exactly, retaining tracked and export-declared history-named sources
+while excluding untracked history and ordinary unlisted export files. Configured generated roots
+remain available. The included build installs its bounded bootstrap filters before precompiled
+script discovery, then removes only obsolete generated plugin descriptors when processing resources.
+The actual Git-free fixture retains selected history Kotlin and scripts, excludes unlisted ordinary
+Java/Kotlin/scripts and their adapters/descriptors, and removes an injected stale descriptor while
+preserving an ordinary resource sentinel. Spotless follows the same exact selection. The actual
+polluted formatter run passed with three invalid task-owned history fixtures still present; the
+final formatter also covered the new Kotlin helper/test files through a private init script.
+Private Gradle observation records
+every JavaCompile, Test and SpotBugs task, including differently named tasks; an unexpected task
+blocks the fixed cohort. Test candidate class bytes remain distinct from Kotlin metadata, and
+compiler reports require completed compilation and complete diagnostic capture. The finite
+settings lexer accepts the actual raw-regex settings file, literal nested includes and optional
+leading colons; computed or unknown include syntax requires owner review.
+
+Task completion now snapshots each report's exact bounded roster, bytes and size in private
+evidence. Retention compares that snapshot with the files it parses; post-task edits, insertions,
+deletions or copied replacements invalidate admission even when timestamps fit. Included-build
+tests use the same completion binding. SpotBugs selected classes must equal the owning output
+cohort in path and bytes, and native report class identities and counters must match. Source-owned
+SpotBugs filters, baselines, visitor/plugin/options and Error Prone suppression/compiler options
+are checked independently; an unapproved configuration invalidates evidence. Fixed public facts
+retain actual findings without exposing report hashes, source paths or raw diagnostics. Actual
+focused record/helper execution retained its one SpotBugs finding across 13 classes; it did not
+become a clean analyzer claim. Original acceptance uses the bounded source roster to establish
+committed-source status, keeping export consistency and working-source observations separate.
+
+The final workflow-only correction runs nine Linux transport tests and five root-owned role/
+projection fixtures inside the existing required root baseline/reviewer step. Explicit fixed
+Python import paths select the existing owners, and the step still rejects any failure, skipped
+test or empty suite. These Linux prerequisites execute in the owning CI lane; their non-root
+offline skips are not an applicability exemption. The workflow commitment advances in all five
+existing evidence owners without changing their assertions or requiring another Java run.
+
+## Portability review follow-up
+
+The reviewed successor also corrects three provider mismatches. Both new Kotlin test classes establish
+their owned real temporary roots before creating source members or roster outputs; an actual alias
+regression preserves refusal of raw linked output paths. The Java report recorder refuses hardlinks
+where its provider exposes Unix link counts. On providers without that view it records stable bytes,
+and the Python collector independently requires a single link before reading any private report.
+The provider-specific test now checks those two stages without granting a hardlink exemption.
+
+Source-export execute metadata represents portable permission bits, not effective execute access.
+Both Kotlin export readers compare actual POSIX bits where available. ACL-only providers retain the
+manifest declaration while still checking its Boolean type, exact names, size, bytes and link policy.
+Git-backed source exports use actual POSIX modes or the tracked Git index mode where such modes are
+unavailable; new untracked files on those providers default to non-executable. Repackaging an approved
+Git-free export preserves its exact manifest and archive modes. The Python source reader applies the
+same distinction on Windows. No installer/archive role policy, original authority, acceptance scope,
+requirement or implementation state changes.
+
+Only the eight directly affected source/test paths advance their existing fourteen evidence pins.
+Their previous bytes and commitments are retained separately for review under
+`build/pr321-private-pin-review/portability-review-before/`, with the fourteen prior/current owner
+commitments in `byte-review-portability.json`. The separate final assessment is
+`after-portability-review-complete/`; it retains 49 requirements, 47 unresolved and an incomplete
+decision at the same fixed cutoff. The acceptance scope digest is unchanged. Earlier full-suite and
+provider observations above describe their original working revisions; this follow-up's focused
+checks do not retroactively change those results or establish macOS/Windows execution. The final
+follow-up checks pass 30 included-build tests, 92 focused source/CI tests and 41 closeout guards,
+all without skips. A further 24-test run uses an actual aliased JVM temporary root on Linux
+and passes without skips, including the missing-input exception check. Actual Git-free initialization/repackaging and independent archive verification
+preserve all 6,203 members, original manifest bytes and declared modes; POSIX execute-bit drift
+continues to reject. Private result records are under `portability-review-results/`.
+
+## Reader and manifest encoding review follow-up
+
+The next review identified two remaining format/provider mismatches. V2 CI retention now reads
+its original start clock and current producer sources through the bounded, link-checking
+`active_source.read_source()` reader. Both reads preserve the previous 4 MiB limit. Historical
+producer-source selection and the digest projection retain their existing semantics. Separate
+regressions reproduce both former `AttributeError` failures with `O_NOFOLLOW` and `O_NONBLOCK`
+absent, then pass with the portable reader.
+
+Both Kotlin source-export validators now compare each format against its actual producer encoding:
+the restricted installation export uses compact JSON without a trailing newline, while the full
+source archive retains its newline. Validation preserves the identity-bound manifest bytes.
+Regressions retain rejection of extra whitespace, duplicate keys, member drift and a full-source
+manifest missing its required newline.
+
+Only five existing source/test commitments advance across the five directly changed paths. The
+prior bytes are retained under `build/pr321-private-pin-review/reader-encoding-review-before/`,
+and `byte-review-reader-encoding.json` records their prior/current commitments and unchanged
+assertions. The separate `after-reader-encoding-review/` assessment preserves the same acceptance
+scope digest, 49 requirements, 47 unresolved requirements and incomplete decision.
+
+Linux verification passes all 30 included-build tests, 94 focused source/CI Python tests and 41
+closeout guards without skips. Formatting and `git diff --check` pass. Actual source archive
+creation and Git-free Gradle initialization validate all 6,203 full-source members. A separate
+working-source fixture, selected with the existing production-member policy and encoded with
+`installation.encode()`, initializes and validates all 5,861 restricted members. Both manifests
+retain their exact bytes. Appending a newline to the restricted fixture is rejected by bootstrap;
+the original bytes are restored afterward. This fixture does not execute `installation.plan()`
+or establish an approved installation. Private commands and results are retained under
+`reader-encoding-review-results/`. Native Windows/macOS lanes and the full application suite were
+not rerun for this follow-up.
+
+## Working-tree deletion review follow-up
+
+The Git-backed Kotlin helper, included-build bootstrap and Python selector now subtract the bounded,
+NUL-delimited `git ls-files --deleted` roster from cached index entries before selecting current
+source. This permits verification after an unstaged deletion or rename, including a deleted tracked
+history-named member. Current untracked sources and surviving tracked history members retain their
+existing selection rules. The checkout remains working source while deletions are staged or
+unstaged. Export manifests do not supply this deletion roster; missing declared export members
+continue to fail validation.
+
+New actual-Git regressions reproduced the missing-member Kotlin failure and the stale Python paths
+before the fix. An isolated copy of the real included-build script likewise failed during plugin
+bootstrap with an unrelated tracked file deleted, then passed with the correction while checking
+current untracked and tracked/untracked history membership. The focused source/CI Python suite
+passes 96 tests; all 35 included-build tests and 41 closeout guards also pass without skips. The
+interop suite passes 179 tests with nine environment-gated root-peer skips.
+
+The subsequent Linux `./gradlew test` run passed in 7m 3s. All 33 test tasks with sources executed;
+ten tasks were source-free. Their JUnit reports contain 17,557 cases, zero failures/errors and nine
+skips: eight existing platform-conditional branches and the benchmark disabled in ordinary developer
+mode. This run includes the 35 passing included-build tests. It is ordinary test verification,
+without the fresh analyzer cohort or original hosted authority required for CI acceptance.
+
+Only eleven existing commitments advance across five reviewed source/test paths. Their prior bytes
+and owner commitments are retained under `build/pr1423-deleted-source-review/before/` and
+`pins-before.json`; `byte-review.json` records the exact updates with unchanged assertions. All 631
+implementation commitments match. The separate fixed-cutoff assessment retains the same acceptance
+scope, 49 requirements, 47 unresolved requirements and incomplete decision. These local regressions
+and source review do not establish original hosted or native macOS/Windows execution.
+
+## Verification and evidence limits
+
+Private local evidence is under `build/pr321-private-pin-review/`, outside upload rosters. The
+fixed-cutoff assessment before the successor, at `2026-09-13T10:30:00Z`, records 49 mandatory
+requirements, 47 unresolved, and Phase 12 incomplete. The after assessment uses a separate root
+at the identical cutoff to compare implementation drift only. Original clocks remain unchanged.
+The before assessment ran the original verifier and inventory from a clean detached checkout of
+the exact starting integration. The after assessment describes working successor bytes; its
+unchanged checkout commit/tree does not establish that those bytes were committed or originally
+executed. Private source and byte-review manifests retain that distinction and every affected
+owner, evidence assertion and prior/current commitment.
+
+The final frozen-source comparison retains 47 unresolved requirements and an incomplete decision.
+Reconciled source review restores the assessed implementation of product integration, Mail
+delivery, catalog origin and the 72-hour adapter to their existing declared `implemented` state,
+and Mail privacy and budget adapters to their existing declared `partial` state. No runtime,
+original-provenance, coverage or independent-review dimension advances. Budget consumers remain
+`unknown` because the unavailable historical maintenance authority commitment still mismatches.
+CI implementation is reviewed, while original CI and coverage remain unknown/missing at this
+cutoff. The final private records are `before-exact-integration/`,
+`after-root-cohort-successor/`, `assessment-delta-root-cohort-final.json`,
+`byte-review-root-cohort-final.json` and `after-root-cohort-successor-source.json`.
+The source-binding records under `after-source-binding-successor/` and their named manifests,
+the earlier `after-final-frozen-successor/`, its manifests and earlier assessment directories
+retain their exact intermediate observations; they do not replace this final comparison.
+
+The separately authenticated historical Java CI baseline is run `38705949240`, attempt `1`, job
+`116325290536`, artifact `11959143611`, on the starting integrated source. Its v1 projection contains
+164 cohort rows and 1,547 reports: 17,503 tests, 12 skips, zero test failures/errors, 905 SpotBugs
+findings, two missing classes and 462 Error Prone warnings. Findings and unowned skips remain
+blocking. This original October observation is separate from the historical September cutoff and
+the current working-source/native v2 path. The main [PR-321 runbook](pr-321-supported-platform-exact-source-ci.md)
+records its original acquisition and external scanner results; it supplies no acceptance for these
+uncommitted successor bytes.
+
+The focused source review commands are:
+
+```bash
+PYTHONPATH=tools/interop python3 -m unittest \
+  test_cross_version_runtime test_cross_version_snapshot test_cross_version_catalog_runtime
+PYTHONPATH=tools/mail-prototype python3 -m unittest test_two_node_demo
+PYTHONPATH=tools/release-certification:tools/release-certification/protected:tools/release-certification/restricted:tools/interop \
+  python3 -m unittest cryptad_certification.tests.test_phase_12_closeout
+PYTHONPATH=tools/release-certification:tools/release-certification/protected:tools/release-certification/restricted:tools/interop \
+  python3 tools/release-certification/certify.py phase-12-closeout --mode evaluate \
+  --as-of 2026-09-13T10:30:00Z --output /tmp/pr321-review-fresh-output
+```
+
+For a fixed before/after comparison, use the same explicit cutoff and a new output directory for
+each source; the retained comparison above uses `2026-09-13T10:30:00Z`. The example directory must
+not already exist. No original operational inputs are supplied by this command.
+
+The initial runs pass 114 runtime/catalog tests and 15 Mail tests. The source-successor suite
+passes 41 closeout tests, including exact additive roster, active-source checkout identity and
+mechanical scope-reseal denials. The final CI/source-selection Python cohort passes 89 tests.
+All four actual product-consumer integration tests pass in 295.651 seconds; these remain local
+integration evidence, separate from installed/protected acceptance. The initial separate
+133-test privacy/owner suite passed with two
+unavailable-prerequisite skips at that point in preparation. Later native/browser and root-peer
+execution are recorded separately in the main runbook; the earlier source review does not
+substitute for those runs. Its passing source-export tests use fresh isolated children and physically
+separate product/kit roots. Installed identity, root ownership and fixed prefixes are declared
+offline provider seams. They establish neither installed service custody nor protected acceptance.
+
+Browser support tests intercept local HTTP transport. Their secure/non-secure rendering, exact wire
+digest, copy/download and failed-refresh checks remain browser tests; they cannot authenticate an
+installed listener or transport origin. Certification exports retain their three-member public
+roster and fixed failure projections. Raw reports, private canaries and their digests stay private.
+
+No VM, live-node operation, protected acquisition, independent review, publication or release
+eligibility follows from these local checks. Historical job authentication remains a separate
+record of its exact integrated source. PR-322 retains the finite
+installed and restricted-execution work, including the unchanged unfinished historical obligations.
+
+## Native provider and shutdown review follow-up
+
+The three failed jobs in run `38807779388`, on source
+`e977471a556877f1573b1e85627acf81e32a6071`, exposed native fixture assumptions and a portable
+source-reader metadata mismatch. The reader now compares Windows birth time and filename-independent
+mode bits between pathname and handle observations, while retaining full change time and mode checks
+within each API's before/after pair. Device, inode, link count, size, modification time, reparse-point
+and ancestor checks remain mandatory. CPython 3.14.7's differing pathname/handle change times are
+also documented in [the upstream report](https://github.com/python/cpython/issues/157671).
+
+The source-reader regression reproduces rejection of an unchanged file with those Windows metadata
+observations on the prior implementation. The successor accepts unchanged bytes and rejects handle
+changes to time, identity, link count, length, mode, birth time and reparse attributes. Both report
+start-clock retention and current producer hashing exercise the same provider seam, with Unix-only
+open flags absent. Three Linux report fixtures now supply their complete provider image facts;
+inherited macOS image variables no longer replace the intended fixture provider.
+
+Only nine existing commitments advance across `active_source.py`, `test_active_source.py` and
+`test_phase_12_ci_v2.py`. Prior bytes are retained under
+`build/pr1423-ci-three-jobs/before/`, and `byte-review.json` records every previous/current digest,
+owner and unchanged assertion. All 631 implementation-evidence file commitments match. Requirements,
+owner assertions, scope, states and historical commitments remain unchanged. The separate fixed-cutoff
+assessment under `closeout-after/` retains 49 requirements, 47 unresolved and Phase 12 incomplete.
+
+Java fixtures resolve their owned pilot-approval paths, select native signed launchers before signing,
+create actual Windows hidden files, compare canonical HTML-encoded paths and release real AppHost
+children in `finally`. Bloom-filter fixtures use JUnit temporary directories without Unix permission
+assumptions. The updater's negative access test controls a narrow filesystem-observation method;
+production access predicates are unchanged. Launcher shutdown now joins wrapper-log readers and
+awaits executor termination, and ignores starts after shutdown begins. Its new regression fails on
+the prior implementation because the reader is still alive when shutdown returns.
+
+Local Linux verification passed the full `./gradlew test` invocation: application reports contain
+17,523 cases, zero failures/errors and nine skips; all 35 included-build tests pass without skips.
+The affected Java suites pass 177 cases without skips. The earlier alias invocation reused the
+core HTTP runtime test result (`UP-TO-DATE`), so it did not establish execution under that temporary
+root; the fresh alias reproduction and correction are recorded below. SonarLint reports no findings
+for either changed production Java file. Interop checks pass 319 cases with nine environment-gated
+skips. These local results do not establish native hosted execution for the successor commit.
+
+## Native temporary roots, asset shutdown and scheduler capture follow-up
+
+Run `38814947603`, on source `b24fbd53e0e184670b9f90b5c2631c5d9dd5d2a9`, failed in
+[macOS native verification](https://github.com/crypta-network/cryptad/actions/runs/38814947603/job/116697153649),
+[Windows native verification](https://github.com/crypta-network/cryptad/actions/runs/38814947603/job/116697153963)
+and [packaged scheduler integration](https://github.com/crypta-network/cryptad/actions/runs/38814947603/job/116697153457).
+
+The six pilot fixtures now resolve the fixture-owned root before constructing any registry or
+approval path. The preceding fix resolved only the approval path; the normal Stable registry still
+retained macOS's aliased `/var` ancestor. A fresh Linux run through an aliased temporary root,
+with test outputs explicitly invalidated, reproduces the four hosted failures before this change
+and passes all 56 core HTTP runtime tests afterward. The earlier alias invocation reused an
+up-to-date test result and did not prove this condition. Production rejection of linked or aliased
+untrusted paths is unchanged.
+
+The loopback UI server now waits up to ten seconds after interrupting its request executor, allowing
+handlers to close file-backed asset streams before temporary directory cleanup. The new regression
+holds a real asset stream open during shutdown, verifies that close waits, releases the request,
+and checks executor termination and file removal. It fails against the previous immediate-return
+shutdown. A package-private constructor supplies the owned executor without reflective mutation.
+
+The scheduler collector previously finalized the last observation immediately after a separate
+subscription-state read reported success. That native event prefix can precede the subscription
+read and end at a write attempt without its outcome. The strict version-four derivation then
+correctly rejects the incomplete write trace. The collector now retains fresh observations until
+a completed tick, zero family leases/reservations and zero in-flight fetches are observed, within
+the existing overall deadline and sample budget. Native event validation, event/drop limits,
+resource bounds, baselines and release assertions remain unchanged. Three synthetic regressions
+fail before the collector change and pass afterward: an incomplete native metadata write,
+outstanding work/family holds, and expiration of the existing deadline. They exercise the real
+strict deriver and do not assert original runtime authority. Three standalone packaged executions
+passed before the change, so these local results do not claim an end-to-end reproduction of the
+hosted scheduler failure.
+
+No implementation-evidence file commitment covers the files changed in this follow-up; the policy
+and its existing commitments remain unchanged. Private original logs, before/after bytes and
+verification results remain under `build/pr1423-ci-run38814947603/`; packaged execution records
+remain in their owned private run directories. These paths are outside public upload rosters.
+
+Local Linux verification passed the full Java suite: 17,524 application cases with zero
+failures/errors and nine skips, plus all 35 included-build tests. The final executor-injection
+refinement then passed all 191 adapter tests. All three changed Java files have clean SonarLint
+reports with their owning main/test scope. Cross-version checks pass 322 tests with nine
+environment-gated skips, and scheduler-input/runtime-pressure/storage-evidence checks pass all
+48 tests. All 631 implementation-evidence file commitments match without policy changes.
+
+Both packaged scheduler tests pass without skips after rebuilding the distribution: one borrowed
+supervisor execution and three independent standalone executions (511 seconds total). All five
+required narrow runtime claims are observed. The synthetic local baseline comparison reports
+`fail` with `runtime-regression-exceeded` and `releaseEligible: false`; this allowed comparison
+result is retained, not waived or treated as performance acceptance. Native macOS/Windows execution
+for the successor commit and original hosted acceptance remain separate from these Linux results.
+
+## Interpreter selection and archive source classification review
+
+[Review 5540563594](https://github.com/crypta-network/cryptad/pull/1423#pullrequestreview-5540563594)
+identified an interpreter-alias dependency in the reusable native workflow and inconsistent source
+classification in Git-produced archives. Both report commands now use the quoted absolute
+`python-path` output of the existing, version-pinned setup-python action. The recent Windows jobs
+had successfully invoked `python3`, so the claimed immediate command failure was not reproduced;
+the correction ensures the preparation and retention steps select the installed interpreter
+regardless of hosted command aliases. Both actual Bash commands pass locally with an interpreter
+path containing spaces and a deliberately failing `python3` alias, in a synthetic private context.
+
+Archive dirtiness now combines tracked changes with selected members absent from the index.
+Untracked excluded history no longer changes an otherwise committed manifest. The real-Git
+regression fails before the correction and passes afterward, comparing the entire manifest byte
+for byte after adding root and nested history. Separate regressions keep selected untracked files,
+tracked history edits and tracked history deletions classified as working source before and after
+staging. Existing source selection, archive encoding and member verification remain unchanged.
+
+Exactly three existing file commitments advance, all owned by `p12-303-ci`: the reusable workflow,
+`ActiveSourceFiles.kt` and `ActiveSourceFilesTest.kt`. The assertions, implementation states,
+requirements, acceptance scope and historical commitments remain unchanged. Prior bytes are
+retained under `build/pr1423-review5540563594/before/`; the exact previous/current digest review is
+in `build/pr1423-review5540563594/byte-review.json`. Diagnostics and synthetic report facts remain
+private and outside upload rosters. All 631 implementation-evidence commitments match the current
+files.
+
+Local verification passed the full `./gradlew test` invocation: 17,524 application test cases with
+zero failures/errors and nine skips, plus all 38 included-build tests without skips. The focused
+Python source-selector, CI-evidence and closeout suites pass all 107 tests. Workflow lint and
+Kotlin formatting pass, and both report commands pass the spaced-interpreter/failing-alias smoke
+check. The separate assessment at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and
+Phase 12 incomplete. These checks do not establish native hosted execution for the successor commit.
+
+## Native Windows wrapper selection review
+
+[Comment 4289358874](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4289358874)
+identified that native Windows verification still selected the Unix wrapper. The reusable workflow
+now selects `./gradlew.bat` when `RUNNER_OS` is `Windows` and `./gradlew` otherwise. The verification
+tasks and `-Pphase12Evidence=true` argument remain the same.
+
+Only the existing workflow file commitment under `p12-303-ci` advances. Its assertions,
+implementation state, acceptance scope and historical commitments remain unchanged. Prior bytes,
+the exact digest review and private local dispatch results are retained under
+`build/pr1423-windows-wrapper/`, outside public upload rosters.
+
+Workflow lint passes. Local Bash checks reproduce the previous Windows wrapper selection and pass
+all six corrected checks across Windows, macOS and Linux runner values, including exact arguments
+and propagation of success and failure exit codes. These checks use controlled wrapper substitutes
+on Linux; they do not establish execution of the batch wrapper on native Windows.
+
+All 41 focused v2 CI evidence tests pass, and all 631 implementation-evidence file commitments
+match. The separate assessment at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and
+Phase 12 incomplete.
+
+## Hidden Git index flags and committed source
+
+[Comment 4291003989](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4291003989)
+identified that `git status` can hide tracked edits when the index marks a file `assume-unchanged`
+or `skip-worktree`. The Python source reader and Kotlin source archive writer now inspect the
+index's visibility tags and reject these flags before declaring source committed. This also
+rejects flagged files whose current bytes happen to match; certification and source archiving
+require the flags to be cleared first.
+
+Real-Git regressions reproduce the previous acceptance of hidden byte edits, including through
+the certification `_source_clean()` consumer, and hidden archive state. The corrected checks cover
+both flags separately and together, unchanged flagged files, byte edits and deletions. A Python
+POSIX regression also covers hidden execute-bit edits. Clearing the flags restores ordinary
+working-source classification; restoring the committed bytes restores committed-source classification.
+
+Ten existing file commitments advance across the two implementations and their test files, under
+`p12-302-bundle`, `p12-302-deployment`, `p12-302-observation` and `p12-303-ci`. All other policy fields,
+acceptance scope, implementation states and historical commitments remain unchanged. Before bytes,
+the exact digest review and local verification logs remain private under
+`build/pr1423-hidden-index/`, outside public upload rosters.
+
+Local Linux verification passes all 40 included-build tests, 142 source/CI/closeout Python tests
+and 56 transparency bundle/source consumer tests. Kotlin formatting checks pass, and all 631
+implementation-evidence file commitments match. The separate assessment at
+`2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These local
+checks do not establish native hosted execution for the successor commit.
+
+## Git-independent execute modes and uncached working bytes
+
+[Comment 4291086946](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4291086946)
+identified that `core.fileMode=false` hides changes to tracked execute bits. Both the Python source
+reader and Kotlin archive writer now compare portable host execute bits with indexed modes.
+Providers without portable Unix modes retain the index's execute metadata; Windows ACL execute
+access does not establish an execute bit.
+
+Source classification now compares staged changes with HEAD and working bytes against a fresh
+temporary index initialized from that commit. This avoids trusting cached stat records while
+honoring Git checkout attributes, including CRLF batch files. The comparison disables private
+split/sparse index behavior, stat shortcuts, external diff commands and diff textconv drivers. It does
+not refresh the user's index or write Git configuration. Existing rejection of hidden index flags,
+source selection and excluded untracked history remains in force.
+
+Real-Git regressions reproduce the ignored mode change through `_source_clean()` and the archive
+writer. They cover both mode directions, group/other execute bits, same-size byte edits with
+restored timestamps, unchanged user index bytes, and clean CRLF checkouts followed by actual
+content edits. The Python CRLF case also exercises Windows metadata interpretation.
+
+Ten existing commitments advance for the four changed implementation/test files. Four additional
+stale commitments from the preceding `35ec393985` native-fixture fix advance after reviewing its
+two committed file diffs: canonical test JVM temporary roots and the federated catalog ancestor
+symlink regression. Their predecessor/current bytes are retained separately, and the catalog test
+class passes locally. Assertions, acceptance scope, implementation states and historical
+commitments remain unchanged. Private before bytes, digest reviews and verification logs remain
+under `build/pr1423-source-mode/`, outside public upload rosters.
+
+Local Linux checks pass all 43 included-build tests, 145 source/CI/closeout Python tests, 56
+transparency consumer tests and eight catalog bootstrap tests. Kotlin formatting checks pass.
+All 631 implementation-evidence file commitments match. The separate assessment at
+`2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These checks
+do not establish native hosted execution for the successor commit.
+
+## Unresolved source, packaging and classpath reviews
+
+Seven Codex findings identify gaps in source classification, resource selection, portable packaging
+and execution-input evidence:
+
+- [Intent-to-add members](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4291639881)
+  now keep both source readers in working-source state until the selected path exists in HEAD.
+- [Reserved roster names](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4293655106)
+  are refused in Git selections before an archive writer can overwrite a selected input.
+- [Resource selection](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4293655097)
+  now uses the same selected-source filter as Java in application and bootstrap source sets.
+  Explicitly declared resource roots inside the owning build directory remain available.
+- [Migration command permissions](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4293002626)
+  now derive portable executable permissions from validated migration declarations on providers
+  without POSIX modes. Ordinary files retain non-executable permissions despite Windows ACL access.
+- [Test runtime inputs](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4292625816)
+  and [analyzer classpaths](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4294185567)
+  now require complete ordered snapshots, exact current bytes and authenticated origins before
+  source coverage can match.
+- [Evidence-producing analyzer execution](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4294829133)
+  is distinct from bounded routine CI. Release-branch pushes and PRs labeled `phase12-evidence`
+  run SpotBugs on all three lanes. The reusable workflow defaults to full analysis; ordinary callers
+  explicitly select bounded execution. Incomplete routine reports remain ineligible for admission.
+
+Evidence mode forces fresh Java/Kotlin compilation, resource processing and project archives.
+Compiler and resource outputs are cleared before execution, and incremental compilation is disabled.
+Private observations connect standard project outputs to their fresh producer, selected source set
+and predecessor timestamps. Directory snapshots include resources as well as classes. Retention
+checks dependency bytes against selected, commit-bound verification metadata; PGP-only dependencies
+also require an offline signature check with the reviewed public keyring and trusted signer scope.
+A previously populated Gradle cache alone cannot authenticate a dependency.
+
+Unsupported generators, generated external classpaths, unavailable signature tooling and missing
+usable pinned signing material leave coverage unavailable. Stale, failed, substituted or changed
+inputs cannot grant admission. No dependency key or checksum is added by this change. Raw input
+names, hashes, XML and diagnostics remain private; public reports retain fixed coverage states only.
+
+Thirty-two existing file commitments advance across 18 files. This includes 17 stale commitments
+from earlier committed native-fixture and CI changes, whose predecessor/current bytes were reviewed
+separately. The reviewed CI changes shard the same certification test inventory and keep skipped
+analyzers and missing platform prerequisites blocking operational acceptance. Assertions,
+implementation states, acceptance scope and historical commitments remain unchanged. Exact before
+bytes, digest reviews and local diagnostics remain under `build/pr1423-unresolved-codex/`, outside
+public upload rosters.
+
+The final Linux `./gradlew test` invocation passes. Current reports contain 17,550 application cases
+with zero failures/errors and nine skips, plus 46 included-build cases without skips. An earlier full
+attempt hit a repository-scan race against a transient JVM attach file; the isolated affected suite
+and the complete rerun both pass. The seven focused Python suites cover 223 distinct cases; the
+latest analyzer-consumer assertions also pass independently. A real `platform-appdist` evidence-mode
+run executes successfully and captures all 17 runtime classpath entries. Its local dependency and
+bootstrap generator limitations remain unavailable coverage, rather than original admission.
+The resource-copy smoke check preserves selected and declared generated resources while excluding
+unselected history. Workflow lint and 16 controlled wrapper/exit-code cases pass on Linux.
+
+All 631 existing implementation-evidence commitments match current bytes. The separate assessment
+at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These local
+checks do not establish hosted CI, native macOS/Windows execution or original operational acceptance.
+
+## Ordered classpath membership review
+
+[Comment 4296591552](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4296591552)
+identified that authenticating each observed entry still admitted omitted, additional or reordered
+verification-approved dependencies. The previous validator incorrectly accepted 15 mutation cases
+in the new regression. Retention now compares the complete ordered list against a committed,
+source-owned roster before checking artifact bytes or fresh project producers.
+
+The reviewed roster covers 210 standard Java task classpaths, 73 build-configuration commitments,
+203 distinct project paths and 45 external artifact identities. It records project-relative paths
+and complete artifact coordinates/filenames, without host/cache prefixes. The task observations
+cannot supply their own authority. Both the roster and configuration files must match the selected
+source commit. A stale/missing roster or unsupported bootstrap/generated profile leaves coverage
+unavailable; an empty observed list matches only an explicitly reviewed empty expectation.
+Dependency signing/checksum policy, producer freshness, public redaction and applicability remain
+in force. No key or dependency checksum is added.
+
+The maintenance tool prepares a review candidate under `build/`; it does not replace the committed
+roster or grant admission. Repeated normal Gradle resolution reproduces the candidate byte for byte.
+Four real init-script mutations remove or reverse compiler, Test and SpotBugs classpaths. All four
+normal observations match the reviewed membership, and all four altered observations are invalid.
+Regressions also cover approved extra artifacts, duplicates, stale configuration, unknown authority,
+forged task expectations and alteration of a real Git-committed roster.
+
+Only the existing CI implementation and v2 test-source file commitments advance. Assertions,
+implementation states, acceptance scope and historical commitments remain unchanged. Private before
+bytes, mutation observations, digest review and verification logs remain under
+`build/pr1423-review4296591552/`, outside public upload rosters. These checks establish local
+consistency and rejection behavior; they do not establish original hosted/native admission.
+
+Local verification passes 230 focused Python tests, including the real-Git authority tampering
+regression and both analyzer-configuration consumers. All 631 implementation-evidence commitments
+match current bytes. The fixed-cutoff assessment retains 49 requirements, 47 unresolved and Phase 12
+incomplete; candidate generation, fixture results and local membership checks grant no original
+operational acceptance.
+
+## Filter, replacement, generated-version and included-build review
+
+Reviews [5552080308](https://github.com/crypta-network/cryptad/pull/1423#pullrequestreview-5552080308)
+and [5552309168](https://github.com/crypta-network/cryptad/pull/1423#pullrequestreview-5552309168)
+identified four independent gaps. Both source classifiers now mark explicit filter/ident/encoding
+attributes as working source before their private-index comparison can invoke an unreviewed filter
+or normalize substituted ident bytes. Explicit negations also block because attribute-state text
+cannot distinguish them from drivers literally named `unset` or `unspecified`.
+The Kotlin Git subprocesses disable replacement objects, matching the Python reader, and isolate
+global/system Git configuration. Real Git fixtures reproduce the former false committed-source
+claims while preserving ordinary CRLF support and the user's index bytes.
+
+The generated `interop-wire` version source now has an explicit authentication rule. Retention binds
+the complete committed template and generator/build scripts, derives the integer build number,
+checks the generated revision against the selected commit and compares every generated byte with
+the expected transformation. LF and CRLF output are supported. Compiler source coverage and fresh
+compiler outputs consumed by downstream runtime classpaths use the same check. Wrong revisions,
+wrong build numbers, injected source, changed templates and other unsupported generated inputs
+cannot match.
+
+The classpath maintenance task now captures the included build in its own Gradle project context
+and merges five compiler/test profiles under `:build-logic`. All 210 previous task lists remain
+unchanged. The roster now contains 215 ordered lists and the same 73 configuration commitments;
+only the changed classifier and maintenance script configuration digests advance. Gradle runtime
+and generated-jar identities omit private host prefixes. These identities establish membership
+only: unsupported Gradle artifact authentication, Kotlin DSL generated sources and plugin metadata
+remain unavailable and still prevent complete bootstrap admission. No dependency key, checksum,
+producer waiver or operational acceptance is introduced.
+
+Twelve existing implementation/test commitments advance across six changed source files. Assertions,
+implementation states, acceptance scope and historical commitments remain unchanged. Private before
+bytes, regression results and the digest review remain under
+`build/pr1423-reviews5552080308-5552309168/`, outside public upload rosters. Repeated normal Gradle
+resolution reproduces the reviewed classpath candidate byte for byte. The real Gradle-generated
+version source passes its authentication check. These local checks grant no hosted/native admission.
+
+Local verification passes all 237 focused Python cases and all 48 included-build tests. The full
+application test run passes 17,550 cases with zero failures/errors and nine skips. All 631 existing
+implementation-evidence commitments match current bytes. The fixed-cutoff assessment remains
+verified local consistency with 49 requirements, 47 unresolved and Phase 12 incomplete. Native
+macOS/Windows execution and original hosted acceptance are not established by these checks.
+
+
+## Bootstrap configuration and analyzer tool-path review
+
+[Review 5552632569](https://github.com/crypta-network/cryptad/pull/1423#pullrequestreview-5552632569)
+identified two remaining input-selection gaps. Bootstrap Git now disables global/system
+configuration and replacement objects, consistently with the Kotlin and Python selectors. A real
+Gradle fixture with an isolated XDG configuration directory and global ignore file reproduces the previous mismatch:
+bootstrap omitted an untracked Kotlin source while Python selected it. With the fix both select the
+file. The fixture is removed after each run and never enters the reviewed roster.
+
+Java compiler observations now capture the resolved annotation-processor path, through which the
+Error Prone plugin loads its core and transitive tool jars. The reviewed authority adds 86 explicit
+ordered processor-path lists without changing the previous 215 classpath/auxiliary lists. The same
+73 build-configuration commitments remain; only the bootstrap script, recorder and maintenance
+script digests advance. Analyzer admission and downstream Java producer validation check the tool
+list, bytes and existing verification policy independently of the source compile classpath. No
+dependency verification key/checksum or producer exemption is added. Missing tool observations or
+missing expected lists remain unavailable; changed membership/order or unauthenticated bytes cannot
+match. Earlier v2 producers without this tool capture cannot grant the current contract's admission.
+
+A new regression separates analyzer tools from an unchanged source compile classpath. It rejects
+empty, omitted, reversed, duplicated and approved-extra tools, plus changed bytes even when the
+private observation is recaptured. The previous implementation accepts six unsupported observations
+in the initial reproduction. Another regression requires the same processor-path proof before fresh
+compiler output can support downstream runtime coverage. Private fixtures and diagnostics remain
+under `build/pr1423-review5552632569/`, outside public upload rosters.
+
+A real evidence-mode compile records 21 tool jars. An init script that adds one artifact only to the
+separate `errorprone` configuration produces 22 tool entries while leaving the source compile
+classpath and provider policy unchanged. Both compiles execute successfully; normal ordered
+membership matches and mutated membership is invalid. Independent normal tool-byte authentication
+remains unavailable with the local signing material. Existing unsupported bootstrap proofs also
+remain blocking; none of these local checks grants original hosted/native admission.
+
+Only four existing implementation/test commitments advance, across the bootstrap script, recorder,
+CI validator and v2 tests. Assertions, implementation states, acceptance scope and historical
+commitments remain unchanged. All 631 existing commitments match the current source bytes. The
+fixed-cutoff assessment retains 49 requirements, 47 unresolved and Phase 12 incomplete.
+
+Local verification passes all 239 focused Python cases and 48 included-build tests. The full
+application suite passes 17,550 cases with zero failures/errors and nine skips. Repeated normal
+Gradle resolution reproduces the reviewed authority byte for byte, including every new processor
+path. These Linux checks do not establish native macOS/Windows execution or hosted acceptance.
+
+## Producer transformation provenance review
+
+[Comment 4298683820](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4298683820)
+identified an output-authentication gap after the input checks. A real evidence-mode Gradle init
+script appends a `doLast` action to `:thirdparty-onion:processResources` and replaces
+`fec.properties`. The task succeeds, its input source still matches and its final output snapshot
+contains the replacement. The previous validator incorrectly grants matched downstream provenance.
+
+Retention now treats executed project output transformations as unavailable even when input,
+freshness, membership and final-byte checks match. The current authority authenticates neither
+effective producer actions nor independent expected output bytes; a task-provided action list or
+approval label cannot close that gap. This applies to Java/Kotlin compilers, processed resources
+and JARs. Independent dependency verification and source-free empty/missing outputs retain their
+existing contracts. Classpath checks continue after unavailable entries so later detectable
+content mismatches remain invalid. No new public field, waiver or acceptance claim is introduced.
+
+The new replacement regression covers all four producer kinds with self-consistent observations
+and forged approval labels. All four falsely match with the previous validator and remain
+unavailable with the fix. The real modified Gradle resource observation also changes from matched
+to unavailable while its input proof remains matched. A subsequent ordinary evidence-mode task
+restores the owned resource output. Additional positive cases preserve independently verified
+external-only classpaths and empty source-free outputs; a populated source-free output is invalid.
+Private observations remain under `build/pr1423-review4298683820/`, outside public upload rosters.
+
+Only the existing CI validator and v2 test commitments advance. Assertions, implementation states,
+acceptance scope, historical commitments and the reviewed classpath authority remain unchanged.
+
+Local verification passes all 398 Phase 12, transparency and self-test cases with no failures,
+errors or skips. All 631 implementation-evidence commitments match the current bytes. The
+fixed-cutoff assessment retains 49 requirements, 47 unresolved, verified local consistency and
+Phase 12 incomplete. These Linux checks do not establish native macOS/Windows execution or original
+hosted acceptance; independent producer transformation authentication remains unavailable.
+
+## Raw checkout byte identity review
+
+[Comment 4298826736](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4298826736)
+identified a distinction between Git-normalized equality and exact source bytes. In the clean
+checkout, `gradlew.bat` contains 2,848 bytes with CRLF while its committed blob contains 2,766 bytes
+with LF.
+The previous Python classifier labels that checkout committed source and its CI source-clean
+check returns true. A Kotlin source-export fixture reproduces the same incorrect label.
+
+Both classifiers now compare read-only `git hash-object --no-filters` observations with the exact
+committed blob identities in bounded batches. The check bypasses Git's stat cache, clean filters
+and line-ending normalization, and neither updates the index nor writes objects. Selected members
+must also equal the committed member set, so an unstaged deletion cannot disappear from the
+comparison. Existing mode, link, transform-attribute and replacement-object safeguards remain.
+
+The CRLF regressions require working-source classification while preserving the observed raw
+bytes in the source-export roster and archive. Restoring the exact LF blob bytes permits a
+committed-source claim again and leaves the index unchanged. Additional cases cover local
+`core.autocrlf` without attributes and exact binary CRLF bytes. The previous Python and Kotlin
+implementations fail the raw-identity regressions at the classification assertion. Fixtures and
+diagnostics remain under `build/pr1423-review4298826736/`, outside public upload rosters.
+
+Ten existing implementation/test commitments advance across the Python and Kotlin classifiers and
+their tests. The reviewed classpath authority retains all 215 task profiles and ordered lists;
+only the Kotlin classifier's configuration commitment advances among the same 73 configuration
+files. Assertions, implementation states, acceptance scope and historical commitments are unchanged.
+
+Local verification passes all 400 Phase 12, transparency and self-test cases with no failures,
+errors or skips. The full application suite passes 17,550 cases with zero failures/errors and nine
+skips, and all 50 included-build tests pass without skips. Kotlin formatting passes. All 631
+implementation-evidence commitments match the current bytes. The fixed-cutoff assessment retains
+49 requirements, 47 unresolved, verified local consistency and Phase 12 incomplete. These Linux
+checks do not establish native macOS/Windows execution or original hosted admission.
+
+## Handoff restart fixture timing review
+
+[Linux job 117177928065](https://github.com/crypta-network/cryptad/actions/runs/38961648778/job/117177928065)
+fails the observed-handoff restart fixture with a clean root exit and no restart. The fixture ends
+its controlled child after a capture window that starts before the first process-tree observation.
+If that observation is delayed, the child has not actually survived the host's handoff-confirmation
+grace when the fixture ends it. The resulting clean-exit disposition does not establish a runtime
+restart defect.
+
+The fixture now observes and asserts the running child before starting the existing capture window.
+It still requires unknown exit status and exactly one automatic restart. A private 100 ms delay
+before the first tree observation exceeds the 40 ms grace and reproduces the original failure;
+the same delayed case passes after the fix. The injected delay is removed after each check and
+does not enter the committed fixture. Runtime behavior and timing configuration remain unchanged.
+Private diagnostics remain under `build/pr1423-run38961648778/`, outside public upload rosters.
+
+All 330 AppHost module cases pass with zero failures/errors and two skips. The 41 closeout tests
+pass, formatting passes, and file-level SonarLint reports no findings with the owning test
+classpath. Only the existing AppHost test commitment advances; all 631 commitments match current
+bytes. Assertions, implementation states, classpath authority and historical commitments remain
+unchanged. The fixed-cutoff assessment retains 49 requirements, 47 unresolved, verified local
+consistency and Phase 12 incomplete. These local Linux checks do not establish hosted or native
+macOS/Windows acceptance.

@@ -37,7 +37,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Real JVM workers and independent vaults with explicitly simulated CHK transport. */
+@org.junit.jupiter.api.condition.DisabledIf(
+    value = "isWindows",
+    disabledReason = "The mail prototype currently ships only a POSIX shell launcher")
 class MailWorkerProcessTest {
+  static boolean isWindows() {
+    return new network.crypta.fs.AppEnv().isWindows();
+  }
+
   @TempDir Path root;
 
   @Test

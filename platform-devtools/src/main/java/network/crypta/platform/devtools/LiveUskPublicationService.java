@@ -561,8 +561,8 @@ final class LiveUskPublicationService {
    * Creates an owner-only retained staging directory below the selected parent.
    *
    * <p>The directory name is generated atomically. POSIX hosts receive owner-only permissions at
-   * creation time; other filesystems are restricted immediately through the portable {@link
-   * java.io.File} permission API before any sidecar bytes are written.
+   * creation time; other filesystems receive an owner-only inheritable ACL before any sidecar bytes
+   * are written.
    *
    * @param stagingParent parent directory for retained live-publication sidecars
    * @return owner-only staging directory
@@ -596,15 +596,7 @@ final class LiveUskPublicationService {
    * @throws IOException if any portable permission operation is rejected by the runtime
    */
   private static void restrictPortableOwnerOnlyDirectory(Path stagingDirectory) throws IOException {
-    java.io.File file = stagingDirectory.toFile();
-    if (!file.setReadable(false, false)
-        || !file.setWritable(false, false)
-        || !file.setExecutable(false, false)
-        || !file.setReadable(true, true)
-        || !file.setWritable(true, true)
-        || !file.setExecutable(true, true)) {
-      throw new IOException("failed to restrict live publication staging directory");
-    }
+    PrivateFilePermissions.restrictToOwner(stagingDirectory, true);
   }
 
   /**

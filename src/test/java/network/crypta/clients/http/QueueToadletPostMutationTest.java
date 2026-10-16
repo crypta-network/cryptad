@@ -46,6 +46,7 @@ import network.crypta.runtime.spi.QueuePersistenceStatusSnapshot;
 import network.crypta.runtime.spi.QueueSupportPort;
 import network.crypta.runtime.spi.RequestQueueUnavailableException;
 import network.crypta.runtime.spi.TransferAccessPort;
+import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MemoryLimitedJobRunner;
 import network.crypta.support.MultiValueTable;
@@ -82,6 +83,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -245,7 +247,7 @@ class QueueToadletPostMutationTest {
     toadlet.handleMethodPOST(URI.create("http://localhost/downloads/"), request, ctx);
 
     String html = body.toString(StandardCharsets.UTF_8);
-    assertTrue(html.contains(detachedTempDir.toString()));
+    assertTrue(html.contains(HTMLEncoder.encode(detachedTempDir.toFile().getCanonicalPath())));
     assertTrue(html.contains("detached-queue.db"));
     verify(queueSupportPort).persistenceStatus();
   }
@@ -290,20 +292,20 @@ class QueueToadletPostMutationTest {
     ProgramDirectory userDir = new ProgramDirectory();
     userDir.move(tempDir.toString());
 
-    Node node = org.mockito.Mockito.mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+    Node node = mock(Node.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
     when(node.userDir()).thenReturn(userDir);
     when(node.getUserDir()).thenReturn(userDir.dir());
     when(node.awaitingPassword()).thenReturn(false);
     when(node.isStopping()).thenReturn(false);
     when(node.getDatabasePath()).thenReturn(tempDir.resolve("queue.db").toString());
 
-    RequestStarterGroup starters = org.mockito.Mockito.mock(RequestStarterGroup.class);
-    NodeClientCore core = org.mockito.Mockito.mock(NodeClientCore.class);
+    RequestStarterGroup starters = mock(RequestStarterGroup.class);
+    NodeClientCore core = mock(NodeClientCore.class);
     when(core.getNode()).thenReturn(node);
     when(core.getAlerts()).thenReturn(alerts);
     when(core.getPersistentTempDir()).thenReturn(tempDir.toFile());
 
-    NodeNetworkSubsystem network = org.mockito.Mockito.mock(NodeNetworkSubsystem.class);
+    NodeNetworkSubsystem network = mock(NodeNetworkSubsystem.class);
     when(node.network()).thenReturn(network);
     when(network.executor()).thenReturn(executor);
 
@@ -367,34 +369,30 @@ class QueueToadletPostMutationTest {
   }
 
   private ClientContext createClientContext() {
-    ArchiveManager archiveManager = org.mockito.Mockito.mock(ArchiveManager.class);
-    PersistentTempBucketFactory ptbf = org.mockito.Mockito.mock(PersistentTempBucketFactory.class);
-    TempBucketFactory tbf = org.mockito.Mockito.mock(TempBucketFactory.class);
-    PersistentFileTracker tracker = org.mockito.Mockito.mock(PersistentFileTracker.class);
-    HealingQueue hq = org.mockito.Mockito.mock(HealingQueue.class);
-    USKManager uskManager = org.mockito.Mockito.mock(USKManager.class);
-    RandomSource strongRandom = org.mockito.Mockito.mock(RandomSource.class);
-    Ticker ticker = org.mockito.Mockito.mock(Ticker.class);
-    MemoryLimitedJobRunner memoryLimitedJobRunner =
-        org.mockito.Mockito.mock(MemoryLimitedJobRunner.class);
-    FilenameGenerator fg = org.mockito.Mockito.mock(FilenameGenerator.class);
-    LockableRandomAccessBufferFactory rafFactory =
-        org.mockito.Mockito.mock(LockableRandomAccessBufferFactory.class);
+    ArchiveManager archiveManager = mock(ArchiveManager.class);
+    PersistentTempBucketFactory ptbf = mock(PersistentTempBucketFactory.class);
+    TempBucketFactory tbf = mock(TempBucketFactory.class);
+    PersistentFileTracker tracker = mock(PersistentFileTracker.class);
+    HealingQueue hq = mock(HealingQueue.class);
+    USKManager uskManager = mock(USKManager.class);
+    RandomSource strongRandom = mock(RandomSource.class);
+    Ticker ticker = mock(Ticker.class);
+    MemoryLimitedJobRunner memoryLimitedJobRunner = mock(MemoryLimitedJobRunner.class);
+    FilenameGenerator fg = mock(FilenameGenerator.class);
+    LockableRandomAccessBufferFactory rafFactory = mock(LockableRandomAccessBufferFactory.class);
     LockableRandomAccessBufferFactory persistentRAFFactory =
-        org.mockito.Mockito.mock(LockableRandomAccessBufferFactory.class);
-    FileRandomAccessBufferFactory fileRAFTransient =
-        org.mockito.Mockito.mock(FileRandomAccessBufferFactory.class);
-    FileRandomAccessBufferFactory fileRAFPersistent =
-        org.mockito.Mockito.mock(FileRandomAccessBufferFactory.class);
-    RealCompressor rc = org.mockito.Mockito.mock(RealCompressor.class);
-    DatastoreChecker checker = org.mockito.Mockito.mock(DatastoreChecker.class);
-    PersistentRequestRoot persistentRoot = org.mockito.Mockito.mock(PersistentRequestRoot.class);
-    MasterSecret masterSecret = org.mockito.Mockito.mock(MasterSecret.class);
+        mock(LockableRandomAccessBufferFactory.class);
+    FileRandomAccessBufferFactory fileRAFTransient = mock(FileRandomAccessBufferFactory.class);
+    FileRandomAccessBufferFactory fileRAFPersistent = mock(FileRandomAccessBufferFactory.class);
+    RealCompressor rc = mock(RealCompressor.class);
+    DatastoreChecker checker = mock(DatastoreChecker.class);
+    PersistentRequestRoot persistentRoot = mock(PersistentRequestRoot.class);
+    MasterSecret masterSecret = mock(MasterSecret.class);
     LinkFilterExceptionProvider linkFilterExceptionProvider =
-        org.mockito.Mockito.mock(LinkFilterExceptionProvider.class);
-    FetchContext fetchContext = org.mockito.Mockito.mock(FetchContext.class);
-    InsertContext insertContext = org.mockito.Mockito.mock(InsertContext.class);
-    Config config = org.mockito.Mockito.mock(Config.class);
+        mock(LinkFilterExceptionProvider.class);
+    FetchContext fetchContext = mock(FetchContext.class);
+    InsertContext insertContext = mock(InsertContext.class);
+    Config config = mock(Config.class);
 
     return new ClientContext(
         1L,
@@ -420,7 +418,7 @@ class QueueToadletPostMutationTest {
   }
 
   private HTTPRequest createRequest(Map<String, String> parts) {
-    HTTPRequest request = org.mockito.Mockito.mock(HTTPRequest.class);
+    HTTPRequest request = mock(HTTPRequest.class);
     when(request.getParts()).thenReturn(parts.keySet().stream().sorted().toArray(String[]::new));
     when(request.isPartSet(anyString()))
         .thenAnswer(invocation -> parts.containsKey(invocation.getArgument(0, String.class)));
@@ -463,7 +461,7 @@ class QueueToadletPostMutationTest {
     root.addChild(content);
     PageNode page = new PageNode(root, head, content);
 
-    PageMaker stub = org.mockito.Mockito.mock(PageMaker.class);
+    PageMaker stub = mock(PageMaker.class);
     doReturn(page).when(stub).getPageNode(anyString(), any(ToadletContext.class));
     doReturn(page)
         .when(stub)

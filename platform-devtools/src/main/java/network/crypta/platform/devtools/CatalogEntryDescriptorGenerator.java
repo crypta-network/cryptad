@@ -169,15 +169,7 @@ final class CatalogEntryDescriptorGenerator {
    * @throws IOException if any portable permission operation is rejected by the runtime
    */
   private static void restrictPortableOwnerOnlyDirectory(Path directory) throws IOException {
-    java.io.File file = directory.toFile();
-    if (!file.setReadable(false, false)
-        || !file.setWritable(false, false)
-        || !file.setExecutable(false, false)
-        || !file.setReadable(true, true)
-        || !file.setWritable(true, true)
-        || !file.setExecutable(true, true)) {
-      throw new IOException("failed to restrict catalog entry scratch directory: " + directory);
-    }
+    PrivateFilePermissions.restrictToOwner(directory, true);
   }
 
   /**

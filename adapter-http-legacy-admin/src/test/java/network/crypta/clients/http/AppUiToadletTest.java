@@ -14,11 +14,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
@@ -40,6 +44,7 @@ import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.HTTPRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,6 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -99,6 +105,11 @@ class AppUiToadletTest {
   @Mock private HTTPRequest request;
 
   @TempDir private Path tempDir;
+
+  @BeforeEach
+  void resolveOwnedFixtureRoot() throws IOException {
+    tempDir = tempDir.toRealPath();
+  }
 
   @Test
   void path_whenRequested_expectAppsRoot() {
@@ -404,6 +415,99 @@ class AppUiToadletTest {
       assertFalse(contentSecurityPolicy.contains("script-src 'self'"));
       assertTrue(contentSecurityPolicy.contains("connect-src 'self' http://127.0.0.1:8888"));
       assertEquals(HTML_BODY, response.body());
+    }
+  }
+
+  @Test
+  void loopbackOrigin_whenRequestExecutorTimesOut_expectOriginsRemovedAndShutdownRequested()
+      throws Exception {
+    AppHost appHost = new InMemoryAppHost(staticApp(INDEX_ENTRY));
+    ExecutorService executor = mock(ExecutorService.class);
+    when(executor.awaitTermination(10, TimeUnit.SECONDS)).thenReturn(false);
+    try (AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> false, executor)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
+
+      originServer.close();
+
+      assertTrue(originServer.bindingForOrigin(binding.origin()).isEmpty());
+      verify(executor).shutdownNow();
+    }
+  }
+
+  @Test
+  void loopbackOrigin_whenWaitInterrupted_expectOriginsRemovedAndInterruptRestored()
+      throws Exception {
+    AppHost appHost = new InMemoryAppHost(staticApp(INDEX_ENTRY));
+    ExecutorService executor = mock(ExecutorService.class);
+    when(executor.awaitTermination(10, TimeUnit.SECONDS)).thenThrow(new InterruptedException());
+    try (AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> false, executor)) {
+      AppUiOriginBinding binding = originServer.bindingForApp(APP_ID).orElseThrow();
+
+      originServer.close();
+
+      assertTrue(originServer.bindingForOrigin(binding.origin()).isEmpty());
+      assertTrue(Thread.currentThread().isInterrupted());
+      verify(executor).shutdownNow();
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  @Test
+  void loopbackOrigin_whenClosed_waitsForRequestResourcesToBeReleased() throws Exception {
+    Path asset = Files.writeString(tempDir.resolve(INDEX_ENTRY), HTML_BODY);
+    AppHost appHost = new InMemoryAppHost(staticApp(INDEX_ENTRY));
+    ExecutorService requestExecutor = Executors.newCachedThreadPool();
+    AppUiLoopbackOriginServer originServer =
+        new AppUiLoopbackOriginServer(
+            appHost, new AppBrowserSessionStore(appHost), ADMIN_ROOT, () -> false, requestExecutor);
+    CountDownLatch requestStarted = new CountDownLatch(1);
+    CountDownLatch shutdownObserved = new CountDownLatch(1);
+    CompletableFuture<Void> releaseRequest = new CompletableFuture<>();
+    try {
+      var requestResult =
+          requestExecutor.submit(
+              () -> {
+                try (InputStream input = Files.newInputStream(asset)) {
+                  int firstByte = input.read();
+                  requestStarted.countDown();
+                  awaitRequestRelease(releaseRequest, shutdownObserved);
+                  return firstByte;
+                }
+              });
+      assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+      try (ExecutorService closing = Executors.newSingleThreadExecutor()) {
+        var closeResult = closing.submit(originServer::close);
+        try {
+          assertTrue(shutdownObserved.await(5, TimeUnit.SECONDS));
+          assertThrows(TimeoutException.class, () -> closeResult.get(100, TimeUnit.MILLISECONDS));
+        } finally {
+          releaseRequest.complete(null);
+        }
+        closeResult.get(5, TimeUnit.SECONDS);
+        assertEquals((int) '<', requestResult.get(5, TimeUnit.SECONDS).intValue());
+        assertTrue(requestExecutor.isTerminated());
+      }
+      Files.delete(asset);
+    } finally {
+      releaseRequest.complete(null);
+      originServer.close();
+    }
+  }
+
+  private static void awaitRequestRelease(
+      CompletableFuture<Void> releaseRequest, CountDownLatch shutdownObserved)
+      throws ExecutionException {
+    try {
+      releaseRequest.get();
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
+      shutdownObserved.countDown();
+      releaseRequest.join();
     }
   }
 

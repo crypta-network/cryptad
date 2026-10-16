@@ -40,7 +40,7 @@ class RealCompressorTest {
   @DisplayName("enqueueNewJob_whenContextIsSet_callsTryCompressWithSameContext")
   void enqueueNewJob_whenContextIsSet_callsTryCompressWithSameContext() throws Exception {
     // Arrange
-    compressor = new RealCompressor();
+    compressor = new RealCompressor(java.util.concurrent.Executors.newSingleThreadExecutor());
     ClientContext ctx = mock(ClientContext.class);
     compressor.setClientContext(ctx);
     CompressJob job = mock(CompressJob.class);
@@ -69,7 +69,7 @@ class RealCompressorTest {
   void enqueueNewJob_whenTryCompressThrowsInsertException_callsOnFailureWithSameException()
       throws Exception {
     // Arrange
-    compressor = new RealCompressor();
+    compressor = new RealCompressor(java.util.concurrent.Executors.newSingleThreadExecutor());
     ClientContext ctx = mock(ClientContext.class);
     compressor.setClientContext(ctx);
     CompressJob job = mock(CompressJob.class);
@@ -110,7 +110,7 @@ class RealCompressorTest {
     logInsertEx.setLevel(Level.OFF);
     try {
       // Arrange
-      compressor = new RealCompressor();
+      compressor = new RealCompressor(java.util.concurrent.Executors.newSingleThreadExecutor());
       ClientContext ctx = mock(ClientContext.class);
       compressor.setClientContext(ctx);
       CompressJob job = mock(CompressJob.class);
@@ -150,7 +150,7 @@ class RealCompressorTest {
   @DisplayName("enqueueNewJob_afterShutdown_doesNotRunJob")
   void enqueueNewJob_afterShutdown_doesNotRunJob() throws Exception {
     // Arrange
-    compressor = new RealCompressor();
+    compressor = new RealCompressor(java.util.concurrent.Executors.newSingleThreadExecutor());
     compressor.shutdown();
     CompressJob job = mock(CompressJob.class);
 
@@ -172,7 +172,7 @@ class RealCompressorTest {
   @DisplayName("enqueueNewJob_whenContextVaries_jobReceivesSameContext")
   void enqueueNewJob_whenContextVaries_jobReceivesSameContext(ClientContext ctx) throws Exception {
     // Arrange
-    compressor = new RealCompressor();
+    compressor = new RealCompressor(java.util.concurrent.Executors.newSingleThreadExecutor());
     compressor.setClientContext(ctx);
     CompressJob job = mock(CompressJob.class);
     CountDownLatch called = new CountDownLatch(1);

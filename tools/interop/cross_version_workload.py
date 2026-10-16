@@ -14,16 +14,21 @@ import http.client
 import json
 import os
 from pathlib import Path
-import pwd
 import re
 import select
 import socket
 import stat
 import struct
+import sys
 import time
 import urllib.parse
 import urllib.request
 import uuid
+
+try:
+    import pwd
+except ModuleNotFoundError:
+    pwd = None
 
 import cross_version_runtime as runtime
 
@@ -44,6 +49,19 @@ EPOCH = ('handle', 'generation', 'managerInvocation', 'bootId')
 
 def fail(code):
     raise runtime.RuntimeFailure('workload-' + code)
+
+
+def _require_linux_workload():
+    """Keep portable parsing separate from the installed Linux provider's prerequisites."""
+    if sys.platform != 'linux':
+        fail('linux-provider-required')
+    if (pwd is None
+            or any(not hasattr(os, name) for name in
+                   ('geteuid', 'pidfd_open', 'O_NOFOLLOW', 'O_CLOEXEC', 'O_DIRECTORY'))
+            or any(not hasattr(socket, name) for name in
+                   ('AF_UNIX', 'SO_PEERCRED', 'SCM_RIGHTS', 'CMSG_SPACE',
+                    'MSG_CMSG_CLOEXEC', 'MSG_TRUNC', 'MSG_CTRUNC'))):
+        fail('linux-provider-unavailable')
 
 
 def private_app_runtime_diagnostic(error):
@@ -156,6 +174,7 @@ def _object(pairs):
 class WorkloadClient:
     """Only fixed methods and opaque handles cross the installed root-owned socket."""
     def request(self, method, handle, *, timeout=30):
+        _require_linux_workload()
         if (method not in METHODS or not isinstance(handle, str)
                 or not re.fullmatch('[a-f0-9]{64}', handle)
                 or not isinstance(timeout, (int, float)) or not 0 < timeout <= 30):
@@ -249,6 +268,7 @@ class WorkloadClient:
 
     def drop_start_response(self, handle):
         """Send one fixed start request, then close without reading its response."""
+        _require_linux_workload()
         if not isinstance(handle, str) or re.fullmatch('[a-f0-9]{64}', handle) is None:
             fail('lost-start-handle-invalid')
         self.last_exchange = None
@@ -277,6 +297,7 @@ class WorkloadClient:
 class ConnectedFcpClient(runtime.BoundedFcpClient):
     """Reuse bounded FCP parsing and handshake over one constrained controller connection."""
     def __init__(self, connected, name, transcript_path, before_send):
+        _require_linux_workload()
         self.before_send = before_send
         self.host, self.port, self.name = '127.0.0.1', 19401, name
         self.transcript_path = transcript_path
@@ -297,6 +318,7 @@ class ConnectedFcpClient(runtime.BoundedFcpClient):
 
 
     def _log_text(self, text):
+        _require_linux_workload()
         raw = text.encode('utf-8')
         fd = os.open(self.transcript_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
         try:
@@ -735,6 +757,7 @@ def bind_daemon(observation, expected_jdk_digest):
 
 def principal_row(role, observation, expected_jdk_digest, daemon=None):
     """Project one fixed installed account and actual outer Java process identity."""
+    _require_linux_workload()
     daemon = daemon or bind_daemon(observation, expected_jdk_digest)
     try:
         account = pwd.getpwnam('cryptad-wl-' + role)
@@ -756,6 +779,7 @@ def daemon_kernel_record(role, observation, daemon):
     GID and the process lifetime are independently checked through proc/pidfd.
     This helper is test-kit observation and adds no production socket method.
     """
+    _require_linux_workload()
     if role not in runtime.ROLES:
         fail('daemon-kernel-record-role-invalid')
     account = pwd.getpwnam('cryptad-wl-' + role)
@@ -797,6 +821,7 @@ def daemon_kernel_record(role, observation, daemon):
 
 def kernel_roster(samples, expected_jdk_digests):
     """Project only fixed role principals from final controller kernel observations."""
+    _require_linux_workload()
     if (not isinstance(samples, dict) or not isinstance(expected_jdk_digests, dict)
             or set(samples) != set(runtime.ROLES) or set(expected_jdk_digests) != set(runtime.ROLES)):
         fail('kernel-roster-incomplete')
@@ -879,6 +904,7 @@ def _mail_direction(commands, sending_role, receiving_role):
 
 
 def _save_mail_private(root, value):
+    _require_linux_workload()
     raw = json.dumps(value, sort_keys=True, separators=(',', ':'),
                      allow_nan=False).encode()
     if not 0 < len(raw) <= MAIL_PRIVATE_MAX_BYTES:
@@ -925,6 +951,7 @@ class InstalledWorkloadAdapter:
     def __init__(self, plan, private_config, authorization, journal, handoff, expected_jdk_digests=None,
                  *, control=None, counter_sampler=None, lost_start_sampler=None,
                  origin_handoff=None):
+        _require_linux_workload()
         expected_jdk_digests = expected_jdk_digests or handoff.get('expectedJdkDigests', {})
         from pr320_budget_contract import PROSPECTIVE_EXECUTION_CLASSES
         budget_class = authorization.get('executionClass') in (BUDGET_EXECUTION_CLASS,

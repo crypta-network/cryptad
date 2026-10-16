@@ -91,7 +91,7 @@ class CloseoutTest(unittest.TestCase):
 
     def test_pr320_budget_successor_preserves_every_parent_obligation_and_clock(self):
         prior = json.loads((audit.ROOT / "tools/release-certification/history/phase-12-acceptance-policy-pr307.json").read_bytes())
-        current, _ = audit.policy()
+        current = json.loads(audit.SUCCESSOR_BASELINE.read_bytes())
         self.assertEqual(6, current["version"])
         self.assertEqual(49, len(current["requirements"]))
         for old, new in zip(prior["requirements"], current["requirements"], strict=True):
@@ -105,6 +105,101 @@ class CloseoutTest(unittest.TestCase):
         for row in prior["history"]:
             self.assertIn(row, current["history"])
         self.assertFalse(self.evaluate()["phaseComplete"])
+
+    def test_pr321_successor_preserves_exact_owner_obligations_and_implementation_states(self):
+        current, _ = audit.policy()
+        prior = json.loads(audit.SUCCESSOR_BASELINE.read_bytes())
+        self.assertEqual(7, current["version"])
+        self.assertEqual(49, len(current["requirements"]))
+        audit._preserve_successor_obligations(current)
+        for old, new in zip(prior["requirements"], current["requirements"], strict=True):
+            self.assertEqual(old["id"], new["id"])
+            self.assertEqual(old["implementation"]["state"], new["implementation"]["state"])
+        self.assertEqual(prior["residuals"], current["residuals"])
+        self.assertEqual(prior["history"], current["history"][:-1])
+        self.assertFalse(self.evaluate()["phaseComplete"])
+
+    def test_recomputed_scope_constant_cannot_weaken_historical_owner_contract(self):
+        original_read = audit.read_file
+        mutations = (
+            lambda p: p["requirements"].pop(),
+            lambda p: p["requirements"][0]["dimensions"].pop(),
+            lambda p: p["requirements"][0]["subjects"].pop(),
+            lambda p: p["requirements"][0].update(mandatory=False),
+            lambda p: p["requirements"][0]["authority"].update(verifier="caller_verdict"),
+            lambda p: p["requirements"][0]["implementation"]["sourceEvidence"].pop(),
+            lambda p: p["requirements"][0]["implementation"].update(state="partial"),
+            lambda p: p["residuals"][0].update(status="approved-limitation"),
+            lambda p: p["residuals"][0]["origin"].update(asOf="2026-09-10T23:59:59Z"),
+            lambda p: p["history"].pop(0),
+        )
+        for mutation in mutations:
+            weakened = copy.deepcopy(self.rules)
+            mutation(weakened)
+            def read(path):
+                return canonical(weakened) if Path(path) == audit.POLICY else original_read(path)
+            resealed = digest(canonical(audit._acceptance_scope(weakened)))
+            with self.subTest(mutation=mutation), \
+                    patch.object(audit, "read_file", side_effect=read), \
+                    patch.object(audit, "ACCEPTANCE_SCOPE_DIGEST", resealed):
+                with self.assertRaisesRegex(ValueError, "successor-obligation-drift"):
+                    audit.policy()
+
+    def test_replaced_historical_policy_cannot_authorize_scope_reseal(self):
+        original_read = audit.read_file
+        baseline = json.loads(audit.SUCCESSOR_BASELINE.read_bytes())
+        baseline["requirements"].pop()
+        def read(path):
+            return canonical(baseline) if Path(path) == audit.SUCCESSOR_BASELINE else original_read(path)
+        with patch.object(audit, "read_file", side_effect=read):
+            with self.assertRaisesRegex(ValueError, "successor-baseline-pin-drift"):
+                audit.policy()
+
+    def test_successor_additions_have_exact_owners_assertions_and_closed_rosters(self):
+        for identity, groups in audit.SUCCESSOR_EVIDENCE_ADDITIONS.items():
+            for group, paths in groups.items():
+                for path in paths:
+                    for change in ("missing", "assertion", "extra"):
+                        value = copy.deepcopy(self.rules)
+                        owner = next(row for row in value["requirements"] if row["id"] == identity)
+                        evidence = owner["implementation"][group]
+                        item = next(item for item in evidence if item["path"] == path)
+                        if change == "missing":
+                            evidence.remove(item)
+                        elif change == "assertion":
+                            item["assertion"] = "caller-approved-complete"
+                        else:
+                            evidence.append({**item, "path": "unexpected/owner.py"})
+                        with self.subTest(identity=identity, path=path, change=change):
+                            with self.assertRaisesRegex(ValueError, "successor-obligation-drift"):
+                                audit._preserve_successor_obligations(value)
+
+    def test_checkout_tool_identity_selects_current_helpers_without_untracked_history(self):
+        from cryptad_certification.tests.test_active_source import ActiveSourceTests
+        fixture = ActiveSourceTests(methodName="runTest")
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        fixture.repository()
+        protected = fixture.root / "tools/release-certification/protected"
+        protected.mkdir()
+        helper = protected / "helper.py"
+        helper.write_bytes(b"VALUE = 1\n")
+        fixture.git("add", ".")
+        fixture.git("commit", "--quiet", "-m", "fixture: selected original helper")
+        with patch.object(audit, "ROOT", fixture.root), \
+                patch.object(audit, "tool_identity", return_value=digest(b"separate-certification-owner")):
+            original = audit.checkout()
+            history = protected / ".stversions/archived.py"
+            history.parent.mkdir()
+            history.write_bytes(b"UNTRACKED HISTORY MUST NOT ENTER CURRENT IDENTITY\n")
+            self.assertEqual(original, audit.checkout())
+            current = protected / "successor.py"
+            current.write_bytes(b"VALUE = 2\n")
+            working = audit.checkout()
+            self.assertNotEqual(original["toolDigest"], working["toolDigest"])
+            fixture.git("add", "-f", str(history.relative_to(fixture.root)))
+            declared_history = audit.checkout()
+            self.assertNotEqual(working["toolDigest"], declared_history["toolDigest"])
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

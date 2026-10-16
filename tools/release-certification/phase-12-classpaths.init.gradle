@@ -1,0 +1,76 @@
+// Explicit maintenance tool: write a private candidate, then review it before committing a roster.
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.api.tasks.testing.Test
+
+gradle.projectsEvaluated {
+    def bootstrap = rootProject.name == 'build-logic'
+    def root = (bootstrap ? rootProject.rootDir.parentFile : rootProject.rootDir).toPath().toRealPath()
+    def identity = { File file ->
+        def path = file.toPath().toAbsolutePath().normalize()
+        def parts = path.collect { it.toString() }
+        if (parts.size() >= 7 && parts[-7..-6] == ['modules-2', 'files-2.1']) {
+            return 'module:' + [parts[-5], parts[-4], parts[-3], parts[-1]].join(':')
+        }
+        if (parts.size() >= 4 && parts[-2] == 'generated-gradle-jars' &&
+                parts[-1] in ["gradle-api-${gradle.gradleVersion}.jar".toString(), "gradle-test-kit-${gradle.gradleVersion}.jar".toString()]) {
+            return "gradle-generated:${gradle.gradleVersion}:${parts[-1]}"
+        }
+        def home = gradle.gradleHomeDir.toPath().toRealPath()
+        if (path.startsWith(home.resolve('lib'))) {
+            return "gradle:${gradle.gradleVersion}:" + home.relativize(path).toString().replace(File.separatorChar, '/' as char)
+        }
+        return path.startsWith(root) ? 'project:' + root.relativize(path).toString().replace(File.separatorChar, '/' as char) : null
+    }
+    def parts = rootProject.allprojects.collect { project ->
+        project.tasks.register('phase12ClasspathCandidatePart') {
+            outputs.upToDateWhen { false }
+            doLast {
+                def tasks = new TreeMap<String, Object>()
+                // Resolve in the owning project's task, under that project's Gradle lock.
+                project.tasks.each { task ->
+                    String field = null
+                    def files = null
+                    if ((task instanceof JavaCompile && task.name in ['compileJava', 'compileTestJava']) ||
+                            (task instanceof Test && task.name == 'test')) {
+                        field = 'classpath'
+                        files = task.classpath.files
+                    } else if (bootstrap && task.name in ['compileKotlin', 'compileTestKotlin']) {
+                        field = 'classpath'
+                        files = task.libraries.files
+                    } else if (task.name in ['spotbugsMain', 'spotbugsTest']) {
+                        field = 'auxClasspath'
+                        files = task.auxClassPaths.files
+                    }
+                    if (field != null) {
+                        def entries = files.collect(identity)
+                        def fields = [(field): entries.contains(null) ? null : entries]
+                        if (task instanceof JavaCompile) {
+                            def processors = (task.options.annotationProcessorPath?.files ?: []).collect(identity)
+                            fields.annotationProcessorPath = processors.contains(null) ? null : processors
+                        }
+                        tasks[(bootstrap ? ':build-logic' : '') + task.path] = fields
+                    }
+                }
+                def output = project.layout.buildDirectory.file('phase12-classpath-part.json').get().asFile
+                output.parentFile.mkdirs()
+                output.text = JsonOutput.toJson(tasks) + '\n'
+            }
+        }
+    }
+    rootProject.tasks.register('phase12ClasspathCandidate') {
+        dependsOn(parts)
+        if (!bootstrap) dependsOn(gradle.includedBuild('build-logic').task(':phase12ClasspathCandidate'))
+        doLast {
+            def tasks = new TreeMap<String, Object>()
+            rootProject.allprojects.each { project ->
+                tasks.putAll(new JsonSlurper().parse(project.layout.buildDirectory.file('phase12-classpath-part.json').get().asFile))
+            }
+            if (!bootstrap) {
+                tasks.putAll(new JsonSlurper().parse(rootProject.file('build-logic/build/phase12-classpath-tasks.json')))
+            }
+            rootProject.file('build/phase12-classpath-tasks.json').text = JsonOutput.toJson(tasks) + '\n'
+        }
+    }
+}

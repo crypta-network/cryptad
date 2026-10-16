@@ -4,6 +4,21 @@ Read for CI and release notes. Commands and unlinked source paths are relative t
 
 ## CI and release notes
 
+- The reusable Java verification workflow has three fixed lane IDs: `linux-amd64`,
+  `macos-arm64`, and `windows-amd64`. V2 Phase 12 reports bind provider, observed architecture,
+  selected compiler/test/analyzer toolchains, actual source selection, task execution and original
+  report clocks. Their artifact names end in the lane ID to prevent matrix collisions. Complete
+  admission requires all three authenticated original lane results; one OS cannot substitute for
+  another. Historical v1 artifacts retain their original semantics and cannot replace a required
+  v2 native result. See [PR-321](../../../../docs/pr-321-supported-platform-exact-source-ci.md).
+- `-Pphase12Evidence=true` selects fresh test/analyzer execution. Reuse, source-free tasks,
+  platform N/A, missing prerequisites, failures and unexecuted tasks remain distinct. The platform N/A
+  rules bind eleven exact source-owned OS branches and fixed parameterized variants. Missing
+  prerequisites receive no exemption. Positive
+  analyzer findings, missing classes, unexpected skips and incomplete capture still block
+  acceptance. Upload only the adapter's bounded typed report, including safe failure facts;
+  keep raw XML, task manifests, logs and private input identities outside public upload rosters.
+
 - `.github/workflows/ci.yml` runs `interop-smoke` on push/PR, `interop-extended` on schedule/manual,
   interop self-tests on the multi-OS matrix, performance self-tests on the multi-OS matrix,
   release-certification self-tests on the multi-OS matrix, and `performance-smoke` on

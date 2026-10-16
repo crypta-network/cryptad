@@ -25,8 +25,14 @@ def encoded(value):
 
 
 class OriginalAPI:
+    @staticmethod
+    def legacy_source(commit, name):
+        # Isolated historical source response: the v1 workflow predates the native-lane CLI.
+        return ci.read_file(ci.ROOT / name).replace(b"--lane", b"--historical-mode")
+
     def __init__(self):
         self.responses = {}
+        self.responses[f"commits/{SHA}/check-runs?filter=latest&per_page=100"] = {"total_count": 0, "check_runs": []}
         self.requests = []
         self.selection = {"schemaVersion": 1, "repository": ci.REPOSITORY,
                           "observedAt": AS_OF, "runs": []}
@@ -106,9 +112,11 @@ class OriginalAPI:
         for module, kind in ci._report_cohort(ci.ROOT):
             facts = ci._xml_facts(xml(kind, module), kind, module)
             rows.append({"module": module, "kind": kind, "reports": [facts]})
+        with patch.object(ci, "_historical_source", side_effect=self.legacy_source):
+            producer = ci._producer_identity(1, source_commit=SHA)
         self.report_value = {"schemaVersion": 1, "kind": "phase-12-original-ci-report-facts", "sourceCommit": SHA,
             "sourceTree": SOURCE["tree"], "workflowSourceCommit": SHA, "signerCommit": SHA, "runId": 1, "runAttempt": 2,
-            "jobKey": "build", "producerDigest": ci._producer_identity(), "startedAt": "2026-09-10T11:00:06Z",
+            "jobKey": "build", "producerDigest": producer, "startedAt": "2026-09-10T11:00:06Z",
             "generatedAt": "2026-09-10T11:10:02Z", "rows": rows,
             "sonarLint": "owner-skipped-standard-build", "rawPayloads": "not-exported"}
         self.replace_reports()
@@ -145,8 +153,53 @@ class Phase12HostedCITests(unittest.TestCase):
         self.api = OriginalAPI()
 
     def verify(self, clean=True):
-        with patch.object(ci, "_GitHub", return_value=self.api), patch.object(ci, "_source_clean", return_value=clean):
+        with patch.object(ci, "_GitHub", return_value=self.api), patch.object(ci, "_source_clean", return_value=clean), \
+             patch.object(ci, "_historical_source", side_effect=self.api.legacy_source):
             return ci.verify(encoded(self.api.selection), SOURCE, AS_OF, collect_original=True)
+
+    def certification_shards(self):
+        response = self.api.responses["actions/runs/1/attempts/2/jobs?per_page=100"]
+        old = [job for job in response["jobs"] if job["name"].startswith("release certification self-test (")]
+        response["jobs"] = [job for job in response["jobs"] if job not in old]
+        shards = []
+        for index, (name, required) in enumerate(ci.CERTIFICATION_SHARD_STEPS.items()):
+            template = next(job for job in old if job["name"].split("(")[1].split(")")[0] in name)
+            job = copy.deepcopy(template)
+            job_id = 10000 + index
+            job.update(id=job_id, name=name,
+                       check_run_url=f"https://api.github.com/repos/{ci.REPOSITORY}/check-runs/{job_id}")
+            job["steps"] = [job["steps"][0]] + [{"name": step, "conclusion": "success"} for step in required]
+            self.api.responses[f"actions/jobs/{job_id}/logs"] = self.api.responses[f"actions/jobs/{template['id']}/logs"]
+            check = copy.deepcopy(self.api.responses[f"check-runs/{template['id']}"])
+            check.update(id=job_id, name=name)
+            self.api.responses[f"check-runs/{job_id}"] = check
+            self.api.responses[f"check-runs/{job_id}/annotations?per_page=100"] = []
+            shards.append(job)
+        response["jobs"].extend(shards)
+        response["total_count"] = len(response["jobs"])
+        return response, shards
+
+    def test_certification_shards_require_every_original_job(self):
+        self.certification_shards()
+        result = self.verify()
+        jobs = [job for record in result["records"] for job in record["jobs"]
+                if job["name"] in ci.CERTIFICATION_SHARD_STEPS]
+        self.assertEqual({job["name"] for job in jobs}, set(ci.CERTIFICATION_SHARD_STEPS))
+        self.assertTrue(all(job["execution"] == "executed-pass" for job in jobs))
+
+    def test_missing_certification_shard_cannot_be_accepted(self):
+        response, shards = self.certification_shards()
+        response["jobs"].remove(shards[-1])
+        response["total_count"] -= 1
+        with self.assertRaisesRegex(ValueError, "^phase12-original-ci-invalid$"):
+            self.verify()
+
+    def test_skipped_certification_shard_step_keeps_failure_visible(self):
+        _, shards = self.certification_shards()
+        shards[-1]["steps"][-1]["conclusion"] = "skipped"
+        result = self.verify()
+        self.assertIn("required-original-ci-job-not-executed-pass", result["blockers"])
+        self.assertNotEqual("executed-pass", result["ci"])
 
     def test_catalog_origin_integration_cannot_be_skipped_under_a_successful_job(self):
         self.api.complete_reports()
@@ -173,6 +226,13 @@ class Phase12HostedCITests(unittest.TestCase):
             result = ci.verify(encoded(self.api.selection), SOURCE, AS_OF)
         self.assertEqual("unverified", result["originalProvenance"])
         self.assertEqual("unknown", result["ci"])
+
+    def test_v1_observation_cannot_downgrade_current_native_workflow_contract(self):
+        self.api.legacy_source = lambda commit, name: ci.read_file(ci.ROOT / name)
+        self.api.complete_reports()
+        result = self.verify()
+        self.assertIn("original-ci-v1-cannot-replace-required-native-results", result["blockers"])
+        self.assertNotEqual("executed-pass", result["ci"])
 
     def test_dirty_current_source_preserves_historical_original_job_with_source_gap(self):
         result = self.verify(clean=False)
@@ -220,6 +280,20 @@ class Phase12HostedCITests(unittest.TestCase):
         self.api.responses[key] = self.api.responses[key].replace(b"11:00:01", b"11:30:00")
         result = self.verify()
         self.assertIn("original-checkout-identity-unavailable", result["blockers"])
+
+    def test_windows_checkout_quoted_executable_binds_only_exact_action_command(self):
+        job = {"steps": [{"name": "Run " + ci.CHECKOUT, "conclusion": "success",
+                          "started_at": "2026-09-10T11:00:00Z", "completed_at": "2026-09-10T11:00:05Z"}]}
+        command = r'[command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H'
+        def log(text):
+            return (f"2026-09-10T11:00:01.1234567Z {text}\n"
+                    f"2026-09-10T11:00:01.2234567Z {SHA}\n").encode()
+        self.assertEqual(SHA, ci._checkout_sha(job, log(command)))
+        for invalid in ("echo " + command, command.replace("git.exe", "other.exe"),
+                        command + " extra", command.replace('"C:', '"relative:')):
+            with self.subTest(command=invalid):
+                self.assertIsNone(ci._checkout_sha(job, log(invalid)))
+        self.assertIsNone(ci._checkout_sha(job, log(command) + log(command)))
 
     def test_native_successful_job_with_unavailable_log_stays_original_execution(self):
         original = self.api.get

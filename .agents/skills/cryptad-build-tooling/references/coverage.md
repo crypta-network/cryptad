@@ -3,7 +3,7 @@
 Read for JaCoCo + SonarCloud coverage. Commands and unlinked source paths are relative to the repository root.
 
 ## JaCoCo + SonarCloud coverage
-- JaCoCo toolVersion: `0.8.14`
+- JaCoCo toolVersion: `0.8.15`
 - XML/HTML reports are enabled:
   - XML: `build/reports/jacoco/test/jacocoTestReport.xml`
 - `check` depends on:

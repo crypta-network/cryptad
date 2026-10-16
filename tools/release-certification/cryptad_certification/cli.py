@@ -299,6 +299,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     tests = subparsers.add_parser("self-test")
     tests.add_argument("suite", nargs="?", choices=SELF_TEST_SUITES, default="all")
+    tests.add_argument("--shard-index", type=int, default=0, help="Zero-based index of the test shard")
+    tests.add_argument("--shard-count", type=int, default=1, help="Partition sorted test IDs into this many disjoint shards")
     return parser
 
 
@@ -1574,7 +1576,7 @@ def main(argv: list[str] | None = None) -> int:
         args = build_parser().parse_args(selected_argv)
     try:
         if args.command == "self-test":
-            return selftest.run(args.suite)
+            return selftest.run(args.suite, shard_index=args.shard_index, shard_count=args.shard_count)
         return _run_command(args)
     except (OSError, ValueError) as exc:
         print(f"certify: {exc}", file=sys.stderr)

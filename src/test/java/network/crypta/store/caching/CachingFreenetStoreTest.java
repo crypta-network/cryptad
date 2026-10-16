@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.LockSupport;
 import network.crypta.crypt.DSAGroup;
 import network.crypta.crypt.DSAPrivateKey;
@@ -85,6 +86,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -206,9 +208,12 @@ final class CachingFreenetStoreTest {
           CHKEncodeException,
           CHKVerifyException,
           CHKDecodeException,
-          InterruptedException {
+          InterruptedException,
+          ExecutionException,
+          TimeoutException {
     // Arrange
     File f = getStorePath("testOverMaximumSize");
+    Ticker controlledTicker = mock(Ticker.class);
 
     String test = "test0";
     ClientCHKBlock block = encodeBlockCHK(test);
@@ -233,7 +238,7 @@ final class CachingFreenetStoreTest {
                 new SaltedHashStoreSizing(howManyBlocks * 5L, false, true, true)))) {
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker(
-              cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
+              cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, controlledTicker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -253,7 +258,12 @@ final class CachingFreenetStoreTest {
           chkBlocks.add(block);
         }
 
-        waitForZero(tracker);
+        ArgumentCaptor<Runnable> thresholdFlush = ArgumentCaptor.forClass(Runnable.class);
+        verify(controlledTicker).queueTimedJob(thresholdFlush.capture(), eq(0L));
+        FutureTask<Void> flush = new FutureTask<>(thresholdFlush.getValue(), null);
+        exec.execute(flush);
+        flush.get(30, TimeUnit.SECONDS);
+        assertEquals(0L, tracker.getSizeOfCache());
         // Assert: data present in underlying store and decodable via cache
         boolean atLeastOneKey = false;
         for (int i = 0; i < howManyBlocks; i++) {
@@ -801,10 +811,13 @@ final class CachingFreenetStoreTest {
           CHKEncodeException,
           CHKVerifyException,
           CHKDecodeException,
-          InterruptedException {
+          InterruptedException,
+          ExecutionException,
+          TimeoutException {
     // Arrange
     File f = getStorePath("testTimeExpireCHK");
     long delay = 100;
+    Ticker controlledTicker = mock(Ticker.class);
 
     CHKStore store = new CHKStore();
     try (SaltedHashFreenetStore<CHKBlock> saltStore =
@@ -815,7 +828,7 @@ final class CachingFreenetStoreTest {
                     store, weakPRNG, SemiOrderedShutdownHook.get(), null),
                 new SaltedHashStoreSizing(10, false, true, true)))) {
       CachingFreenetStoreTracker tracker =
-          new CachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, ticker);
+          new CachingFreenetStoreTracker(cachingFreenetStoreMaxSize, delay, controlledTicker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -844,7 +857,12 @@ final class CachingFreenetStoreTest {
                   null));
         }
 
-        waitForZero(tracker);
+        ArgumentCaptor<Runnable> scheduledFlush = ArgumentCaptor.forClass(Runnable.class);
+        verify(controlledTicker).queueTimedJob(scheduledFlush.capture(), eq(delay));
+        FutureTask<Void> flush = new FutureTask<>(scheduledFlush.getValue(), null);
+        exec.execute(flush);
+        flush.get(30, TimeUnit.SECONDS);
+        assertEquals(0L, tracker.getSizeOfCache());
         // Assert: at least one key persisted to underlying store
         boolean atLeastOneKey = false;
         for (int i = 0; i < 5; i++) {

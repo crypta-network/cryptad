@@ -11,7 +11,26 @@ Read for Error Prone. Commands and unlinked source paths are relative to the rep
 - Generate XML reports:
   - `./gradlew errorproneReport`
 - Output:
-  - `build/reports/errorprone/<task>/<task>.xml` (e.g., `compileJava/compileJava.xml`, `compileTestJava/compileTestJava.xml`)
+  - Root: `build/reports/errorprone/<task>/<task>.xml` (for example, `compileJava/compileJava.xml`).
+  - Leaf: `<module>/build/reports/errorprone/<module>_<task>/<task>.xml` (for example,
+    `platform-api/build/reports/errorprone/platform-api_compileJava/compileJava.xml`). Nested
+    module separators become underscores in the report directory label.
+
+### Final evidence mode
+- `-Pphase12Evidence=true` records actual task outcomes and selected inputs privately and forces the
+  required analyzer/test cohort to execute freshly. Ordinary builds keep normal reuse.
+- A successful compile/report task is not analyzer-clean evidence: inspect warnings, analyzer
+  completion/source coverage and the private task observation. Missing or incomplete reports remain
+  unavailable, and cache/up-to-date outcomes remain reuse.
+- The private completion observation binds the exact report roster and bytes. Post-edited/copied
+  reports cannot inherit an execution clock. Acceptance also requires the reviewed analyzer
+  configuration; suppression flags, extra arguments/providers and partial class/filter inputs are
+  not full-analysis evidence.
+
+Report generation raises javac's warning/error diagnostic caps to a bounded 10,000, records
+`diagnosticsComplete`, and rejects truncated/capped captures for acceptance. The separate 16 MiB
+capture bound remains enforced. Emitted warning counts from a truncated historical report do not
+prove the complete finding roster.
 
 ### Report schema (custom)
 - Root element: `<errorproneReport>`

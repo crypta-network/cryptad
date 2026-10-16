@@ -606,21 +606,12 @@ public final class AppCatalogWriter {
     } catch (UnsupportedOperationException _) {
       Path snapshot = Files.createTempFile("cryptad-catalog-artifact-", ".zip");
       try {
-        restrictPortableSnapshotPermissions(snapshot);
+        AppCatalogFilePermissions.restrictOwnerOnlyFile(snapshot);
         return snapshot;
       } catch (IOException | RuntimeException exception) {
         Files.deleteIfExists(snapshot);
         throw exception;
       }
-    }
-  }
-
-  private static void restrictPortableSnapshotPermissions(Path snapshot) throws IOException {
-    java.io.File file = snapshot.toFile();
-    if (!file.setReadable(true, true)
-        || !file.setWritable(true, true)
-        || !file.setExecutable(false, true)) {
-      throw new IOException("failed to restrict catalog artifact snapshot permissions");
     }
   }
 

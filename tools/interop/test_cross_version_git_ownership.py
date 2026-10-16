@@ -20,13 +20,13 @@ class GitOwnershipTest(unittest.TestCase):
             self.skipTest('passwordless sudo unavailable for the temporary root-owned checkout')
         source = Path(runtime.__file__).resolve().parents[2]
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve(strict=True)
             checkout, sibling, home = (root / name for name in ('checkout', 'sibling', 'service-home'))
             home.mkdir()
             environment = service.child_environment(home)
             environment.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null')
             # Local object sharing creates no network traffic and executes no checked-out hooks.
-            subprocess.run(['git', 'clone', '--shared', '--no-checkout', str(source), str(checkout)],
+            subprocess.run(['git', 'clone', '--shared', str(source), str(checkout)],
                            env=environment, capture_output=True, check=True, timeout=30)
             subprocess.run(['git', 'init', str(sibling)], env=environment,
                            capture_output=True, check=True, timeout=10)

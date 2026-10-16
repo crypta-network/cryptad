@@ -6108,7 +6108,7 @@ class AppUpdateServiceTest {
         AppCatalogChangelog.EMPTY,
         List.of(),
         productionMetadata,
-        URI.create("file:///tmp/queue-manager-" + version + ".zip"),
+        Path.of("queue-manager-" + version + ".zip").toAbsolutePath().toUri(),
         DIGEST,
         1234L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,

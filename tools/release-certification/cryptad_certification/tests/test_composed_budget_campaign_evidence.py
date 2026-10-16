@@ -1,6 +1,7 @@
 """All finite native owners participate; local completeness never manufactures authority."""
 import base64
 import copy
+import datetime as dt
 import hashlib
 import json
 from pathlib import Path
@@ -59,6 +60,12 @@ def complete_local(native_raw, browser_raw, artifact_raw):
             raw = encode(value)
         elif kind == 'native-privacy':
             binding['collectorEpoch'] = value['surfaces']['workSnapshot']['collectorEpoch']
+            # This fixture consumes genuinely fresh native bytes. Its synthetic observation
+            # cutoff must include those events rather than backdating them to a fixed midnight.
+            times = [dt.datetime.fromisoformat(binding['observedAt'].replace('Z', '+00:00'))]
+            times.extend(dt.datetime.fromisoformat(event['observedAt'].replace('Z', '+00:00'))
+                         for event in value['surfaces']['workSnapshot']['events'])
+            binding['observedAt'] = max(times).isoformat()
         elif kind == 'browser-privacy':
             binding['servedScriptDigest'] = value['scriptDigest']
             binding['producerDigest'] = digest((ROOT / 'tools/web-shell/tests/support-browser.cjs').read_bytes())

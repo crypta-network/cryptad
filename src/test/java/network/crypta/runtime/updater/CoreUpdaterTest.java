@@ -5,12 +5,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
-import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -48,7 +46,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -59,6 +56,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -395,30 +393,60 @@ class CoreUpdaterTest {
   }
 
   @Test
+  void isWritableDirectory_whenPathIsNotDirectory_expectFalseWithoutCheckingWriteAccess()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    File directory = mock(File.class);
+    when(directory.isDirectory()).thenReturn(false);
+
+    boolean writable = updater.isWritableDirectory(directory);
+
+    assertFalse(writable);
+    verify(directory, never()).canWrite();
+  }
+
+  @Test
+  void isWritableDirectory_whenDirectoryIsReadOnly_expectFalse() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    File directory = mock(File.class);
+    when(directory.isDirectory()).thenReturn(true);
+    when(directory.canWrite()).thenReturn(false);
+
+    boolean writable = updater.isWritableDirectory(directory);
+
+    assertFalse(writable);
+    verify(directory).canWrite();
+  }
+
+  @Test
+  void isWritableDirectory_whenDirectoryAllowsWrites_expectTrue() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    File directory = mock(File.class);
+    when(directory.isDirectory()).thenReturn(true);
+    when(directory.canWrite()).thenReturn(true);
+
+    boolean writable = updater.isWritableDirectory(directory);
+
+    assertTrue(writable);
+  }
+
+  @Test
   void isUiDownloadAvailable_whenVersionDirectoryExistsButIsNotWritable_expectFalse()
       throws Exception {
     File nodeDir = Files.createTempDirectory("cryptad-core-updater").toFile();
     File versionDir = new File(nodeDir, "updates/core/1200");
     assertTrue(versionDir.mkdirs());
-    try {
-      Files.setPosixFilePermissions(
-          versionDir.toPath(),
-          Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
-      assumeFalse(
-          versionDir.canWrite(), "Test environment cannot simulate a non-writable directory.");
+    CoreUpdater updater = spy(createCoreUpdater(nodeDir));
+    doReturn(false).when(updater).isWritableDirectory(versionDir);
+    setDescriptorSelection(
+        updater,
+        new CoreInfo("1200", null, Map.of(), null, null),
+        null,
+        SELECTED_PACKAGE_KEY,
+        new PackageSpec(VALID_CHK, 10L, null));
 
-      CoreUpdater updater = createCoreUpdater(nodeDir);
-      setDescriptorSelection(
-          updater,
-          new CoreInfo("1200", null, Map.of(), null, null),
-          null,
-          SELECTED_PACKAGE_KEY,
-          new PackageSpec(VALID_CHK, 10L, null));
-
-      assertFalse(updater.isUiDownloadAvailable());
-    } finally {
-      assertTrue(versionDir.setWritable(true, true));
-    }
+    assertFalse(updater.isUiDownloadAvailable());
+    verify(updater).isWritableDirectory(versionDir);
   }
 
   @Test

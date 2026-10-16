@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import network.crypta.fs.AppEnv;
@@ -73,6 +74,7 @@ public class LauncherController {
       };
   private final ExecutorService io = Executors.newCachedThreadPool(IO_THREAD_FACTORY);
   private final Path cwd;
+  private final Function<Path, List<String>> launchCommand;
   private final List<Consumer<String>> logListeners = new CopyOnWriteArrayList<>();
   private final List<Consumer<AppState>> stateListeners = new CopyOnWriteArrayList<>();
 
@@ -157,10 +159,25 @@ public class LauncherController {
       Supplier<Path> readinessFileResolver,
       Supplier<Path> daemonLogFileResolver,
       TimingConfig timing) {
+    this(
+        cwd,
+        readinessFileResolver,
+        daemonLogFileResolver,
+        timing,
+        LauncherUtils::buildCryptadCommand);
+  }
+
+  LauncherController(
+      Path cwd,
+      Supplier<Path> readinessFileResolver,
+      Supplier<Path> daemonLogFileResolver,
+      TimingConfig timing,
+      Function<Path, List<String>> launchCommand) {
     this.cwd = Objects.requireNonNull(cwd);
     this.readinessFileResolver = Objects.requireNonNull(readinessFileResolver);
     this.daemonLogFileResolver = Objects.requireNonNull(daemonLogFileResolver);
     this.timing = Objects.requireNonNull(timing);
+    this.launchCommand = Objects.requireNonNull(launchCommand);
   }
 
   /**
@@ -225,7 +242,7 @@ public class LauncherController {
   }
 
   /**
-   * Starts the managed {@code cryptad} process when not already running.
+   * Starts the managed {@code cryptad} process when not already running or shutting down.
    *
    * <p>This method validates executable availability, updates launcher state, then schedules
    * process start, and output monitoring on the controller executor. If startup fails, an error
@@ -233,14 +250,19 @@ public class LauncherController {
    */
   public synchronized void start() {
     Process currentProcess = process.get();
-    if (state.get().isRunning() || (currentProcess != null && currentProcess.isAlive())) {
+    if (state.get().isShuttingDown()
+        || state.get().isRunning()
+        || (currentProcess != null && currentProcess.isAlive())) {
       return;
     }
 
     io.execute(this::startProcessAndWatch);
   }
 
-  private void startProcessAndWatch() {
+  private synchronized void startProcessAndWatch() {
+    if (state.get().isShuttingDown()) {
+      return;
+    }
     Path cryptadPath = LauncherUtils.resolveCryptadPath(cwd);
     AppEnv env = new AppEnv();
     boolean launchable =
@@ -272,7 +294,7 @@ public class LauncherController {
     Path wrapperLogFile = resolveWrapperLogFile(wrapperConf);
     long wrapperLogOffset = currentFileLength(wrapperLogFile);
 
-    List<String> command = LauncherUtils.buildCryptadCommand(cryptadPath);
+    List<String> command = launchCommand.apply(cryptadPath);
     emitLog(
         ts() + " exec: " + formatCommandForLog(command) + " (cwd=" + cwd.toAbsolutePath() + ")");
     ProcessBuilder pb = new ProcessBuilder(command);
@@ -1138,6 +1160,21 @@ public class LauncherController {
     Thread tailer = tailThread.getAndSet(null);
     if (tailer != null) {
       tailer.interrupt();
+      awaitTailThread(tailer);
+    }
+  }
+
+  private void awaitTailThread(Thread tailer) {
+    if (tailer == Thread.currentThread()) {
+      return;
+    }
+    try {
+      tailer.join(TimeUnit.SECONDS.toMillis(10));
+      if (tailer.isAlive()) {
+        logDebug("Wrapper log reader did not terminate before the shutdown timeout");
+      }
+    } catch (InterruptedException _) {
+      Thread.currentThread().interrupt();
     }
   }
 
@@ -1153,6 +1190,7 @@ public class LauncherController {
     }
     if (tailer.isAlive()) {
       tailer.interrupt();
+      awaitTailThread(tailer);
     }
   }
 
@@ -1430,8 +1468,13 @@ public class LauncherController {
     io.execute(
         () -> {
           Process current = process.get();
-          if (current != null && current.isAlive()) {
-            stopManagedProcess(current);
+          try {
+            if (current != null && current.isAlive()) {
+              stopManagedProcess(current);
+            }
+          } finally {
+            interruptTailThread();
+            io.shutdown();
           }
         });
   }
@@ -1439,17 +1482,29 @@ public class LauncherController {
   /**
    * Initiates shutdown and waits for background executor termination.
    *
-   * <p>The wait is bounded to ten seconds; timeout is logged at debug level.
+   * <p>Each reader and executor wait is bounded to ten seconds; timeouts are logged at debug level.
    */
   public void shutdownAndWait() {
-    if (!state.get().isShuttingDown()) {
-      updateState(s -> s.withShuttingDown(true));
+    synchronized (this) {
+      if (!state.get().isShuttingDown()) {
+        updateState(s -> s.withShuttingDown(true));
+      }
     }
     Process current = process.get();
     if (current != null && current.isAlive()) {
       stopManagedProcess(current);
     }
     interruptTailThread();
+    io.shutdown();
+    try {
+      if (!io.awaitTermination(10, TimeUnit.SECONDS)) {
+        io.shutdownNow();
+        logDebug("Launcher executor did not terminate before the shutdown timeout");
+      }
+    } catch (InterruptedException _) {
+      io.shutdownNow();
+      Thread.currentThread().interrupt();
+    }
   }
 
   private void tryEnableConsoleFlush(Path cryptadPath) {
@@ -1494,7 +1549,7 @@ public class LauncherController {
     }
   }
 
-  static record TimingConfig(
+  record TimingConfig(
       long tailBaseDelayMs,
       long tailMaxDelayMs,
       long tailCancelPollMs,
