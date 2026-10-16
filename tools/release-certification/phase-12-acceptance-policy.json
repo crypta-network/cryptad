@@ -5467,7 +5467,7 @@
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:b238d17adc796fec085ce97ef2d5b0523dd6005475a7fd5f644682e3dedcab02",
+            "digest": "sha256:d877009dc18292225e30d26e3b9f8364f981bb597351ec81c9afba0c1e2f6e50",
             "path": ".github/workflows/build.yml"
           },
           {

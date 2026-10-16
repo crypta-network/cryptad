@@ -420,3 +420,24 @@ Python source-selector, CI-evidence and closeout suites pass all 107 tests. Work
 Kotlin formatting pass, and both report commands pass the spaced-interpreter/failing-alias smoke
 check. The separate assessment at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and
 Phase 12 incomplete. These checks do not establish native hosted execution for the successor commit.
+
+## Native Windows wrapper selection review
+
+[Comment 4289358874](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4289358874)
+identified that native Windows verification still selected the Unix wrapper. The reusable workflow
+now selects `./gradlew.bat` when `RUNNER_OS` is `Windows` and `./gradlew` otherwise. The verification
+tasks and `-Pphase12Evidence=true` argument remain the same.
+
+Only the existing workflow file commitment under `p12-303-ci` advances. Its assertions,
+implementation state, acceptance scope and historical commitments remain unchanged. Prior bytes,
+the exact digest review and private local dispatch results are retained under
+`build/pr1423-windows-wrapper/`, outside public upload rosters.
+
+Workflow lint passes. Local Bash checks reproduce the previous Windows wrapper selection and pass
+all six corrected checks across Windows, macOS and Linux runner values, including exact arguments
+and propagation of success and failure exit codes. These checks use controlled wrapper substitutes
+on Linux; they do not establish execution of the batch wrapper on native Windows.
+
+All 41 focused v2 CI evidence tests pass, and all 631 implementation-evidence file commitments
+match. The separate assessment at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and
+Phase 12 incomplete.

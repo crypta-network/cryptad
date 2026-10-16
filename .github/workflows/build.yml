@@ -107,7 +107,12 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./gradlew test spotbugsMain spotbugsTest errorproneReport -Pphase12Evidence=true
+        run: |
+          wrapper=./gradlew
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            wrapper=./gradlew.bat
+          fi
+          "$wrapper" test spotbugsMain spotbugsTest errorproneReport -Pphase12Evidence=true
 
       # Failed jobs also retain fixed typed facts. Raw XML, diagnostics, names and payload hashes
       # remain private; authentic failed/incomplete evidence never grants acceptance.
