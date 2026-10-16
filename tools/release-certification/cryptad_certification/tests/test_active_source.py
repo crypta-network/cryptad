@@ -305,7 +305,9 @@ class ActiveSourceTests(unittest.TestCase):
         self.assertEqual(tree, roster.source_tree)
         self.assertEqual('working-source', roster.source_class)
 
-    def test_clean_crlf_checkout_remains_committed_and_changed_bytes_are_working(self):
+    def test_crlf_checkout_is_working_until_raw_bytes_match_committed_blob(self):
+        from cryptad_certification import phase_12_ci as ci
+
         self.repository()
         (self.root / '.gitattributes').write_bytes(b'*.bat text eol=crlf\n')
         script = self.root / 'native space é.bat'
@@ -315,13 +317,46 @@ class ActiveSourceTests(unittest.TestCase):
         script.unlink()
         self.git('checkout-index', '--force', '--all')
         self.assertEqual(b'echo one\r\n', script.read_bytes())
-        self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
+        self.assertEqual(b'', self.git('diff', '--raw').stdout)
+        index = (self.root / '.git/index').read_bytes()
+        original = owner.source_roster(self.root)
+        source = {'commit': original.source_commit, 'tree': original.source_tree}
+        self.assertEqual('working-source', original.source_class)
+        self.assertEqual(b'echo one\n', self.git('show', 'HEAD:' + script.name).stdout)
+        self.assertEqual(b'echo one\r\n', owner.read_source(self.root, script.name))
+        with patch.object(ci, 'ROOT', self.root):
+            self.assertFalse(ci._source_clean(source))
         with windows_source_metadata():
-            self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
+            self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+
+        script.write_bytes(b'echo one\n')
+        self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
+        with patch.object(ci, 'ROOT', self.root):
+            self.assertTrue(ci._source_clean(source))
+        self.assertEqual(index, (self.root / '.git/index').read_bytes())
 
         script.write_bytes(b'echo two\r\n')
 
         self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+
+    def test_autocrlf_normalization_cannot_hide_raw_bytes_without_attributes(self):
+        self.repository()
+        self.git('config', 'core.autocrlf', 'true')
+        name = self.source.relative_to(self.root).as_posix()
+        self.source.write_bytes(b'VALUE = 1\r\n')
+        self.assertEqual(b'', self.git('diff', '--raw').stdout)
+        self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+        self.assertEqual(b'VALUE = 1\n', self.git('show', 'HEAD:' + name).stdout)
+
+    def test_binary_crlf_blob_can_match_its_raw_checkout(self):
+        self.repository()
+        (self.root / '.gitattributes').write_bytes(b'*.bin -text\n')
+        binary = self.root / 'exact.bin'
+        binary.write_bytes(b'\x00exact\r\nbytes\xff')
+        self.git('add', '.')
+        self.git('commit', '--quiet', '-m', 'fixture: exact binary bytes')
+        self.assertEqual(binary.read_bytes(), self.git('show', 'HEAD:exact.bin').stdout)
+        self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
 
     def test_intent_to_add_members_are_working_source_even_when_empty(self):
         from cryptad_certification import phase_12_ci as ci

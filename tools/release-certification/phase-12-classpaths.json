@@ -24,7 +24,7 @@
     "build-logic/src/main/kotlin/cryptad.spotless.gradle.kts": "sha256:ef70ca122f4c239d9a140bac8d7bea01b11126af3d35a13c43ac4663b28a7b78",
     "build-logic/src/main/kotlin/cryptad.supply-chain.gradle.kts": "sha256:4873b3c6def8e96ca5e2c9e8b15205335f6f6f41316bf5efd125d80189afe3e1",
     "build-logic/src/main/kotlin/cryptad.versioning.gradle.kts": "sha256:027d16744668edd9eeb4382247e8957df57c9b519f258e733f3fbc84251828d4",
-    "build-logic/src/main/kotlin/cryptad/ActiveSourceFiles.kt": "sha256:82fa2c03bb66165527be68adb28d22cbc2f85622954e5229a1e76afb5d206154",
+    "build-logic/src/main/kotlin/cryptad/ActiveSourceFiles.kt": "sha256:d21d079222bd068b2a6a8322faa21b5512b8d7cfc4ccb276875ba742dd0dac5d",
     "build-logic/src/main/kotlin/cryptad/DeterministicBootstrapJar.kt": "sha256:851c0dc631acde3da37a81dd46f90e81f99d9ac215bf7490f6531fb0e4701f8c",
     "build-logic/src/main/kotlin/cryptad/Phase12TaskEvidence.kt": "sha256:9605af012229f97572206243c7a7f7cd1e4216dcacf4bbf363bff7175930d730",
     "build-logic/src/main/kotlin/cryptad/PortableArchiveNormalizer.kt": "sha256:4d05cb7de5cf692c405f8820ce8e1ea374dca80748d3bac7b8f2635da0b2188e",

@@ -136,7 +136,7 @@ internal object ActiveSourceFiles {
     return selected
   }
 
-  private fun git(root: File, vararg arguments: String, index: Path? = null): ByteArray {
+  private fun git(root: File, vararg arguments: String): ByteArray {
     val builder =
       ProcessBuilder(
           listOf(
@@ -155,7 +155,6 @@ internal object ActiveSourceFiles {
     builder.environment()["GIT_CONFIG_NOSYSTEM"] = "1"
     builder.environment()["GIT_CONFIG_GLOBAL"] =
       if (File.separatorChar == '\\') "NUL" else "/dev/null"
-    if (index != null) builder.environment()["GIT_INDEX_FILE"] = index.toString()
     val process = builder.start()
     val reader = Executors.newVirtualThreadPerTaskExecutor()
     try {
@@ -190,40 +189,41 @@ internal object ActiveSourceFiles {
       }
     }
 
-  private fun workingBytesChanged(base: File, commit: String): Boolean {
-    // No cached stat records: compare contents with Git's checkout attribute normalization.
-    val directory = Files.createTempDirectory("cryptad-source-index-").toRealPath()
-    val index = directory.resolve("index")
-    val options =
-      arrayOf(
-        "-c",
-        "core.splitIndex=false",
-        "-c",
-        "core.sparseCheckout=false",
-        "-c",
-        "core.ignoreStat=false",
-        "-c",
-        "core.fileMode=false",
-      )
-    try {
-      git(base, *options, "read-tree", commit, index = index)
-      return git(
-          base,
-          *options,
-          "diff",
-          "--raw",
-          "-z",
-          "--no-ext-diff",
-          "--no-textconv",
-          index = index,
-        )
-        .isNotEmpty()
-    } finally {
-      Files.deleteIfExists(directory.resolve("index.lock"))
-      Files.deleteIfExists(index)
-      Files.delete(directory)
+  private fun committedBlobs(base: File, commit: String): Map<String, String> {
+    val raw = git(base, "ls-tree", "-r", "-z", commit)
+    require(raw.isEmpty() || raw.last() == 0.toByte()) { "Invalid committed source roster" }
+    val result = mutableMapOf<String, String>()
+    for (row in raw.toString(Charsets.UTF_8).split('\u0000').dropLast(1)) {
+      val separator = row.indexOf('\t')
+      require(separator >= 0) { "Invalid committed source member" }
+      val metadata =
+        Regex("(100644|100755) blob ($GIT_SHA1_PATTERN)").matchEntire(row.substring(0, separator))
+      require(metadata != null && result.size < 100000) { "Invalid committed source member" }
+      require(result.put(row.substring(separator + 1), metadata.groupValues[2]) == null) {
+        "Duplicate committed source member"
+      }
     }
+    return result
   }
+
+  private fun workingBytesChanged(
+    base: File,
+    selected: Set<String>,
+    committed: Map<String, String>,
+  ): Boolean =
+    selected.toList().chunked(128).any { names ->
+      // Read-only raw hashing bypasses the stat cache and every checkout normalization/filter.
+      val hashes =
+        git(base, "hash-object", "--no-filters", "--", *names.toTypedArray())
+          .toString(Charsets.US_ASCII)
+          .lineSequence()
+          .filter { it.isNotEmpty() }
+          .toList()
+      require(hashes.size == names.size && hashes.all { it.matches(Regex(GIT_SHA1_PATTERN)) }) {
+        "Raw source identities unavailable"
+      }
+      hashes != names.map { committed.getValue(it) }
+    }
 
   private fun workingModesChanged(
     base: File,
@@ -408,19 +408,14 @@ internal object ActiveSourceFiles {
       "Source identity unavailable"
     }
     val trackedModes by lazy { trackedExecutableModes(git(base, GIT_LS_FILES, "--stage", "-z")) }
-    val committed =
-      git(base, "ls-tree", "-r", "--name-only", "-z", commit)
-        .toString(Charsets.UTF_8)
-        .split('\u0000')
-        .dropLast(1)
-        .toSet()
+    val committed = committedBlobs(base, commit)
     val dirty =
       git(base, "diff", "--cached", "--raw", "-z", "--no-ext-diff", "--no-textconv", commit)
         .isNotEmpty() ||
-        selected.any { it !in committed } ||
+        selected != committed.keys ||
         workingModesChanged(base, selected, trackedModes) ||
         customSourceTransforms(base, selected) ||
-        workingBytesChanged(base, commit)
+        workingBytesChanged(base, selected, committed)
     var total = 0L
     val files =
       selected

@@ -716,3 +716,37 @@ errors or skips. All 631 implementation-evidence commitments match the current b
 fixed-cutoff assessment retains 49 requirements, 47 unresolved, verified local consistency and
 Phase 12 incomplete. These Linux checks do not establish native macOS/Windows execution or original
 hosted acceptance; independent producer transformation authentication remains unavailable.
+
+## Raw checkout byte identity review
+
+[Comment 4298826736](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4298826736)
+identified a distinction between Git-normalized equality and exact source bytes. In the clean
+checkout, `gradlew.bat` contains 2,848 bytes with CRLF while its committed blob contains 2,766 bytes
+with LF.
+The previous Python classifier labels that checkout committed source and its CI source-clean
+check returns true. A Kotlin source-export fixture reproduces the same incorrect label.
+
+Both classifiers now compare read-only `git hash-object --no-filters` observations with the exact
+committed blob identities in bounded batches. The check bypasses Git's stat cache, clean filters
+and line-ending normalization, and neither updates the index nor writes objects. Selected members
+must also equal the committed member set, so an unstaged deletion cannot disappear from the
+comparison. Existing mode, link, transform-attribute and replacement-object safeguards remain.
+
+The CRLF regressions require working-source classification while preserving the observed raw
+bytes in the source-export roster and archive. Restoring the exact LF blob bytes permits a
+committed-source claim again and leaves the index unchanged. Additional cases cover local
+`core.autocrlf` without attributes and exact binary CRLF bytes. The previous Python and Kotlin
+implementations fail the raw-identity regressions at the classification assertion. Fixtures and
+diagnostics remain under `build/pr1423-review4298826736/`, outside public upload rosters.
+
+Ten existing implementation/test commitments advance across the Python and Kotlin classifiers and
+their tests. The reviewed classpath authority retains all 215 task profiles and ordered lists;
+only the Kotlin classifier's configuration commitment advances among the same 73 configuration
+files. Assertions, implementation states, acceptance scope and historical commitments are unchanged.
+
+Local verification passes all 400 Phase 12, transparency and self-test cases with no failures,
+errors or skips. The full application suite passes 17,550 cases with zero failures/errors and nine
+skips, and all 50 included-build tests pass without skips. Kotlin formatting passes. All 631
+implementation-evidence commitments match the current bytes. The fixed-cutoff assessment retains
+49 requirements, 47 unresolved, verified local consistency and Phase 12 incomplete. These Linux
+checks do not establish native macOS/Windows execution or original hosted admission.

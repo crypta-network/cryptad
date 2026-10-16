@@ -16,7 +16,6 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
-import tempfile
 import threading
 
 MAX_PATHS = 100000
@@ -148,12 +147,10 @@ def read_source(root, name, maximum=MAX_ROSTER):
         _deny()
 
 
-def _git(root, *args, index=None):
+def _git(root, *args):
     try:
         environment = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
         environment.update(GIT_NO_REPLACE_OBJECTS='1', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
-        if index is not None:
-            environment['GIT_INDEX_FILE'] = str(index)
         with subprocess.Popen(['git', '-c', 'safe.directory=', '-c', f'safe.directory={root}',
                                '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false',
                                '--no-optional-locks', *args], cwd=root, env=environment,
@@ -225,16 +222,34 @@ def _custom_source_transforms(root, paths):
     return False
 
 
-def _working_bytes_changed(root, commit):
-    # A fresh private index has no cached stat records. Git must compare contents, honoring
-    # checkout attributes such as CRLF, without refreshing or trusting the user's index.
-    options = ('-c', 'core.splitIndex=false', '-c', 'core.sparseCheckout=false',
-               '-c', 'core.ignoreStat=false', '-c', 'core.fileMode=false')
-    with tempfile.TemporaryDirectory(prefix='cryptad-source-index-') as temporary:
-        index = Path(temporary) / 'index'
-        _git(root, *options, 'read-tree', commit, index=index)
-        return bool(_git(root, *options, 'diff', '--raw', '-z', '--no-ext-diff',
-                         '--no-textconv', index=index))
+def _committed_blobs(root, commit):
+    raw = _git(root, 'ls-tree', '-r', '-z', commit)
+    if raw and not raw.endswith(b'\0'):
+        _deny()
+    result = {}
+    for row in raw.split(b'\0')[:-1]:
+        metadata, separator, name = row.partition(b'\t')
+        match = re.fullmatch(b'(100644|100755) blob ([0-9a-f]{40}(?:[0-9a-f]{24})?)', metadata)
+        if not separator or match is None:
+            _deny()
+        names = _git_names(name + b'\0')
+        if len(names) != 1 or names[0] in result or len(result) >= MAX_PATHS:
+            _deny()
+        result[names[0]] = match[2].decode('ascii')
+    return result
+
+
+def _working_bytes_changed(root, paths, committed):
+    # Hash raw file bytes, bypassing both Git's stat cache and all checkout normalization.
+    # Without -w, hash-object is read-only and does not change the user's index or objects.
+    for start in range(0, len(paths), 128):
+        names = paths[start:start + 128]
+        hashes = _git(root, 'hash-object', '--no-filters', '--', *names).decode('ascii').splitlines()
+        if len(hashes) != len(names) or any(not re.fullmatch('[0-9a-f]{40}|[0-9a-f]{64}', value) for value in hashes):
+            _deny()
+        if hashes != [committed[name] for name in names]:
+            return True
+    return False
 
 
 def _working_modes_changed(root, paths):
@@ -271,9 +286,9 @@ def source_roster(root):
         if any(row and not row.startswith(b'H ') for row in tagged.split(b'\0')):
             _deny()
         changed = _git(root, 'diff', '--cached', '--raw', '-z', '--no-ext-diff', '--no-textconv', commit)
-        committed = set(_git_names(_git(root, 'ls-tree', '-r', '--name-only', '-z', commit)))
-        dirty = (bool(changed or current) or not set(paths).issubset(committed) or _working_modes_changed(root, paths)
-                 or _custom_source_transforms(root, paths) or _working_bytes_changed(root, commit))
+        committed = _committed_blobs(root, commit)
+        dirty = (bool(changed or current) or set(paths) != set(committed) or _working_modes_changed(root, paths)
+                 or _custom_source_transforms(root, paths) or _working_bytes_changed(root, paths, committed))
         return SourceRoster(paths, commit, tree, 'working-source' if dirty else 'committed-source')
     source_export = (root / SOURCE_EXPORT_ROSTER).exists() or (root / SOURCE_EXPORT_ROSTER).is_symlink()
     raw = read_source(root, SOURCE_EXPORT_ROSTER if source_export else '.restricted-manifest.json')

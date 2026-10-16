@@ -366,7 +366,7 @@ class ActiveSourceFilesTest {
   }
 
   @Test
-  fun writeRoster_whenCheckoutUsesCrLf_expectCommittedSourceAndDetectChangedBytes() {
+  fun writeRoster_whenCheckoutUsesCrLf_expectWorkingUntilRawBytesMatchCommit() {
     committedFixture()
     Files.writeString(root.resolve(".gitattributes"), "*.bat text eol=crlf\n")
     val script = root.resolve("native space é.bat")
@@ -376,10 +376,36 @@ class ActiveSourceFilesTest {
     Files.delete(script)
     git("checkout-index", "--force", "--all")
     assertEquals("echo one\r\n", Files.readString(script))
+    assertArrayEquals(byteArrayOf(), git("diff", "--raw"))
+    val index = Files.readAllBytes(root.resolve(".git/index"))
+    assertEquals("echo one\n", git("show", "HEAD:${script.fileName}").toString(Charsets.UTF_8))
+    val normalized = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+    assertEquals("working-source", normalized["sourceClass"])
+    val member = (normalized["files"] as Map<*, *>)[script.fileName.toString()] as Map<*, *>
+    assertEquals(Files.size(script), (member["size"] as Number).toLong())
+    assertEquals(
+      MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(script)).joinToString("") {
+        "%02x".format(it)
+      },
+      member["sha256"],
+    )
+    val roster = root.resolve("build/export/roster.json").toFile()
+    val archive = root.resolve("build/export/source.tbz2").toFile()
+    ActiveSourceFiles.writeArchive(
+      root.toFile(),
+      ActiveSourceFiles.repository(root.toFile()),
+      roster,
+      archive,
+      "export",
+    )
+    ActiveSourceFiles.verifyArchive(archive, roster, "export")
+
+    Files.writeString(script, "echo one\n")
     assertEquals(
       "committed-source",
       (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
     )
+    assertArrayEquals(index, Files.readAllBytes(root.resolve(".git/index")))
 
     Files.writeString(script, "echo two\r\n")
 
@@ -387,6 +413,37 @@ class ActiveSourceFilesTest {
       "working-source",
       (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
     )
+  }
+
+  @Test
+  fun writeRoster_whenAutoCrLfNormalizesWithoutAttributes_expectWorkingSource() {
+    committedFixture()
+    git("config", "core.autocrlf", "true")
+    // Match the committed content except for its line ending, independently of attributes.
+    Files.writeString(root.resolve("source.java"), "class Example {}\n")
+    git("add", ".")
+    commitFixture()
+    Files.writeString(root.resolve("source.java"), "class Example {}\r\n")
+    assertArrayEquals(byteArrayOf(), git("diff", "--raw"))
+
+    val manifest = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+
+    assertEquals("working-source", manifest["sourceClass"])
+  }
+
+  @Test
+  fun writeRoster_whenBinaryCrLfBytesMatchCommittedBlob_expectCommittedSource() {
+    committedFixture()
+    Files.writeString(root.resolve(".gitattributes"), "*.bin -text\n")
+    val bytes = byteArrayOf(0, 1, 13, 10, 0xff.toByte())
+    Files.write(root.resolve("exact.bin"), bytes)
+    git("add", ".")
+    commitFixture()
+    assertArrayEquals(bytes, git("show", "HEAD:exact.bin"))
+
+    val manifest = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+
+    assertEquals("committed-source", manifest["sourceClass"])
   }
 
   @Test

@@ -62,9 +62,13 @@ the provider offers descriptor-relative no-follow opens it uses them. Portable W
 reparse observations do not claim persistent race-free confinement. Source classification disables
 Git replacement objects. Bootstrap, Kotlin and Python Git readers also isolate global/system
 configuration so developer-wide ignore rules cannot change only the bootstrap selection. Explicit
-filter, ident and working-tree-encoding attributes prevent a
-committed-source claim before the private-index comparison can invoke or normalize them. Ordinary
-CRLF normalization remains supported. Neither classification path mutates the checkout's index.
+filter, ident and working-tree-encoding attributes prevent a committed-source claim. Kotlin and
+Python classify selected raw file content using read-only `git hash-object --no-filters` batches
+against the committed blob identities. Git-normalized equality does not establish exact bytes:
+CRLF checkout bytes that differ from an LF blob remain working source, even when Git reports no
+content diff. Byte-identical text and binary inputs may retain committed-source classification.
+Packaging preserves the observed bytes and their working-source label. Neither classification
+path mutates the checkout's index or writes Git objects.
 
 Java and included-build Kotlin static sources consult one bounded selected roster, preserving
 tracked or export-listed history-named sources while pruning unselected files and directories.
