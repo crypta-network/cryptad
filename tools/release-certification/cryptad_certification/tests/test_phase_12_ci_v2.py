@@ -55,7 +55,7 @@ def errorprone_inputs():
         "compilerArgumentProviders": ["net.ltgt.gradle.errorprone.ErrorPronePlugin$ErrorProneCompilerArgumentProvider"],
         "forkJvmArgumentProviders": ["net.ltgt.gradle.errorprone.ErrorPronePlugin$ErrorProneJvmArgumentProvider"],
         "forkJvmArguments": [], "errorproneArgumentProviders": 0, "argumentFiles": []}
-    return {"analyzerConfiguration": policy, "incremental": False, "classpath": [],
+    return {"analyzerConfiguration": policy, "incremental": False, "classpath": [], "annotationProcessorPath": [],
         "compilerArguments": ["-Xlint:deprecation", "-Xlint:unchecked", "-Xmaxwarns", "10000", "-Xmaxerrs", "10000"]}
 
 
@@ -778,8 +778,8 @@ class ClasspathEvidenceTests(unittest.TestCase):
         expected = ["project:sample/build/classes/java/test", "project:sample/build/resources/test",
                     "module:fixture:dependency:1:dependency.jar"]
         self.rosters = {":sample:test": {"classpath": expected.copy()},
-                        ":sample:compileJava": {"classpath": expected.copy()},
-                        ":sample:compileTestJava": {"classpath": []},
+                        ":sample:compileJava": {"classpath": expected.copy(), "annotationProcessorPath": []},
+                        ":sample:compileTestJava": {"classpath": [], "annotationProcessorPath": []},
                         ":sample:spotbugsTest": {"auxClasspath": expected.copy()}}
         self.authority = self.write(classpaths.ROSTER, b"")
         self.write_roster()
@@ -808,7 +808,7 @@ class ClasspathEvidenceTests(unittest.TestCase):
     def producer(self, task, kind, sources, output):
         return {"taskPath": task, "startedAt": 1, "completedAt": 2, "outcome": "executed",
                 "outputObservation": "complete", "sourceFiles": [self.file(p) for p in sources],
-                "inputs": {"kind": kind}, "producedOutputs": [self.snapshot(output)]}
+                "inputs": {"kind": kind, "annotationProcessorPath": []}, "producedOutputs": [self.snapshot(output)]}
 
     def context(self):
         return ci._classpath_context(self.producers,
@@ -972,6 +972,47 @@ class ClasspathEvidenceTests(unittest.TestCase):
                     record = {"taskPath": task, "startedAt": 3, "inputs": {**inputs, field: entries}}
                     self.assertEqual(status, ci._private_analyzer_configuration(record, kind, self.root, {}, self.context()))
 
+    def test_java_producer_tool_classpath_is_required_for_downstream_runtime_coverage(self):
+        self.assertEqual("matched", self.coverage())
+        del self.compiler["inputs"]["annotationProcessorPath"]
+        self.assertEqual("unavailable", self.coverage())
+        self.compiler["inputs"]["annotationProcessorPath"] = [self.file(self.dependency)]
+        self.assertEqual("invalid", self.coverage())
+        self.compiler["inputs"]["annotationProcessorPath"] = []
+        self.assertEqual("matched", self.coverage())
+
+    def test_errorprone_execution_classpath_is_bound_independently_of_source_classpath(self):
+        tools = []
+        for name in ("analyzer", "processor-helper"):
+            tool = self.root.parent / ("cache/modules-2/files-2.1/fixture/" + name + "/1/hash/" + name + ".jar")
+            tool.parent.mkdir(parents=True)
+            tool.write_bytes(("reviewed-" + name).encode())
+            component = ('<component group="fixture" name="' + name + '" version="1"><artifact name="' + name +
+                         '.jar"><sha256 value="' + hashlib.sha256(tool.read_bytes()).hexdigest() + '"/></artifact></component>')
+            self.metadata.write_text(self.metadata.read_text().replace('</components>', component + '</components>'))
+            tools.append(tool)
+        self.rosters[":sample:compileJava"]["annotationProcessorPath"] = [
+            "module:fixture:analyzer:1:analyzer.jar", "module:fixture:processor-helper:1:processor-helper.jar"]
+        self.write_roster()
+        entries = [self.file(p) for p in tools]
+        record = {"taskPath": ":sample:compileJava", "startedAt": 3, "inputs": {
+            **errorprone_inputs(), "classpath": self.record["inputs"]["classpath"], "annotationProcessorPath": entries}}
+        def coverage(value):
+            return ci._private_analyzer_configuration(value, "errorprone-main", self.root, {}, self.context())
+        self.assertEqual("matched", coverage(record))
+        for changed in ([], entries[:1], list(reversed(entries)), entries + entries[:1], entries + [self.file(self.dependency)]):
+            with self.subTest(entries=len(changed)):
+                altered = copy.deepcopy(record)
+                altered["inputs"]["annotationProcessorPath"] = changed
+                self.assertEqual("invalid", coverage(altered))
+        altered = copy.deepcopy(record)
+        del altered["inputs"]["annotationProcessorPath"]
+        self.assertEqual("unavailable", coverage(altered))
+        tools[0].write_bytes(b"substituted-analyzer")
+        self.assertEqual("invalid", coverage(record))
+        record["inputs"]["annotationProcessorPath"][0] = self.file(tools[0])
+        self.assertEqual("invalid", coverage(record))
+
     def test_missing_unselected_or_stale_authority_cannot_grant_coverage(self):
         context = self.context()
         context["selected"].remove(classpaths.ROSTER)
@@ -1019,7 +1060,7 @@ class ClasspathEvidenceTests(unittest.TestCase):
         template_name = "interop-wire/src/main/java/network/crypta/node/Version.java"
         script_names = ["build.gradle.kts", "interop-wire/build.gradle.kts"]
         paths = [self.write(name, (ci.ROOT / name).read_bytes()) for name in script_names + [template_name]]
-        self.rosters[":interop-wire:compileJava"] = {"classpath": []}
+        self.rosters[":interop-wire:compileJava"] = {"classpath": [], "annotationProcessorPath": []}
         self.rosters[":interop-wire:test"] = {"classpath": ["project:interop-wire/build/classes/java/main"]}
         selected = [self.name(p) for p in (self.source, self.resource, self.metadata, self.authority, *paths)]
         self.write_roster({name: ci.digest((self.root / name).read_bytes())
@@ -1036,7 +1077,7 @@ class ClasspathEvidenceTests(unittest.TestCase):
         raw = (self.root / template_name).read_bytes().replace(b"@build_number@", version).replace(b"@git_rev@", commit[:10].encode())
         generated = self.write("interop-wire/build/tmp/compileVersion/network/crypta/node/Version.java", raw)
         record = {"taskPath": ":interop-wire:compileJava", "outcome": "executed",
-                  "sourceFiles": [self.file(generated)], "inputs": {"kind": "java-compile", "classpath": []}}
+                  "sourceFiles": [self.file(generated)], "inputs": {"kind": "java-compile", "classpath": [], "annotationProcessorPath": []}}
         context = ci._classpath_context([], {("interop-wire", "errorprone-main"): {self.name(generated)}}, selected, commit)
         return generated, raw, record, context
 

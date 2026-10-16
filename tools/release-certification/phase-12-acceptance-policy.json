@@ -5457,7 +5457,7 @@
         "sourceEvidence": [
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:0870f927ff884239aae6daa6fc721ff87d550570ec6126be1f4b82da59811365",
+            "digest": "sha256:51968350ff88832cdf08f0d51e3f5c278bd614a651344c70313fe42db4b4d590",
             "path": "tools/release-certification/cryptad_certification/phase_12_ci.py"
           },
           {
@@ -5487,12 +5487,12 @@
           },
           {
             "assertion": "PR-321 private Gradle observations bind actual task outcomes, selected source/class bytes, analyzer policy, runtime facts and bounded completion report snapshots; bounded public projection and original authentication remain independent admission requirements.",
-            "digest": "sha256:f3d4300f973a7275250695ebaccf2889decb8d83f58120eb16e85dd3f3846afc",
+            "digest": "sha256:9605af012229f97572206243c7a7f7cd1e4216dcacf4bbf363bff7175930d730",
             "path": "build-logic/src/main/kotlin/cryptad/Phase12TaskEvidence.kt"
           },
           {
             "assertion": "PR-321 included-build static and precompiled-script sources follow the exact selected roster before plugin discovery; private test completion snapshots participate in the required cohort without substituting root-project results for build-logic tests.",
-            "digest": "sha256:23699c54edc8e825b8648956f02ce2e11045224a68a801d290eceac364760028",
+            "digest": "sha256:759ef4857c6d431305723c382e749c1562642b4f6954c7da6564952a3543beec",
             "path": "build-logic/build.gradle.kts"
           },
           {
@@ -5555,7 +5555,7 @@
           },
           {
             "assertion": "PR-321 complete fixed-lane CI graph and substitution, freshness, exact source/class coverage, completion report bytes, analyzer policy, applicability and safe-projection regressions exercise original admission through declared external provider fixtures; they do not establish actual hosted execution.",
-            "digest": "sha256:2de3a6edf425b4b9fc328942a670a36427b7a36fc1003f918e4d750d632c8730",
+            "digest": "sha256:6e6bc554b96c0539390af5fac44ade6c07c56ca38960b9ce8f34645ad3545bb7",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_ci_v2.py"
           },
           {

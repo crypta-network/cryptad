@@ -639,3 +639,47 @@ application test run passes 17,550 cases with zero failures/errors and nine skip
 implementation-evidence commitments match current bytes. The fixed-cutoff assessment remains
 verified local consistency with 49 requirements, 47 unresolved and Phase 12 incomplete. Native
 macOS/Windows execution and original hosted acceptance are not established by these checks.
+
+
+## Bootstrap configuration and analyzer tool-path review
+
+[Review 5552632569](https://github.com/crypta-network/cryptad/pull/1423#pullrequestreview-5552632569)
+identified two remaining input-selection gaps. Bootstrap Git now disables global/system
+configuration and replacement objects, consistently with the Kotlin and Python selectors. A real
+Gradle fixture with an isolated XDG configuration directory and global ignore file reproduces the previous mismatch:
+bootstrap omitted an untracked Kotlin source while Python selected it. With the fix both select the
+file. The fixture is removed after each run and never enters the reviewed roster.
+
+Java compiler observations now capture the resolved annotation-processor path, through which the
+Error Prone plugin loads its core and transitive tool jars. The reviewed authority adds 86 explicit
+ordered processor-path lists without changing the previous 215 classpath/auxiliary lists. The same
+73 build-configuration commitments remain; only the bootstrap script, recorder and maintenance
+script digests advance. Analyzer admission and downstream Java producer validation check the tool
+list, bytes and existing verification policy independently of the source compile classpath. No
+dependency verification key/checksum or producer exemption is added. Missing tool observations or
+missing expected lists remain unavailable; changed membership/order or unauthenticated bytes cannot
+match. Earlier v2 producers without this tool capture cannot grant the current contract's admission.
+
+A new regression separates analyzer tools from an unchanged source compile classpath. It rejects
+empty, omitted, reversed, duplicated and approved-extra tools, plus changed bytes even when the
+private observation is recaptured. The previous implementation accepts six unsupported observations
+in the initial reproduction. Another regression requires the same processor-path proof before fresh
+compiler output can support downstream runtime coverage. Private fixtures and diagnostics remain
+under `build/pr1423-review5552632569/`, outside public upload rosters.
+
+A real evidence-mode compile records 21 tool jars. An init script that adds one artifact only to the
+separate `errorprone` configuration produces 22 tool entries while leaving the source compile
+classpath and provider policy unchanged. Both compiles execute successfully; normal ordered
+membership matches and mutated membership is invalid. Independent normal tool-byte authentication
+remains unavailable with the local signing material. Existing unsupported bootstrap proofs also
+remain blocking; none of these local checks grants original hosted/native admission.
+
+Only four existing implementation/test commitments advance, across the bootstrap script, recorder,
+CI validator and v2 tests. Assertions, implementation states, acceptance scope and historical
+commitments remain unchanged. All 631 existing commitments match the current source bytes. The
+fixed-cutoff assessment retains 49 requirements, 47 unresolved and Phase 12 incomplete.
+
+Local verification passes all 239 focused Python cases and 48 included-build tests. The full
+application suite passes 17,550 cases with zero failures/errors and nine skips. Repeated normal
+Gradle resolution reproduces the reviewed authority byte for byte, including every new processor
+path. These Linux checks do not establish native macOS/Windows execution or hosted acceptance.

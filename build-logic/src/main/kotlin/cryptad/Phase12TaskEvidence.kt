@@ -213,6 +213,8 @@ class Phase12TaskEvidence(
               )
             ),
           "classpath" to classpathRoster(task.classpath.files),
+          "annotationProcessorPath" to
+            classpathRoster(task.options.annotationProcessorPath?.files.orEmpty()),
           "incremental" to task.options.isIncremental,
           "compilerArguments" to task.options.compilerArgs.toList(),
           "analyzerConfiguration" to

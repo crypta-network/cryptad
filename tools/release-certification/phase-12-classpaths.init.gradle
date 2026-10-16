@@ -45,7 +45,12 @@ gradle.projectsEvaluated {
                     }
                     if (field != null) {
                         def entries = files.collect(identity)
-                        tasks[(bootstrap ? ':build-logic' : '') + task.path] = [(field): entries.contains(null) ? null : entries]
+                        def fields = [(field): entries.contains(null) ? null : entries]
+                        if (task instanceof JavaCompile) {
+                            def processors = (task.options.annotationProcessorPath?.files ?: []).collect(identity)
+                            fields.annotationProcessorPath = processors.contains(null) ? null : processors
+                        }
+                        tasks[(bootstrap ? ':build-logic' : '') + task.path] = fields
                     }
                 }
                 def output = project.layout.buildDirectory.file('phase12-classpath-part.json').get().asFile

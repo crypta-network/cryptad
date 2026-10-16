@@ -141,6 +141,10 @@ fun bootstrapGit(vararg arguments: String): ByteArray {
       .directory(bootstrapRealRepository.toFile())
       .redirectError(ProcessBuilder.Redirect.DISCARD)
   processBuilder.environment().keys.removeIf { it.startsWith("GIT_") }
+  processBuilder.environment()["GIT_NO_REPLACE_OBJECTS"] = "1"
+  processBuilder.environment()["GIT_CONFIG_NOSYSTEM"] = "1"
+  processBuilder.environment()["GIT_CONFIG_GLOBAL"] =
+    if (File.separatorChar == '\\') "NUL" else "/dev/null"
   val process = processBuilder.start()
   val reader = Executors.newVirtualThreadPerTaskExecutor()
   try {
@@ -553,6 +557,10 @@ if (providers.gradleProperty("phase12Evidence").orNull == "true") {
               "sourceFiles" to
                 producerSources(task).sortedBy { it.absolutePath }.map { evidenceSource(it) },
               "classpath" to evidenceClasspath(classpath),
+              "annotationProcessorPath" to
+                evidenceClasspath(
+                  (task as? JavaCompile)?.options?.annotationProcessorPath?.files.orEmpty().toList()
+                ),
             )
           } catch (_: Exception) {
             mapOf("observation" to "input-observation-failed")

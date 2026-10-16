@@ -9,7 +9,7 @@ from .transparency_bundle import digest, parse
 
 
 ROSTER = "tools/release-certification/phase-12-classpaths.json"
-FIELDS = {"classpath", "auxClasspath"}
+FIELDS = {"classpath", "auxClasspath", "annotationProcessorPath"}
 MAX_ROSTER = 2 * 1024 * 1024
 
 

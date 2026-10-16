@@ -675,6 +675,8 @@ def _classpath_producer_inputs(record, root, checked_sources, context):
               if kind == "java-compile" else _private_source_coverage(record, expected, root, checked_sources))
     if status == "matched" and kind in {"java-compile", "kotlin-compile"} and record.get("outcome") != "no-source":
         status = _private_classpath_coverage(record, "classpath", root, checked_sources, context)
+        if status == "matched" and kind == "java-compile":
+            status = _private_classpath_coverage(record, "annotationProcessorPath", root, checked_sources, context)
     return status
 
 
@@ -852,7 +854,9 @@ def _private_analyzer_configuration(record, kind, root, checked_sources, context
     if (configuration != expected or any(type(configuration.get(key)) is not type(value) for key, value in expected.items())
             or inputs.get("compilerArguments") != arguments or inputs.get("incremental") is not False):
         return "invalid"
-    return _private_classpath_coverage(record, "classpath", root, checked_sources, context)
+    coverage = _private_classpath_coverage(record, "classpath", root, checked_sources, context)
+    return (_private_classpath_coverage(record, "annotationProcessorPath", root, checked_sources, context)
+            if coverage == "matched" else coverage)
 
 
 def retain_reports_v2(output, started_file, lane):
