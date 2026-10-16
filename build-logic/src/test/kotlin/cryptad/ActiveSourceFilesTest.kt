@@ -341,6 +341,42 @@ class ActiveSourceFilesTest {
     )
   }
 
+  @Test
+  fun writeRoster_whenSelectedMembersAreIntentToAdd_expectWorkingSource() {
+    committedFixture()
+    for ((name, body) in
+      listOf(
+        "new space é.kt" to "class New",
+        "empty.kt" to "",
+        ".stversions/new.kt" to "class Kept",
+      )) {
+      Files.writeString(root.resolve(name), body)
+      git("add", "--intent-to-add", "--", name)
+
+      val manifest = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+
+      assertEquals("working-source", manifest["sourceClass"])
+      assertEquals(true, (manifest["files"] as Map<*, *>).containsKey(name))
+      git("reset", "--quiet", "--", name)
+      Files.delete(root.resolve(name))
+    }
+  }
+
+  @Test
+  fun repository_whenGitSelectsReservedExportRoster_expectRejection() {
+    committedFixture()
+    Files.writeString(root.resolve(ActiveSourceFiles.SOURCE_ROSTER), "{}\n")
+    for (tracked in listOf(false, true)) {
+      if (tracked) {
+        git("add", "--", ActiveSourceFiles.SOURCE_ROSTER)
+        commitFixture()
+      }
+      assertThrows(IllegalArgumentException::class.java) {
+        ActiveSourceFiles.repository(root.toFile())
+      }
+    }
+  }
+
   private fun committedFixture() {
     git("init", "--quiet")
     Files.writeString(root.resolve("source.java"), "class Example {}")

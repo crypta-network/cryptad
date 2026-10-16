@@ -131,7 +131,9 @@ internal object ActiveSourceFiles {
         ".",
         *exclusions.toTypedArray(),
       )
-    return select(base, tracked, untracked, deleted)
+    val selected = select(base, tracked, untracked, deleted)
+    require(SOURCE_ROSTER !in selected) { "Reserved source export roster in Git selection" }
+    return selected
   }
 
   private fun git(root: File, vararg arguments: String, index: Path? = null): ByteArray {
@@ -386,9 +388,16 @@ internal object ActiveSourceFiles {
       "Source identity unavailable"
     }
     val trackedModes by lazy { trackedExecutableModes(git(base, GIT_LS_FILES, "--stage", "-z")) }
+    val committed =
+      git(base, "ls-tree", "-r", "--name-only", "-z", commit)
+        .toString(Charsets.UTF_8)
+        .split('\u0000')
+        .dropLast(1)
+        .toSet()
     val dirty =
       git(base, "diff", "--cached", "--raw", "-z", "--no-ext-diff", "--no-textconv", commit)
         .isNotEmpty() ||
+        selected.any { it !in committed } ||
         workingModesChanged(base, selected, trackedModes) ||
         workingBytesChanged(base, commit)
     var total = 0L

@@ -24,6 +24,8 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       git-ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Full analysis is opt-in for PR pushes and mandatory for release-branch pushes.
+      run-spotbugs: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) || contains(github.event.pull_request.labels.*.name, 'phase12-evidence') }}
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -42,6 +44,7 @@ jobs:
     with:
       git-ref: ${{ github.event.pull_request.head.sha || github.sha }}
       lane: ${{ matrix.lane }}
+      run-spotbugs: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) || contains(github.event.pull_request.labels.*.name, 'phase12-evidence') }}
 
   interop-smoke:
     if: github.event_name == 'pull_request' || github.event_name == 'push'

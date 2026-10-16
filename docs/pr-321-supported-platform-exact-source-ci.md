@@ -91,11 +91,24 @@ and output class bytes; incidental Kotlin metadata remains a separately typed pr
 
 ## Fresh task observations and bounded reports
 
+Routine PR and non-release push builds exclude SpotBugs to bound CI runtime. For the complete
+analyzer cohort, add the `phase12-evidence` PR label before the next push; release-branch pushes
+select that cohort automatically. Both Linux and native callers pass the same `run-spotbugs` input
+to the reusable workflow, which defaults to full analysis when used independently. The label selects
+execution only: ordinary partial reports, analyzer findings and unavailable input provenance still
+block Phase 12 admission.
+
 Normal developer builds retain ordinary caching. `-Pphase12Evidence=true` selects the final evidence
 mode: required JUnit/SpotBugs tasks execute freshly, and Error Prone compilation disables incremental
 and cache reuse for the selected analyzer cohort. The Error Prone report identifies completed
 compiler execution and the source count; a missing hook, incomplete compile or missing report is
 not an empty clean analysis.
+
+Evidence mode also observes fresh Kotlin/Java producers, processed resources and project archives.
+Complete ordered runtime, compiler and auxiliary classpaths include every directory member.
+Retention binds standard project outputs to fresh source-owned producers and dependency bytes to
+the reviewed verification metadata and, where required, offline signatures with the pinned keyring.
+Unsupported generated inputs or unavailable verification material retain unavailable coverage.
 
 The private task manifest records native execution/reuse/no-source/failure state, original listener
 clocks, actual source identities, class coverage, report paths and selected filters. At task completion,

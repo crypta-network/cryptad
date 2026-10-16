@@ -277,6 +277,39 @@ class ActiveSourceTests(unittest.TestCase):
 
         self.assertEqual('working-source', owner.source_roster(self.root).source_class)
 
+    def test_intent_to_add_members_are_working_source_even_when_empty(self):
+        from cryptad_certification import phase_12_ci as ci
+
+        self.repository()
+        original = owner.source_roster(self.root)
+        for name, raw in (('new space é.py', b'NEW SOURCE\n'), ('empty.py', b''),
+                          ('.stversions/selected.py', b'TRACKED HISTORY\n')):
+            with self.subTest(name=name):
+                path = self.root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(raw)
+                self.git('add', '--intent-to-add', '--', name)
+                selected = owner.source_roster(self.root)
+                self.assertIn(name, selected.paths)
+                self.assertEqual('working-source', selected.source_class)
+                with patch.object(ci, 'ROOT', self.root):
+                    self.assertFalse(ci._source_clean({'commit': original.source_commit,
+                                                       'tree': original.source_tree}))
+                self.git('reset', '--quiet', '--', name)
+                path.unlink()
+
+    def test_git_selections_reject_the_reserved_source_export_roster(self):
+        self.repository()
+        path = self.root / owner.SOURCE_EXPORT_ROSTER
+        path.write_bytes(b'{}\n')
+        for tracked in (False, True):
+            with self.subTest(tracked=tracked):
+                if tracked:
+                    self.git('add', '--', path.name)
+                    self.git('commit', '--quiet', '-m', 'fixture: reserved member')
+                with self.assertRaises(owner.SourceRosterError):
+                    owner.source_roster(self.root)
+
     def test_tracked_deletions_select_current_files_before_and_after_staging(self):
         self.repository()
         history = self.source.parent / '.stversions'

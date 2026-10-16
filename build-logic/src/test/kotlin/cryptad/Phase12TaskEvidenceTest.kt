@@ -22,6 +22,30 @@ class Phase12TaskEvidenceTest {
   }
 
   @Test
+  fun classpathSnapshot_whenDirectoryResourcesOrClassesChange_expectDifferentCompleteBinding() {
+    val classes = Files.createDirectories(temporary.resolve("build/classes"))
+    val clazz = Files.writeString(classes.resolve("Example.class"), "original-class")
+    val resource = Files.writeString(classes.resolve("config.properties"), "original-resource")
+    val jar = Files.writeString(temporary.resolve("dependency.jar"), "verified-dependency")
+    val entries = listOf(classes.toFile(), jar.toFile())
+    val original = Phase12TaskEvidence.classpathSnapshot(temporary.toFile(), entries)
+    assertEquals(listOf("build/classes", "dependency.jar"), original.map { it["path"] })
+    assertEquals(2, (original.first()["files"] as List<*>).size)
+
+    Files.writeString(resource, "changed-resource")
+    assertNotEquals(original, Phase12TaskEvidence.classpathSnapshot(temporary.toFile(), entries))
+    Files.writeString(resource, "original-resource")
+    Files.writeString(clazz, "changed-class")
+    assertNotEquals(original, Phase12TaskEvidence.classpathSnapshot(temporary.toFile(), entries))
+    Files.writeString(clazz, "original-class")
+    Files.writeString(jar, "changed-dependency")
+    assertNotEquals(original, Phase12TaskEvidence.classpathSnapshot(temporary.toFile(), entries))
+    assertThrows(IllegalArgumentException::class.java) {
+      Phase12TaskEvidence.classpathSnapshot(temporary.toFile(), entries + entries)
+    }
+  }
+
+  @Test
   fun reportSnapshot_whenBytesOrExactJUnitRosterChange_expectDifferentPrivateBinding() {
     val root = temporary.toRealPath()
     val reports = Files.createDirectories(root.resolve("build/test-results/test"))

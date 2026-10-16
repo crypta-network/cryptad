@@ -124,7 +124,13 @@ public final class AppBundlePackager {
     Path bundleRealRoot = normalizedBundleRoot.toRealPath();
     Path normalizedOutput = requireSafeOutputPath(outputZip, normalizedBundleRoot, bundleRealRoot);
     PackagingValidation validation = validateBundleForPackaging(normalizedBundleRoot);
-    ZipInventory inventory = collectZipInventory(normalizedBundleRoot, bundleRealRoot);
+    Set<String> migrationCommands = new HashSet<>();
+    for (AppDataMigrationStep step :
+        validation.validatedBundle().manifest().dataSchemaContract().migrations()) {
+      migrationCommands.add(step.command().pathText());
+    }
+    ZipInventory inventory =
+        collectZipInventory(normalizedBundleRoot, bundleRealRoot, migrationCommands);
     AppBundleDigest bundleDigest = createBundleDigest(inventory, validation.validatedBundle());
     verifySignedDigestSnapshot(validation, bundleDigest);
     Path tempZip = createTemporaryZipPath(normalizedOutput);
@@ -249,12 +255,14 @@ public final class AppBundlePackager {
     }
   }
 
-  private static ZipInventory collectZipInventory(Path normalizedBundleRoot, Path bundleRealRoot)
+  private static ZipInventory collectZipInventory(
+      Path normalizedBundleRoot, Path bundleRealRoot, Set<String> migrationCommands)
       throws IOException {
     TreeMap<String, ZipEntrySource> entriesByName = new TreeMap<>();
     Files.walkFileTree(
         normalizedBundleRoot,
-        new PackagingFileVisitor(normalizedBundleRoot, bundleRealRoot, entriesByName));
+        new PackagingFileVisitor(
+            normalizedBundleRoot, bundleRealRoot, entriesByName, migrationCommands));
     if (entriesByName.size() > MAX_CATALOG_ZIP_ENTRIES) {
       throw new AppDistributionException(
           "bundle contains too many files for a catalog ZIP artifact; maximum is "
@@ -526,13 +534,18 @@ public final class AppBundlePackager {
     private final Path normalizedBundleRoot;
     private final Path bundleRealRoot;
     private final Map<String, ZipEntrySource> entriesByName;
+    private final Set<String> migrationCommands;
     private final Set<Path> visitedRealDirectories = new HashSet<>();
 
     private PackagingFileVisitor(
-        Path normalizedBundleRoot, Path bundleRealRoot, Map<String, ZipEntrySource> entriesByName) {
+        Path normalizedBundleRoot,
+        Path bundleRealRoot,
+        Map<String, ZipEntrySource> entriesByName,
+        Set<String> migrationCommands) {
       this.normalizedBundleRoot = normalizedBundleRoot;
       this.bundleRealRoot = bundleRealRoot;
       this.entriesByName = entriesByName;
+      this.migrationCommands = Set.copyOf(migrationCommands);
     }
 
     @Override
@@ -563,7 +576,12 @@ public final class AppBundlePackager {
       FileStats stats = fileStats(file, relativePath);
       ZipEntrySource source =
           new ZipEntrySource(
-              relativePath, file, stats.size(), stats.crc(), stats.sha256(), unixMode(file));
+              relativePath,
+              file,
+              stats.size(),
+              stats.crc(),
+              stats.sha256(),
+              unixMode(file, migrationCommands.contains(relativePath)));
       ZipEntrySource previous = entriesByName.put(relativePath, source);
       if (previous != null) {
         throw new AppDistributionException(
@@ -629,16 +647,19 @@ public final class AppBundlePackager {
           size, crc.getValue(), AppDistributionSidecars.lowercaseHex(digest.digest()));
     }
 
-    private static int unixMode(Path file) throws IOException {
-      return UNIX_REGULAR_FILE_TYPE | DEFAULT_UNIX_FILE_PERMISSIONS | executableBits(file);
+    private static int unixMode(Path file, boolean declaredMigration) throws IOException {
+      return UNIX_REGULAR_FILE_TYPE
+          | DEFAULT_UNIX_FILE_PERMISSIONS
+          | executableBits(file, declaredMigration);
     }
 
-    private static int executableBits(Path file) throws IOException {
+    private static int executableBits(Path file, boolean declaredMigration) throws IOException {
       if (Files.getFileStore(file).supportsFileAttributeView("posix")) {
         return posixExecutableBits(Files.getPosixFilePermissions(file));
       }
-      // Non-POSIX access checks (notably Windows ACLs) do not describe Unix execute bits.
-      return 0;
+      // The manifest explicitly identifies commands that must remain executable after extraction.
+      // ACL execute access cannot establish portable permissions for ordinary bundle members.
+      return declaredMigration ? UNIX_OWNER_EXECUTE | UNIX_GROUP_EXECUTE | UNIX_OTHER_EXECUTE : 0;
     }
 
     private static int posixExecutableBits(Set<PosixFilePermission> permissions) {

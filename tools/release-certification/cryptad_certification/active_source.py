@@ -248,7 +248,7 @@ def source_roster(root):
         untracked = _git_names(_git(root, 'ls-files', '--others', '--exclude-standard', '-z', '--', '.', *exclusions))
         current = [name for name in untracked if not UNTRACKED_HISTORY.intersection(PurePosixPath(name).parts)]
         paths = tuple(sorted((set(tracked) - set(deleted)) | set(current)))
-        if len(paths) > MAX_PATHS:
+        if len(paths) > MAX_PATHS or SOURCE_EXPORT_ROSTER in paths:
             _deny()
         # Status deliberately trusts assume-unchanged/skip-worktree entries. Refuse those
         # flags even when bytes currently match: they cannot support a committed-source claim.
@@ -256,7 +256,8 @@ def source_roster(root):
         if any(row and not row.startswith(b'H ') for row in tagged.split(b'\0')):
             _deny()
         changed = _git(root, 'diff', '--cached', '--raw', '-z', '--no-ext-diff', '--no-textconv', commit)
-        dirty = (bool(changed or current) or _working_modes_changed(root, paths)
+        committed = set(_git_names(_git(root, 'ls-tree', '-r', '--name-only', '-z', commit)))
+        dirty = (bool(changed or current) or not set(paths).issubset(committed) or _working_modes_changed(root, paths)
                  or _working_bytes_changed(root, commit))
         return SourceRoster(paths, commit, tree, 'working-source' if dirty else 'committed-source')
     source_export = (root / SOURCE_EXPORT_ROSTER).exists() or (root / SOURCE_EXPORT_ROSTER).is_symlink()

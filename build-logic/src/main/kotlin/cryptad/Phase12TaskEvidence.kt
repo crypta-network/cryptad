@@ -16,10 +16,12 @@ import net.ltgt.gradle.errorprone.errorprone
 import org.gradle.api.Task
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.TaskState
+import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.testing.junitplatform.JUnitPlatformOptions
 import org.gradle.jvm.toolchain.JavaInstallationMetadata
+import org.gradle.language.jvm.tasks.ProcessResources
 
 /**
  * Private, opt-in observation of Gradle's selected inputs and real task outcomes.
@@ -86,6 +88,7 @@ class Phase12TaskEvidence(
     completed[task.path] =
       before +
         outputs +
+        producedOutputs(task) +
         mapOf(
           "completedAt" to System.currentTimeMillis(),
           "outcome" to
@@ -152,10 +155,45 @@ class Phase12TaskEvidence(
   }
 
   private fun selected(task: Task): Boolean =
-    task is JavaCompile || task is Test || task is SpotBugsTask
+    task is JavaCompile ||
+      task is Test ||
+      task is SpotBugsTask ||
+      (task is ProcessResources &&
+        task.name in setOf("processResources", "processTestResources")) ||
+      (task is Jar && task.name == "jar")
+
+  private fun producedOutputs(task: Task): Map<String, Any> =
+    try {
+      val files =
+        when (task) {
+          is JavaCompile -> listOf(task.destinationDirectory.get().asFile)
+          is ProcessResources -> listOf(task.destinationDir)
+          is Jar -> listOf(task.archiveFile.get().asFile)
+          else -> emptyList()
+        }
+      if (files.isEmpty()) emptyMap()
+      else
+        mapOf(
+          "outputObservation" to "complete",
+          "producedOutputs" to classpathSnapshot(root.toFile(), files),
+        )
+    } catch (_: Exception) {
+      mapOf("outputObservation" to "invalid", "producedOutputs" to emptyList<Any>())
+    }
 
   private fun metadata(task: Task): Map<String, Any?> =
     when (task) {
+      is ProcessResources ->
+        mapOf("kind" to "resources", "sourceFiles" to roster(task.source.files))
+      // The generated manifest is an output of this archive task, rather than a source input.
+      is Jar ->
+        mapOf(
+          "kind" to "jar",
+          "sourceFiles" to
+            roster(
+              task.source.files.filter { it != task.temporaryDir.resolve("MANIFEST.MF") }.toSet()
+            ),
+        )
       is JavaCompile ->
         mapOf(
           "kind" to "java-compile",
@@ -229,6 +267,7 @@ class Phase12TaskEvidence(
             roster(task.candidateClassFiles.files.filter { it.extension != "class" }),
           "testClasses" to
             roster(task.testClassesDirs.asFileTree.matching { include(CLASS_FILE_PATTERN) }.files),
+          "classpath" to classpathRoster(task.classpath.files),
           "includes" to task.includes.sorted(),
           "excludes" to task.excludes.sorted(),
           "testClassPolicyDigest" to policyDigest(task.includes, task.excludes),
@@ -344,16 +383,7 @@ class Phase12TaskEvidence(
   private fun roster(files: Set<File>): List<Map<String, Any>> = roster(files.toList())
 
   private fun classpathRoster(files: Set<File>): List<Map<String, Any>> {
-    require(files.size <= 30000) { "Classpath exceeds limit" }
-    return files
-      .sortedBy { it.absolutePath }
-      .map { file ->
-        if (Files.notExists(file.toPath(), NOFOLLOW_LINKS)) {
-          mapOf("path" to file.absolutePath, "kind" to "missing")
-        } else {
-          fingerprint(root.toFile(), file)
-        }
-      }
+    return classpathSnapshot(root.toFile(), files.toList())
   }
 
   private fun roster(files: List<File>): List<Map<String, Any>> {
@@ -363,6 +393,49 @@ class Phase12TaskEvidence(
 
   companion object {
     private const val CLASS_FILE_PATTERN = "**/*.class"
+
+    /** Captures ordered classpath entries and every directory member, including resources. */
+    fun classpathSnapshot(repositoryRoot: File, files: List<File>): List<Map<String, Any>> {
+      require(files.size <= 4096 && files.distinct().size == files.size) {
+        "Invalid classpath roster"
+      }
+      var observedBytes = 0L
+      fun observe(file: File): Map<String, Any> {
+        observedBytes += file.length()
+        require(observedBytes <= 2L * 1024 * 1024 * 1024) { "Classpath bytes exceed limit" }
+        return fingerprint(repositoryRoot, file)
+      }
+      return files.map { file ->
+        val path = file.toPath().toAbsolutePath().normalize()
+        if (Files.notExists(path, NOFOLLOW_LINKS)) {
+          val base = repositoryRoot.toPath().toRealPath()
+          val name =
+            if (path.startsWith(base))
+              base.relativize(path).toString().replace(File.separatorChar, '/')
+            else path.toString()
+          mapOf("path" to name, "kind" to "missing")
+        } else {
+          val entry = observe(file)
+          if (entry["kind"] != "directory") entry
+          else {
+            val members =
+              Files.walk(path).use { stream ->
+                stream.limit(100001).toList().also {
+                  require(it.size <= 100000) { "Classpath tree exceeds limit" }
+                }
+              }
+            val contents =
+              members
+                .filter { it != path }
+                .map { member -> observe(member.toFile()) }
+                .filter { it["kind"] != "directory" }
+                .sortedBy { it["path"] as String }
+            require(contents.size <= 30000) { "Classpath members exceed limit" }
+            entry + ("files" to contents)
+          }
+        }
+      }
+    }
 
     /**
      * Captures exact bounded report bytes after task completion; no private hash is exported. Unix

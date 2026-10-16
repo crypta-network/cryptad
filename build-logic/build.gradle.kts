@@ -297,7 +297,10 @@ extensions.getByType<KotlinJvmProjectExtension>().sourceSets.configureEach {
   kotlin.exclude(bootstrapSourceExclusion)
 }
 
-sourceSets.configureEach { java.exclude(bootstrapSourceExclusion) }
+sourceSets.configureEach {
+  java.exclude(bootstrapSourceExclusion)
+  resources.exclude(bootstrapSourceExclusion)
+}
 
 pluginManager.apply("org.gradle.kotlin.kotlin-dsl")
 
@@ -409,13 +412,15 @@ if (providers.gradleProperty("phase12Evidence").orNull == "true") {
     return bootstrapRelativePath(file).toString().replace(File.separatorChar, '/')
   }
 
-  fun evidenceSource(file: File): Map<String, Any> {
-    val path = evidenceRoot.resolve(bootstrapRelativePath(file))
+  fun evidenceSource(file: File, external: Boolean = false): Map<String, Any> {
+    val path =
+      if (external) file.toPath().toAbsolutePath().normalize()
+      else evidenceRoot.resolve(bootstrapRelativePath(file))
     require(generateSequence(path) { it.parent }.none { Files.isSymbolicLink(it) }) {
       "Linked included-build input"
     }
     val before = Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
-    require(before.isRegularFile && before.size() <= 16 * 1024 * 1024) {
+    require(before.isRegularFile && before.size() <= (if (external) 256L else 16L) * 1024 * 1024) {
       "Invalid included-build source"
     }
     val hash = MessageDigest.getInstance("SHA-256")
@@ -440,12 +445,155 @@ if (providers.gradleProperty("phase12Evidence").orNull == "true") {
       "Changing included-build source"
     }
     return mapOf(
-      "path" to evidencePath(file),
+      "path" to if (path.startsWith(evidenceRoot)) evidencePath(file) else path.toString(),
       "kind" to "file",
       "size" to before.size(),
       "digest" to ("sha256:" + hash.digest().joinToString("") { "%02x".format(it) }),
     )
   }
+
+  fun evidenceClasspath(files: List<File>): List<Map<String, Any>> {
+    require(files.size <= 4096 && files.distinct().size == files.size) {
+      "Invalid included-build classpath"
+    }
+    var observedBytes = 0L
+    fun observe(file: File): Map<String, Any> {
+      observedBytes += file.length()
+      require(observedBytes <= 2L * 1024 * 1024 * 1024) {
+        "Included-build classpath bytes exceed limit"
+      }
+      return evidenceSource(file, external = true)
+    }
+    return files.map { file ->
+      val path = file.toPath().toAbsolutePath().normalize()
+      val name = if (path.startsWith(evidenceRoot)) evidencePath(file) else path.toString()
+      require(generateSequence(path) { it.parent }.none { Files.isSymbolicLink(it) }) {
+        "Linked classpath"
+      }
+      when {
+        !Files.exists(path, NOFOLLOW_LINKS) -> mapOf("path" to name, "kind" to "missing")
+        Files.isDirectory(path, NOFOLLOW_LINKS) -> {
+          val members = Files.walk(path).use { stream -> stream.limit(100001).toList() }
+          require(members.size <= 100000) { "Classpath directory exceeds limit" }
+          val contents =
+            members
+              .filter { !Files.isDirectory(it, NOFOLLOW_LINKS) }
+              .map { observe(it.toFile()) }
+              .sortedBy { it["path"] as String }
+          require(contents.size <= 30000) { "Classpath member limit" }
+          mapOf("path" to name, "kind" to "directory", "files" to contents)
+        }
+        else -> observe(file)
+      }
+    }
+  }
+
+  tasks.withType<KotlinCompile>().configureEach {
+    incremental = false
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Evidence requires fresh Kotlin outputs") { true }
+    doFirst { delete(destinationDirectory) }
+  }
+  tasks.withType<JavaCompile>().configureEach {
+    options.isIncremental = false
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Evidence requires fresh Java outputs") { true }
+    doFirst { delete(destinationDirectory) }
+  }
+  tasks.withType<ProcessResources>().configureEach {
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Evidence requires fresh resource outputs") { true }
+    doFirst { delete(destinationDir) }
+  }
+  tasks.withType<Jar>().configureEach {
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Evidence requires fresh archives") { true }
+  }
+
+  fun producerKind(task: Task): String? =
+    when (task) {
+      is KotlinCompile -> "kotlin-compile"
+      is JavaCompile -> "java-compile"
+      is ProcessResources ->
+        if (task.name in setOf("processResources", "processTestResources")) "resources" else null
+      is Jar -> if (task.name == "jar") "jar" else null
+      else -> null
+    }
+  fun producerSources(task: Task): Set<File> =
+    when (task) {
+      is KotlinCompile -> task.sources.files
+      is JavaCompile -> task.source.files
+      is ProcessResources -> task.source.files
+      is Jar -> task.source.files.filter { it != task.temporaryDir.resolve("MANIFEST.MF") }.toSet()
+      else -> emptySet()
+    }
+  fun producerOutputs(task: Task): List<File> =
+    when (task) {
+      is KotlinCompile -> listOf(task.destinationDirectory.get().asFile)
+      is JavaCompile -> listOf(task.destinationDirectory.get().asFile)
+      is ProcessResources -> listOf(task.destinationDir)
+      is Jar -> listOf(task.archiveFile.get().asFile)
+      else -> emptyList()
+    }
+  @Suppress("DEPRECATION")
+  gradle.taskGraph.addTaskExecutionListener(
+    object : TaskExecutionListener {
+      override fun beforeExecute(task: Task) {
+        val kind = producerKind(task) ?: return
+        val inputs =
+          try {
+            val classpath =
+              when (task) {
+                is KotlinCompile -> task.libraries.files.toList()
+                is JavaCompile -> task.classpath.files.toList()
+                else -> emptyList()
+              }
+            mapOf(
+              "kind" to kind,
+              "sourceFiles" to
+                producerSources(task).sortedBy { it.absolutePath }.map { evidenceSource(it) },
+              "classpath" to evidenceClasspath(classpath),
+            )
+          } catch (_: Exception) {
+            mapOf("observation" to "input-observation-failed")
+          }
+        evidenceTasks[task.path] =
+          mapOf(
+            "taskPath" to task.path,
+            "startedAt" to System.currentTimeMillis(),
+            "inputs" to inputs,
+            "sourceFiles" to (inputs["sourceFiles"] ?: emptyList<Any>()),
+            "outcome" to "incomplete",
+          )
+      }
+
+      override fun afterExecute(task: Task, state: TaskState) {
+        if (producerKind(task) == null) return
+        val output =
+          try {
+            mapOf(
+              "outputObservation" to "complete",
+              "producedOutputs" to evidenceClasspath(producerOutputs(task)),
+            )
+          } catch (_: Exception) {
+            mapOf("outputObservation" to "invalid", "producedOutputs" to emptyList<Any>())
+          }
+        val outcome =
+          when {
+            state.failure != null -> "failed"
+            state.noSource -> "no-source"
+            state.skipMessage == "FROM-CACHE" -> "from-cache"
+            state.upToDate -> "up-to-date"
+            state.skipped -> "skipped"
+            else -> "executed"
+          }
+        evidenceTasks[task.path] =
+          evidenceTasks.getValue(task.path) +
+            output +
+            mapOf("completedAt" to System.currentTimeMillis(), "outcome" to outcome)
+      }
+    }
+  )
 
   fun evidenceReports(task: Test): Map<String, Any> {
     val directory =
@@ -611,6 +759,7 @@ if (providers.gradleProperty("phase12Evidence").orNull == "true") {
               "inputs" to
                 mapOf(
                   "kind" to "test",
+                  "classpath" to evidenceClasspath(task.classpath.files.toList()),
                   "testClasses" to
                     testClasses.sortedBy { it.absolutePath }.map { evidenceSource(it) },
                   "candidateClasses" to

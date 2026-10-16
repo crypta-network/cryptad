@@ -502,3 +502,62 @@ transparency consumer tests and eight catalog bootstrap tests. Kotlin formatting
 All 631 implementation-evidence file commitments match. The separate assessment at
 `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These checks
 do not establish native hosted execution for the successor commit.
+
+## Unresolved source, packaging and classpath reviews
+
+Seven Codex findings identify gaps in source classification, resource selection, portable packaging
+and execution-input evidence:
+
+- [Intent-to-add members](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4291639881)
+  now keep both source readers in working-source state until the selected path exists in HEAD.
+- [Reserved roster names](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4293655106)
+  are refused in Git selections before an archive writer can overwrite a selected input.
+- [Resource selection](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4293655097)
+  now uses the same selected-source filter as Java in application and bootstrap source sets.
+  Explicitly declared resource roots inside the owning build directory remain available.
+- [Migration command permissions](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4293002626)
+  now derive portable executable permissions from validated migration declarations on providers
+  without POSIX modes. Ordinary files retain non-executable permissions despite Windows ACL access.
+- [Test runtime inputs](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4292625816)
+  and [analyzer classpaths](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4294185567)
+  now require complete ordered snapshots, exact current bytes and authenticated origins before
+  source coverage can match.
+- [Evidence-producing analyzer execution](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4294829133)
+  is distinct from bounded routine CI. Release-branch pushes and PRs labeled `phase12-evidence`
+  run SpotBugs on all three lanes. The reusable workflow defaults to full analysis; ordinary callers
+  explicitly select bounded execution. Incomplete routine reports remain ineligible for admission.
+
+Evidence mode forces fresh Java/Kotlin compilation, resource processing and project archives.
+Compiler and resource outputs are cleared before execution, and incremental compilation is disabled.
+Private observations connect standard project outputs to their fresh producer, selected source set
+and predecessor timestamps. Directory snapshots include resources as well as classes. Retention
+checks dependency bytes against selected, commit-bound verification metadata; PGP-only dependencies
+also require an offline signature check with the reviewed public keyring and trusted signer scope.
+A previously populated Gradle cache alone cannot authenticate a dependency.
+
+Unsupported generators, generated external classpaths, unavailable signature tooling and missing
+usable pinned signing material leave coverage unavailable. Stale, failed, substituted or changed
+inputs cannot grant admission. No dependency key or checksum is added by this change. Raw input
+names, hashes, XML and diagnostics remain private; public reports retain fixed coverage states only.
+
+Thirty-two existing file commitments advance across 18 files. This includes 17 stale commitments
+from earlier committed native-fixture and CI changes, whose predecessor/current bytes were reviewed
+separately. The reviewed CI changes shard the same certification test inventory and keep skipped
+analyzers and missing platform prerequisites blocking operational acceptance. Assertions,
+implementation states, acceptance scope and historical commitments remain unchanged. Exact before
+bytes, digest reviews and local diagnostics remain under `build/pr1423-unresolved-codex/`, outside
+public upload rosters.
+
+The final Linux `./gradlew test` invocation passes. Current reports contain 17,550 application cases
+with zero failures/errors and nine skips, plus 46 included-build cases without skips. An earlier full
+attempt hit a repository-scan race against a transient JVM attach file; the isolated affected suite
+and the complete rerun both pass. The seven focused Python suites cover 223 distinct cases; the
+latest analyzer-consumer assertions also pass independently. A real `platform-appdist` evidence-mode
+run executes successfully and captures all 17 runtime classpath entries. Its local dependency and
+bootstrap generator limitations remain unavailable coverage, rather than original admission.
+The resource-copy smoke check preserves selected and declared generated resources while excluding
+unselected history. Workflow lint and 16 controlled wrapper/exit-code cases pass on Linux.
+
+All 631 existing implementation-evidence commitments match current bytes. The separate assessment
+at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These local
+checks do not establish hosted CI, native macOS/Windows execution or original operational acceptance.

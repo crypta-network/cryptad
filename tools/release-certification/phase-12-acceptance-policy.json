@@ -1114,7 +1114,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:f8854bf3e1b1585822598161c0cc8725adb442160228bf33a0890cf164dbf8e2",
+            "digest": "sha256:16dc427b7982309fd9a8821a0f348a391b6d5285ef846eca2a8fde75e329427f",
             "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/CatalogMutationRecoveryTest.java"
           },
           {
@@ -1134,12 +1134,12 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:b4d298e980dc26d6e90b92e8008b308f45284dae6095e99cfaa8ce7b1b3eb5d0",
+            "digest": "sha256:dce3b7bacb18fcd7f4472d254ffbdd06710f3782bda8c90f014925735fb38178",
             "path": ".github/workflows/ci.yml"
           },
           {
             "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
-            "digest": "sha256:f19ca7894771bfa9091af5dcf40f4f488c22d2eb0b4b35222a23c5cd8d37f77f",
+            "digest": "sha256:06556e3dc93dcae667da931d506f5b39cf36c0a596f37e71023b1310b9d3cac9",
             "path": "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
           }
         ]
@@ -1316,7 +1316,7 @@
           },
           {
             "assertion": "Actual native signed projection, original-member and scoped identity negatives. Audited test source is not an execution or protected provenance claim.",
-            "digest": "sha256:17430d86bf2425915dd20fc162e25f9ba5a3b62ac9c98a6eefe97b562f0b5b01",
+            "digest": "sha256:fc0582a202063df87a05893eb364f2799e5552595efbef940ac540608fed64c9",
             "path": "platform-devtools/src/test/java/network/crypta/platform/devtools/AppSubjectProjectionCommandTest.java"
           },
           {
@@ -1451,7 +1451,7 @@
           },
           {
             "assertion": "Actual native signed projection, original-member and scoped identity negatives. Audited test source is not an execution or protected provenance claim.",
-            "digest": "sha256:17430d86bf2425915dd20fc162e25f9ba5a3b62ac9c98a6eefe97b562f0b5b01",
+            "digest": "sha256:fc0582a202063df87a05893eb364f2799e5552595efbef940ac540608fed64c9",
             "path": "platform-devtools/src/test/java/network/crypta/platform/devtools/AppSubjectProjectionCommandTest.java"
           },
           {
@@ -2405,7 +2405,7 @@
           },
           {
             "assertion": "PR-304 supported prospective producer, exact packaged export and native product admission; historical unsupported exporters remain explicit blockers. Test source is not an operational receipt.",
-            "digest": "sha256:b4d298e980dc26d6e90b92e8008b308f45284dae6095e99cfaa8ce7b1b3eb5d0",
+            "digest": "sha256:dce3b7bacb18fcd7f4472d254ffbdd06710f3782bda8c90f014925735fb38178",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3181,7 +3181,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:f8854bf3e1b1585822598161c0cc8725adb442160228bf33a0890cf164dbf8e2",
+            "digest": "sha256:16dc427b7982309fd9a8821a0f348a391b6d5285ef846eca2a8fde75e329427f",
             "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/CatalogMutationRecoveryTest.java"
           },
           {
@@ -3201,7 +3201,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:b4d298e980dc26d6e90b92e8008b308f45284dae6095e99cfaa8ce7b1b3eb5d0",
+            "digest": "sha256:dce3b7bacb18fcd7f4472d254ffbdd06710f3782bda8c90f014925735fb38178",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -3211,7 +3211,7 @@
           },
           {
             "assertion": "Native retained bundle verification failure is a typed conflict with fixed private-safe diagnostics; generic I/O failures and rollback authorization ordering remain unchanged.",
-            "digest": "sha256:f19ca7894771bfa9091af5dcf40f4f488c22d2eb0b4b35222a23c5cd8d37f77f",
+            "digest": "sha256:06556e3dc93dcae667da931d506f5b39cf36c0a596f37e71023b1310b9d3cac9",
             "path": "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
           },
           {
@@ -4240,7 +4240,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:f8854bf3e1b1585822598161c0cc8725adb442160228bf33a0890cf164dbf8e2",
+            "digest": "sha256:16dc427b7982309fd9a8821a0f348a391b6d5285ef846eca2a8fde75e329427f",
             "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/CatalogMutationRecoveryTest.java"
           },
           {
@@ -4260,7 +4260,7 @@
           },
           {
             "assertion": "Packaged HTTP/persistence and native transaction recovery test sources; no protected, long-duration or independent observation is inferred.",
-            "digest": "sha256:b4d298e980dc26d6e90b92e8008b308f45284dae6095e99cfaa8ce7b1b3eb5d0",
+            "digest": "sha256:dce3b7bacb18fcd7f4472d254ffbdd06710f3782bda8c90f014925735fb38178",
             "path": ".github/workflows/ci.yml"
           },
           {
@@ -5141,7 +5141,7 @@
           },
           {
             "assertion": "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
-            "digest": "sha256:9c0bea1a0f3ab6de74babe1388f156a241f305e5809eb3ac6fdf8ecd34c812ce",
+            "digest": "sha256:987b0c222adc3bfa2d294f57f72499d3b416a478bf1067b431e69244923f045d",
             "path": "tools/release-certification/cryptad_certification/active_source.py"
           }
         ],
@@ -5154,7 +5154,7 @@
           },
           {
             "assertion": "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
-            "digest": "sha256:5ea124cfb8d0c76a0a30dcf2cb3f5d3c73ded7be979f70bbf6e1c208bfb85848",
+            "digest": "sha256:aeb692159c992a3d02368245fad982f85d2ff92ba4d553ea4e717dabc89daf2f",
             "path": "tools/release-certification/cryptad_certification/tests/test_active_source.py"
           }
         ]
@@ -5215,7 +5215,7 @@
           },
           {
             "assertion": "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
-            "digest": "sha256:9c0bea1a0f3ab6de74babe1388f156a241f305e5809eb3ac6fdf8ecd34c812ce",
+            "digest": "sha256:987b0c222adc3bfa2d294f57f72499d3b416a478bf1067b431e69244923f045d",
             "path": "tools/release-certification/cryptad_certification/active_source.py"
           }
         ],
@@ -5228,7 +5228,7 @@
           },
           {
             "assertion": "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
-            "digest": "sha256:5ea124cfb8d0c76a0a30dcf2cb3f5d3c73ded7be979f70bbf6e1c208bfb85848",
+            "digest": "sha256:aeb692159c992a3d02368245fad982f85d2ff92ba4d553ea4e717dabc89daf2f",
             "path": "tools/release-certification/cryptad_certification/tests/test_active_source.py"
           }
         ]
@@ -5289,7 +5289,7 @@
           },
           {
             "assertion": "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
-            "digest": "sha256:9c0bea1a0f3ab6de74babe1388f156a241f305e5809eb3ac6fdf8ecd34c812ce",
+            "digest": "sha256:987b0c222adc3bfa2d294f57f72499d3b416a478bf1067b431e69244923f045d",
             "path": "tools/release-certification/cryptad_certification/active_source.py"
           }
         ],
@@ -5302,7 +5302,7 @@
           },
           {
             "assertion": "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
-            "digest": "sha256:5ea124cfb8d0c76a0a30dcf2cb3f5d3c73ded7be979f70bbf6e1c208bfb85848",
+            "digest": "sha256:aeb692159c992a3d02368245fad982f85d2ff92ba4d553ea4e717dabc89daf2f",
             "path": "tools/release-certification/cryptad_certification/tests/test_active_source.py"
           }
         ]
@@ -5457,22 +5457,22 @@
         "sourceEvidence": [
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:0fa4ae65b63140fe66b36e5dea4ec5486b3fc1f1080c729ee96b152af14ce8be",
+            "digest": "sha256:4b92918352b10a7569fd7b188e3a6da2b4d3462de6a548dc0d1e2b93c203c024",
             "path": "tools/release-certification/cryptad_certification/phase_12_ci.py"
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:b4d298e980dc26d6e90b92e8008b308f45284dae6095e99cfaa8ce7b1b3eb5d0",
+            "digest": "sha256:dce3b7bacb18fcd7f4472d254ffbdd06710f3782bda8c90f014925735fb38178",
             "path": ".github/workflows/ci.yml"
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:d877009dc18292225e30d26e3b9f8364f981bb597351ec81c9afba0c1e2f6e50",
+            "digest": "sha256:d39b4305ed019ea23bbf8754bcc700b40c9e7c8a98a934b5800a1d622a35e9db",
             "path": ".github/workflows/build.yml"
           },
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:04e80feaa18d30aed1d7058bf9b671285dc1ac349f5b6ec7d5b8c34a818c8c56",
+            "digest": "sha256:174b7817a2ed40350608c206f13feed7a8a622cdc0f4b7a69b9954b85bdfaf8c",
             "path": "build-logic/src/main/kotlin/cryptad.java-kotlin-conventions.gradle.kts"
           },
           {
@@ -5482,22 +5482,22 @@
           },
           {
             "assertion": "PR-321 bounded active-source selection uses current Git/build ownership or exact source-export rosters, keeps tracked members, excludes only untracked history, and preserves independent artifact rejection policies.",
-            "digest": "sha256:9c0bea1a0f3ab6de74babe1388f156a241f305e5809eb3ac6fdf8ecd34c812ce",
+            "digest": "sha256:987b0c222adc3bfa2d294f57f72499d3b416a478bf1067b431e69244923f045d",
             "path": "tools/release-certification/cryptad_certification/active_source.py"
           },
           {
             "assertion": "PR-321 private Gradle observations bind actual task outcomes, selected source/class bytes, analyzer policy, runtime facts and bounded completion report snapshots; bounded public projection and original authentication remain independent admission requirements.",
-            "digest": "sha256:b3ef915bc6db8c0f8261411526f5b466e71604e702f44dd4ffb8c7ba14aeaac2",
+            "digest": "sha256:f3d4300f973a7275250695ebaccf2889decb8d83f58120eb16e85dd3f3846afc",
             "path": "build-logic/src/main/kotlin/cryptad/Phase12TaskEvidence.kt"
           },
           {
             "assertion": "PR-321 included-build static and precompiled-script sources follow the exact selected roster before plugin discovery; private test completion snapshots participate in the required cohort without substituting root-project results for build-logic tests.",
-            "digest": "sha256:97753db06c70428857c8b0f57a1a45691426d86bb4aaefc227e58f2c08b9d6ea",
+            "digest": "sha256:23699c54edc8e825b8648956f02ce2e11045224a68a801d290eceac364760028",
             "path": "build-logic/build.gradle.kts"
           },
           {
             "assertion": "PR-321 static build and source distribution inputs follow the exact selected roster, preserve tracked or export-declared members and configured generated roots, and refuse unsupported source-export selection without admitting unlisted static files.",
-            "digest": "sha256:6134e21177e1fb26174b905231505da155d0d0c7df1c1c7637d8a3f36b43881f",
+            "digest": "sha256:dce636eb281f50bd3b82794241e65c3d0962c239a03c701a2480db1136430f04",
             "path": "build-logic/src/main/kotlin/cryptad/ActiveSourceFiles.kt"
           },
           {
@@ -5512,7 +5512,7 @@
           },
           {
             "assertion": "PR-321's fixed Phase 12 self-test registry explicitly includes source-selection and CI v2 regression suites; registry membership is separate from their actual execution and original evidence.",
-            "digest": "sha256:ae12858f94e1c1b9017279bc3eec1c95ea549292713cdb4b132fc4fc50e3cbe1",
+            "digest": "sha256:32c17dc950bc4ed2ce15bf0d0c83600a301f63db276bc0a90d5b6e996746ca48",
             "path": "tools/release-certification/cryptad_certification/selftest.py"
           },
           {
@@ -5535,27 +5535,27 @@
         "testEvidence": [
           {
             "assertion": "Behavioral source reviewed for this scoped assertion; executed results are recorded separately, never inferred from this pin.",
-            "digest": "sha256:57cbba21de6a40cc569475c3b7503d2ed76440539accae3e14419fadc5bd4fd6",
+            "digest": "sha256:1c9d3e38ba3cecbd64a0240ceebc91d63f982e3ae645a1630fafcba8c4879d1b",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_ci.py"
           },
           {
             "assertion": "PR-321 source-selection regressions cover history pollution, tracked members, source exports, path protections and dirty-source classification. Test-source review does not assert provider execution.",
-            "digest": "sha256:5ea124cfb8d0c76a0a30dcf2cb3f5d3c73ded7be979f70bbf6e1c208bfb85848",
+            "digest": "sha256:aeb692159c992a3d02368245fad982f85d2ff92ba4d553ea4e717dabc89daf2f",
             "path": "tools/release-certification/cryptad_certification/tests/test_active_source.py"
           },
           {
             "assertion": "PR-321 task-observation regression source verifies execution/reuse classification and stable input handling; local test results do not establish original hosted execution.",
-            "digest": "sha256:2de6e1997b73d6aa2bad3efdcd7ebf2980b408a57f7447d174ba89cc6f977f6b",
+            "digest": "sha256:a9bbd65e6f977a5fa6ff60c7a181d3eb95fba4f2c6c6e3f33564fa465f383cba",
             "path": "build-logic/src/test/kotlin/cryptad/Phase12TaskEvidenceTest.kt"
           },
           {
             "assertion": "PR-321 static and packaging roster regressions retain selected history names, exclude unlisted ordinary export files, preserve configured generated roots and reject missing or escaping source members; source review does not assert native distribution execution.",
-            "digest": "sha256:907959abe680e4040b5b30d70bc6088449b13814d7a7b443b6738eb64a91637c",
+            "digest": "sha256:851bf8730cf8768e9d57165d83d2d34575ec365d4c20c17ec933945d714d4b85",
             "path": "build-logic/src/test/kotlin/cryptad/ActiveSourceFilesTest.kt"
           },
           {
             "assertion": "PR-321 complete fixed-lane CI graph and substitution, freshness, exact source/class coverage, completion report bytes, analyzer policy, applicability and safe-projection regressions exercise original admission through declared external provider fixtures; they do not establish actual hosted execution.",
-            "digest": "sha256:1407cb24cd16bf96858f8cab681fe6979afa33f3ab633716fb13cd318c18d17c",
+            "digest": "sha256:b9539c3571a3440d9bcf1177fdb486a08f1b6d12084992b2c11647e521843987",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_ci_v2.py"
           },
           {
@@ -5595,7 +5595,7 @@
           },
           {
             "assertion": "PR-321 reviews exact platform-conditional test identities for the fixed applicability registry. Only the source-owned complementary OS branch is not applicable; missing capabilities, failed setup, unknown names and duplicate rule occurrences remain blocking. No production format or path policy changes.",
-            "digest": "sha256:39dc7f1f91a4d8c18f5e53d1459bff0acac70cd1317d15934deae5823f62da68",
+            "digest": "sha256:761aee5a84ae3f1da9c76402d82932ed1ecdb656f0aa797f9bf7a1c626518d0e",
             "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/LocalProcessAppHostTest.java"
           },
           {

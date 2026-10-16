@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
@@ -342,7 +343,7 @@ def _errorprone_completed(raw, source_count):
             and _number(tree.get("sourceFiles")) == source_count)
 
 
-def _private_test_coverage(record, module, root, checked_sources):
+def _private_test_coverage(record, module, root, checked_sources, context=None):
     """Detect arbitrary class Specs as well as the separately observed name/tag filters."""
     inputs = record.get("inputs", {})
     all_classes, candidates = inputs.get("testClasses"), inputs.get("candidateClasses")
@@ -371,10 +372,347 @@ def _private_test_coverage(record, module, root, checked_sources):
     coverage = _private_source_coverage({"sourceFiles": all_classes}, {row["path"] for row in all_classes}, root, checked_sources)
     if coverage != "matched":
         return coverage
-    return _private_source_coverage({"sourceFiles": candidates}, expected_candidates, root, checked_sources)
+    coverage = _private_source_coverage({"sourceFiles": candidates}, expected_candidates, root, checked_sources)
+    classpath = inputs.get("classpath")
+    if type(classpath) is list:
+        if any(type(entry) is not dict or type(entry.get("files", [])) is not list for entry in classpath):
+            return "invalid"
+        runtime_classes = {member.get("path") for entry in classpath if type(entry) is dict
+                           for member in entry.get("files", []) if type(member) is dict}
+        if not {row["path"] for row in all_classes}.issubset(runtime_classes):
+            return "invalid"
+    return _private_classpath_coverage(record, "classpath", root, checked_sources, context) if coverage == "matched" else coverage
 
 
-def _private_spotbugs_coverage(record, module, kind, root, checked_sources):
+def _classpath_context(records, expected_sources, selected_paths, source_commit=None):
+    outputs = {}
+    for record in records:
+        entries = record.get("producedOutputs", [])
+        if type(entries) is not list:
+            continue
+        for entry in entries:
+            if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+                members = entry.get("files", [])
+                if type(members) is not list:
+                    continue
+                for member in [entry] + members:
+                    if isinstance(member, dict) and isinstance(member.get("path"), str):
+                        outputs.setdefault(member["path"], []).append((record, member))
+    return {"outputs": outputs, "sources": expected_sources, "selected": set(selected_paths),
+            "status": {}, "pending": set(), "verified": {}, "pgp": {}, "sourceCommit": source_commit}
+
+
+def _reviewed_classpath_file(root, name, context):
+    from .active_source import read_source, _git
+    if name not in context["selected"]:
+        raise ValueError("unbound-classpath-authority")
+    raw = read_source(root, name)
+    if context["sourceCommit"] is not None:
+        if raw != _git(root, "show", context["sourceCommit"] + ":" + name):
+            raise ValueError("changed-classpath-authority")
+    return raw
+
+
+def _dependency_scope(rule, coordinates):
+    for key, actual in zip(("group", "name", "version", "file"), coordinates):
+        expected = rule.get(key)
+        if expected is not None and (re.fullmatch(expected, actual) is None if rule.get("regex") == "true" else expected != actual):
+            return False
+    return True
+
+
+def _dependency_signers(metadata, coordinates):
+    allowed, ignored = set(), set()
+    for node in metadata.iter():
+        tag = node.tag.rsplit("}", 1)[-1]
+        if tag == "trusted-key":
+            rules = [child.attrib for child in node if child.tag.rsplit("}", 1)[-1] == "trusting"] or [node.attrib]
+            if any(_dependency_scope(rule, coordinates) for rule in rules):
+                allowed.add(node.get("id", "").upper())
+        elif tag == "ignored-key":
+            ignored.add(node.get("id", "").upper())
+        elif tag == "component" and tuple(node.get(k) for k in ("group", "name", "version")) == coordinates[:3]:
+            for artifact in node:
+                if artifact.get("name") == coordinates[3]:
+                    allowed.update(child.get("value", "").upper() for child in artifact
+                                   if child.tag.rsplit("}", 1)[-1] == "pgp")
+    return {key for key in allowed if re.fullmatch(r"[0-9A-F]{40}|[0-9A-F]{64}", key)
+            and not any(value and key.endswith(value) for value in ignored)}
+
+
+def _verified_dependency(record, path, raw, root, context):
+    owner = "build-logic/" if record.get("taskPath", "").startswith(":build-logic:") else ""
+    metadata_path = owner + "gradle/verification-metadata.xml"
+    if metadata_path not in context["verified"]:
+        metadata_raw = _reviewed_classpath_file(root, metadata_path, context)
+        tree = ET.fromstring(metadata_raw)
+        checksums = set()
+        for artifact in tree.iter():
+            if artifact.tag.rsplit("}", 1)[-1] != "artifact":
+                continue
+            for checksum in artifact:
+                if checksum.tag.rsplit("}", 1)[-1] == "sha256":
+                    checksums.update((artifact.get("name"), item.get("value")) for item in [checksum, *checksum])
+        context["verified"][metadata_path] = tree, checksums, digest(metadata_raw)
+    tree, checksums, metadata_digest = context["verified"][metadata_path]
+    checksum = digest(raw).removeprefix("sha256:")
+    if any(name == path.name for name, _ in checksums):
+        return "matched" if (path.name, checksum) in checksums else "invalid"
+    # PGP-only dependencies use the same reviewed key scopes as strict Gradle verification.
+    # Verify captured bytes, rather than trusting Gradle's previously populated cache.
+    parts = path.parts
+    if len(parts) < 7 or parts[-7:-5] != ("modules-2", "files-2.1"):
+        return "unavailable"
+    coordinates = parts[-5], parts[-4], parts[-3], path.name
+    allowed = _dependency_signers(tree, coordinates)
+    verifier = shutil.which("gpgv") or shutil.which("gpg")
+    if not allowed or verifier is None:
+        return "unavailable"
+    keyring_path = owner + "gradle/verification-keyring.gpg"
+    keyring = _reviewed_classpath_file(root, keyring_path, context)
+    from .active_source import read_source
+    signatures = []
+    with os.scandir(path.parent.parent) as entries:
+        for count, entry in enumerate(entries):
+            if count >= 128:
+                return "invalid"
+            if entry.is_dir(follow_symlinks=False):
+                candidate = Path(entry.path) / (path.name + ".asc")
+                if candidate.exists():
+                    signatures.append(candidate)
+    if len(signatures) > 16:
+        return "invalid"
+    statuses = []
+    for signature_path in signatures:
+        signature = read_source(signature_path.parent, signature_path.name, maximum=65536)
+        identity = metadata_digest, digest(keyring), checksum, coordinates, digest(signature)
+        if identity in context["pgp"]:
+            if context["pgp"][identity] == "matched":
+                return "matched"
+            statuses.append(context["pgp"][identity])
+            continue
+        with tempfile.TemporaryDirectory(prefix="cryptad-classpath-signature-") as temporary:
+            home = Path(temporary)
+            (home / "keys.gpg").write_bytes(keyring)
+            (home / "signature.asc").write_bytes(signature)
+            (home / "artifact.jar").write_bytes(raw)
+            command = [verifier, "--homedir", str(home), "--keyring", str(home / "keys.gpg"), "--status-fd", "1"]
+            if Path(verifier).name.lower().removesuffix(".exe") == "gpg":
+                command += ["--batch", "--no-tty", "--no-options", "--no-default-keyring", "--no-auto-key-retrieve", "--verify"]
+            try:
+                result = subprocess.run(command + [str(home / "signature.asc"), str(home / "artifact.jar")],
+                                        capture_output=True, timeout=15, check=False)
+            except (OSError, subprocess.SubprocessError):
+                return "unavailable"
+            valid = []
+            for line in result.stdout.decode("ascii", errors="replace").splitlines():
+                if line.startswith("[GNUPG:] VALIDSIG "):
+                    fields = line.split()[1:]
+                    if len(fields) >= 10 and fields[8] in {"8", "9", "10", "11"}:
+                        valid.extend((fields[1], fields[-1]))
+            status = "matched" if result.returncode == 0 and allowed.intersection(valid) else "invalid"
+            if b"[GNUPG:] NO_PUBKEY " in result.stdout:
+                status = "unavailable"
+            context["pgp"][identity] = status
+            statuses.append(status)
+            if status == "matched":
+                return status
+    return "unavailable" if not signatures or "unavailable" in statuses else "invalid"
+
+
+def _classpath_file(root, path):
+    from .active_source import read_source
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return read_source(candidate.parent, candidate.name, maximum=256 * 1024 * 1024)
+    return read_source(root, path, maximum=256 * 1024 * 1024)
+
+
+def _classpath_directory(root, path):
+    from .active_source import _checked_path, _link
+    base = _checked_path(root, path)
+    if not base.is_dir():
+        raise ValueError("invalid-classpath")
+    pending, names, count = [base], [], 0
+    while pending:
+        with os.scandir(pending.pop()) as entries:
+            for entry in entries:
+                count += 1
+                if count > 100000 or _link(entry.stat(follow_symlinks=False)):
+                    raise ValueError("invalid-classpath")
+                candidate = Path(entry.path)
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append(candidate)
+                elif entry.is_file(follow_symlinks=False):
+                    names.append(candidate.relative_to(root).as_posix())
+                else:
+                    raise ValueError("invalid-classpath")
+    if len(names) > 30000:
+        raise ValueError("invalid-classpath")
+    return set(names)
+
+
+def _classpath_producer(record, member, consumer, root, checked_sources, context):
+    owned = _classpath_producer_member(record, member)
+    if owned is not True:
+        return "unavailable" if owned is None else "invalid"
+    if record.get("outcome") == "no-source" and not (member.get("kind") == "missing" or
+            (member.get("kind") == "directory" and member.get("files") == [])):
+        return "invalid"
+    if (record.get("outputObservation") != "complete" or record.get("outcome") not in {"executed", "no-source"}
+            or type(record.get("startedAt")) is not int or type(record.get("completedAt")) is not int
+            or type(consumer.get("startedAt")) is not int
+            or not record["startedAt"] <= record["completedAt"] <= consumer["startedAt"]):
+        return "unavailable"
+    identity = record.get("taskPath")
+    if identity in context["pending"]:
+        return "invalid"
+    if identity in context["status"]:
+        return context["status"][identity]
+    context["pending"].add(identity)
+    try:
+        status = _classpath_producer_inputs(record, root, checked_sources, context)
+        context["status"][identity] = status
+        return status
+    finally:
+        context["pending"].remove(identity)
+
+
+def _classpath_producer_member(record, member):
+    task_path = record.get("taskPath", "")
+    if not isinstance(task_path, str) or not task_path.startswith(":"):
+        return False
+    owner, _, task = task_path[1:].rpartition(":")
+    prefix = owner.replace(":", "/") + "/" if owner else ""
+    inputs = record.get("inputs")
+    if type(inputs) is not dict:
+        return False
+    kind = inputs.get("kind")
+    roots = {"java-compile": {"compileJava": "build/classes/java/main", "compileTestJava": "build/classes/java/test"},
+             "kotlin-compile": {"compileKotlin": "build/classes/kotlin/main", "compileTestKotlin": "build/classes/kotlin/test"},
+             "resources": {"processResources": "build/resources/main", "processTestResources": "build/resources/test"},
+             "jar": {"jar": "build/libs"}}
+    base = roots.get(kind, {}).get(task)
+    if base is None:
+        return None
+    path = member.get("path")
+    if not isinstance(path, str) or any(part in {"", ".", ".."} for part in path.split("/")):
+        return False
+    return path == prefix + base or path.startswith(prefix + base + "/")
+
+
+def _classpath_producer_inputs(record, root, checked_sources, context):
+    inputs = record.get("inputs", {})
+    if type(inputs) is not dict:
+        return "invalid"
+    kind = inputs.get("kind")
+    task_path = record.get("taskPath", "")
+    if not isinstance(task_path, str) or not task_path.startswith(":"):
+        return "invalid"
+    owner, _, task = task_path[1:].rpartition(":")
+    module = owner.replace(":", "/") or "."
+    prefix = "" if module == "." else module + "/"
+    source_set = "test" if "Test" in task else "main"
+    sources = record.get("sourceFiles")
+    if record.get("outcome") == "no-source" and sources != []:
+        return "invalid"
+    if kind == "java-compile":
+        expected = context["sources"].get((module, "errorprone-" + source_set))
+        if expected is not None and not expected.issubset(context["selected"]):
+            return "unavailable"
+    elif kind in {"resources", "kotlin-compile"}:
+        folder = "resources" if kind == "resources" else "kotlin"
+        expected = {p for p in context["selected"] if p.startswith(prefix + "src/" + source_set + "/" + folder + "/")}
+        if type(sources) is list and any(isinstance(row, dict) and str(row.get("path", "")).startswith(prefix + "build/") for row in sources):
+            # Generated sources need their own authenticated producer; do not infer one.
+            return "unavailable"
+    elif kind == "jar":
+        if type(sources) is not list or not sources:
+            return "unavailable"
+        for row in sources:
+            status = _classpath_output(row, record, root, checked_sources, context)
+            if status != "matched":
+                return status
+        return "matched"
+    else:
+        return "unavailable"
+    status = _private_source_coverage(record, expected, root, checked_sources)
+    if status == "matched" and kind in {"java-compile", "kotlin-compile"} and record.get("outcome") != "no-source":
+        status = _private_classpath_coverage(record, "classpath", root, checked_sources, context)
+    return status
+
+
+def _classpath_output(entry, consumer, root, checked_sources, context):
+    if context is None or type(entry) is not dict:
+        return "unavailable"
+    candidates = context["outputs"].get(entry.get("path"), [])
+    if not candidates:
+        return "unavailable"
+    results = []
+    for producer, expected in candidates:
+        if entry != expected:
+            results.append("invalid")
+        else:
+            results.append(_classpath_producer(producer, expected, consumer, root, checked_sources, context))
+    return "matched" if "matched" in results else ("invalid" if "invalid" in results else "unavailable")
+
+
+def _private_classpath_coverage(record, field, root, checked_sources, context=None):
+    """Require exact runtime bytes and reviewed origins, not merely current-file self-consistency."""
+    inputs = record.get("inputs", {})
+    if type(inputs) is not dict:
+        return "invalid"
+    entries = inputs.get(field)
+    if type(entries) is not list or len(entries) > 4096:
+        return "unavailable"
+    seen = set()
+    try:
+        for entry in entries:
+            if type(entry) is not dict or not isinstance(entry.get("path"), str) or entry["path"] in seen:
+                return "invalid"
+            path, kind = entry["path"], entry.get("kind")
+            seen.add(path)
+            candidate = Path(path)
+            if kind == "directory":
+                if candidate.is_absolute():
+                    return "unavailable"
+                if set(entry) != {"path", "kind", "files"} or type(entry["files"]) is not list:
+                    return "invalid"
+                members = entry["files"]
+                if len(members) > 30000 or any(type(m) is not dict or not isinstance(m.get("path"), str) for m in members):
+                    return "invalid"
+                names = [m["path"] for m in members]
+                if len(set(names)) != len(names) or set(names) != _classpath_directory(root, path):
+                    return "invalid"
+                for member in members:
+                    raw = _classpath_file(root, member["path"])
+                    if member != {"path": member["path"], "kind": "file", "size": len(raw), "digest": digest(raw)}:
+                        return "invalid"
+                status = _classpath_output(entry, record, root, checked_sources, context)
+            elif kind == "missing":
+                if set(entry) != {"path", "kind"} or candidate.is_absolute() or (root / path).exists() or (root / path).is_symlink():
+                    return "invalid"
+                status = _classpath_output(entry, record, root, checked_sources, context)
+            elif kind == "file":
+                raw = _classpath_file(root, path)
+                if entry != {"path": path, "kind": "file", "size": len(raw), "digest": digest(raw)}:
+                    return "invalid"
+                if not candidate.is_absolute():
+                    status = _classpath_output(entry, record, root, checked_sources, context)
+                else:
+                    if context is None:
+                        return "unavailable"
+                    status = _verified_dependency(record, candidate, raw, root, context)
+            else:
+                return "invalid"
+            if status != "matched":
+                return status
+    except (OSError, ValueError, KeyError, TypeError, IndexError, ET.ParseError, subprocess.SubprocessError):
+        return "invalid"
+    return "matched"
+
+
+def _private_spotbugs_coverage(record, module, kind, root, checked_sources, context=None):
     """An analyzer's selected classes must equal its owning source-set outputs byte for byte."""
     inputs = record.get("inputs", {}) if record else {}
     owned, actual = inputs.get("ownedClasses"), inputs.get("classes")
@@ -398,7 +736,13 @@ def _private_spotbugs_coverage(record, module, kind, root, checked_sources):
     coverage = _private_source_coverage({"sourceFiles": owned}, paths, root, checked_sources)
     if coverage != "matched":
         return coverage
-    return _private_source_coverage({"sourceFiles": actual}, paths, root, checked_sources)
+    coverage = _private_source_coverage({"sourceFiles": actual}, paths, root, checked_sources)
+    if coverage == "matched":
+        for entry in actual:
+            coverage = _classpath_output(entry, record, root, checked_sources, context)
+            if coverage != "matched":
+                break
+    return coverage
 
 
 def _private_report_roster(record, paths, root):
@@ -438,7 +782,7 @@ def _spotbugs_class_names(record, module, kind):
     return names
 
 
-def _private_analyzer_configuration(record, kind, root, checked_sources):
+def _private_analyzer_configuration(record, kind, root, checked_sources, context=None):
     """Admit only the reviewed analyzer policy, without caller-supplied dispositions."""
     if kind == "junit":
         return "matched"
@@ -453,7 +797,8 @@ def _private_analyzer_configuration(record, kind, root, checked_sources):
         if any(inputs.get(name) != [] for name in ("includeFilter", "baseline", "onlyAnalyze", "visitors", "omitVisitors", "chooseVisitors")):
             return "invalid"
         path = "build-logic/spotbugs-exclude" + ("-test" if kind.endswith("test") else "") + ".xml"
-        return _private_source_coverage({"sourceFiles": inputs.get("excludeFilter")}, {path}, root, checked_sources)
+        coverage = _private_source_coverage({"sourceFiles": inputs.get("excludeFilter")}, {path}, root, checked_sources)
+        return _private_classpath_coverage(record, "auxClasspath", root, checked_sources, context) if coverage == "matched" else coverage
     expected = {"enabled": True, "allErrorsAsWarnings": True, "disableAllChecks": False,
                 "disableAllWarnings": False, "allSuggestionsAsWarnings": False,
                 "allDisabledChecksAsWarnings": False, "disableWarningsInGeneratedCode": False,
@@ -467,7 +812,7 @@ def _private_analyzer_configuration(record, kind, root, checked_sources):
     if (configuration != expected or any(type(configuration.get(key)) is not type(value) for key, value in expected.items())
             or inputs.get("compilerArguments") != arguments or inputs.get("incremental") is not False):
         return "invalid"
-    return "matched"
+    return _private_classpath_coverage(record, "classpath", root, checked_sources, context)
 
 
 def retain_reports_v2(output, started_file, lane):
@@ -512,19 +857,23 @@ def retain_reports_v2(output, started_file, lane):
     except (OSError, ValueError):
         expected_sources, source_cohort_valid = {}, False
     checked_sources = {}
+    classpath_context = _classpath_context(records, expected_sources, source.paths, source.source_commit)
     rows, total, report_count, budget_exhausted = [], 0, 0, False
     for module, kind in _v2_rows():
         task = next(task for task, selected_kind in TASK_KINDS.items() if selected_kind == kind)
         record = by_task.get(_task_path(module, task))
         coverage = _private_source_coverage(record, expected_sources.get((module, kind)), ROOT, checked_sources)
         if kind == "junit" and coverage == "matched":
-            coverage = _private_test_coverage(record, module, ROOT, checked_sources)
+            coverage = _private_test_coverage(record, module, ROOT, checked_sources, classpath_context)
         if kind.startswith("spotbugs") and coverage == "matched":
-            coverage = _private_spotbugs_coverage(record, module, kind, ROOT, checked_sources)
+            coverage = _private_spotbugs_coverage(record, module, kind, ROOT, checked_sources, classpath_context)
         execution = _task_projection(record, module, task, source_coverage=coverage)
-        configuration = _private_analyzer_configuration(record, kind, ROOT, checked_sources)
+        configuration = _private_analyzer_configuration(record, kind, ROOT, checked_sources, classpath_context)
+        if configuration != "matched" and coverage == "matched":
+            coverage = configuration
         if configuration != "matched":
             execution["filtered"] = True
+            execution["sourceCoverage"] = coverage
         reports, unavailable = [], budget_exhausted and execution["outcome"] != "no-source"
         unavailable = unavailable or (record is not None and configuration != "matched")
         if execution["outcome"] != "no-source":
@@ -772,6 +1121,10 @@ def _v2_rows():
 def _observed_task_cohort(by_task):
     expected = {_task_path(module, next(task for task, selected in TASK_KINDS.items() if selected == kind))
                 for module, kind in _v2_rows()}
+    expected.update(_task_path(module, task) for module in MODULES
+                    for task in ("processResources", "processTestResources", "jar"))
+    expected.update(":build-logic:" + task for task in ("compileJava", "compileTestJava", "compileKotlin", "compileTestKotlin",
+                    "compilePluginsBlocks", "processResources", "processTestResources", "jar"))
     return set(by_task) <= expected
 
 

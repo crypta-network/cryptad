@@ -89,6 +89,24 @@ val errorproneReportEnabled = providers.provider {
 // Evidence jobs require new test/analyzer execution while ordinary developer builds retain reuse.
 val phase12Evidence = providers.gradleProperty("phase12Evidence").map { it == "true" }.orElse(false)
 
+if (phase12Evidence.get()) {
+  tasks.withType<JavaCompile>().configureEach {
+    options.isIncremental = false
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Evidence binds fresh compiler outputs") { true }
+    doFirst { delete(destinationDirectory) }
+  }
+  tasks.withType<ProcessResources>().configureEach {
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Evidence binds fresh processed resources") { true }
+    doFirst { delete(destinationDir) }
+  }
+  tasks.withType<Jar>().configureEach {
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Evidence binds fresh project archives") { true }
+  }
+}
+
 if (phase12Evidence.get() && project == rootProject) {
   require(!gradle.startParameter.isConfigurationCacheRequested) {
     "Phase 12 task observation requires configuration caching disabled"
@@ -165,14 +183,15 @@ sourceSets.named("main") {
 val activeSourceRoster = ActiveSourceFiles.selectedRoster(rootProject)
 
 sourceSets.configureEach {
-  val owningJava = java
-  java.exclude { element ->
-    val generatedRoots =
-      owningJava.srcDirs
-        .filter { it.toPath().startsWith(layout.buildDirectory.get().asFile.toPath()) }
-        .toSet()
-    ActiveSourceFiles.excludeUnselected(rootDir, element.file, generatedRoots) {
-      activeSourceRoster.value
+  for (sources in listOf(java, resources)) {
+    sources.exclude { element ->
+      val generatedRoots =
+        sources.srcDirs
+          .filter { it.toPath().startsWith(layout.buildDirectory.get().asFile.toPath()) }
+          .toSet()
+      ActiveSourceFiles.excludeUnselected(rootDir, element.file, generatedRoots) {
+        activeSourceRoster.value
+      }
     }
   }
 }
