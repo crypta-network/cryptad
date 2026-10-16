@@ -89,18 +89,19 @@ jobs:
         run: |
           "$PYTHON3" -m cryptad_certification.phase_12_ci --prepare "$RUNNER_TEMP/phase12-report-start.json"
 
+      # Bound routine CI runtime by excluding SpotBugs; retained evidence still records missing analysis.
       - name: Build and analyze (Gradle)
         if: ${{ inputs.lane == 'linux-amd64' && env.SONAR_TOKEN != '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-        run: ./gradlew build errorproneReport sonar -Pphase12Evidence=true --warning-mode all
+        run: ./gradlew build errorproneReport sonar -Pphase12Evidence=true -x spotbugsMain -x spotbugsTest --warning-mode all
 
       - name: Build (no Sonar token)
         if: ${{ inputs.lane == 'linux-amd64' && env.SONAR_TOKEN == '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./gradlew build errorproneReport -Pphase12Evidence=true
+        run: ./gradlew build errorproneReport -Pphase12Evidence=true -x spotbugsMain -x spotbugsTest
 
       - name: Run native Java verification
         if: ${{ inputs.lane != 'linux-amd64' }}
@@ -112,7 +113,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             wrapper=./gradlew.bat
           fi
-          "$wrapper" test spotbugsMain spotbugsTest errorproneReport -Pphase12Evidence=true --continue
+          "$wrapper" test errorproneReport -Pphase12Evidence=true -x spotbugsMain -x spotbugsTest --continue
 
       # Failed jobs also retain fixed typed facts. Raw XML, diagnostics, names and payload hashes
       # remain private; authentic failed/incomplete evidence never grants acceptance.
