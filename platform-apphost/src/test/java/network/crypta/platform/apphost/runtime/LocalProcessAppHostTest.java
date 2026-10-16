@@ -2518,7 +2518,7 @@ class LocalProcessAppHostTest {
   @Test
   void start_whenInstalledProcessExitsImmediately_expectFailureAndNoRunningState()
       throws IOException {
-    AppHost host = allowUnsignedHost();
+    AppHost host = immediateExitHost();
     host.installFromDirectory(stageInstalledRunnerApp(immediateExitScriptContent(new AppEnv())));
 
     Instant started = Instant.now();
@@ -2538,7 +2538,7 @@ class LocalProcessAppHostTest {
   @Test
   void start_whenInstalledProcessCrashesImmediately_expectCrashedRuntimeStatus()
       throws IOException {
-    AppHost host = allowUnsignedHost();
+    AppHost host = immediateExitHost();
     host.installFromDirectory(stageInstalledRunnerApp(IMMEDIATE_CRASH_SCRIPT));
 
     AppHostException exception =
@@ -2555,7 +2555,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = allowUnsignedHost();
+    AppHost host = immediateExitHost();
     host.installFromDirectory(stageInstalledRunnerApp(IMMEDIATE_TOKEN_CRASH_SCRIPT));
 
     assertThrows(AppHostException.class, () -> host.start(RUNNER_APP_ID));
@@ -3619,7 +3619,8 @@ class LocalProcessAppHostTest {
   void stop_whenRecoveredLateChildExitsWithinStopTimeout_expectCleanSuccess()
       throws IOException, ReflectiveOperationException {
     long recoveredChildPid = 84L;
-    LocalProcessAppHost host = allowUnsignedHost(Duration.ofMillis(200));
+    // The synthetic child exits after repeated refreshes, not after a fixed wall-clock delay.
+    LocalProcessAppHost host = allowUnsignedHost(Duration.ofSeconds(2));
     RunningAppSnapshot snapshot = runningSnapshot(RUNNER_APP_ID);
     injectRunningProcess(
         host,
@@ -3850,7 +3851,7 @@ class LocalProcessAppHostTest {
       throws IOException {
     AppEnv appEnv = new AppEnv();
     Assumptions.assumeFalse(appEnv.isWindows());
-    AppHost host = allowUnsignedHost();
+    AppHost host = immediateExitHost();
     InstalledAppSnapshot installation =
         host.installFromDirectory(stageInstalledRunnerApp(SINGLE_RUN_EXIT_SCRIPT));
 
@@ -4497,6 +4498,27 @@ class LocalProcessAppHostTest {
 
   private LocalProcessAppHost allowUnsignedHost() {
     return allowUnsignedHost(Duration.ofSeconds(1));
+  }
+
+  private LocalProcessAppHost immediateExitHost() {
+    // Real shell initialization and the exit trap need scheduling margin on loaded CI hosts.
+    LocalProcessAppHost.TimingConfig timing =
+        new LocalProcessAppHost.TimingConfig(
+            Duration.ofSeconds(2),
+            TEST_TIMING.startupProcessCaptureWindow(),
+            Duration.ofSeconds(1),
+            TEST_TIMING.trackedProcessPostExitCaptureGracePeriod(),
+            TEST_TIMING.trackedProcessRefreshInterval(),
+            TEST_TIMING.startupProcessPollInterval(),
+            TEST_TIMING.startupHandoffPollInterval(),
+            TEST_TIMING.descendantReapGracePeriodLimit());
+    return new LocalProcessAppHost(
+        layout(),
+        Duration.ofSeconds(1),
+        new java.security.SecureRandom(),
+        new AppEnv(),
+        timing,
+        AppInstallVerificationPolicy.allowUnsignedForDevelopmentOnly());
   }
 
   private LocalProcessAppHost allowUnsignedHost(Duration stopTimeout) {
