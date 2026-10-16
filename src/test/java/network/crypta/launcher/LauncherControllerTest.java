@@ -133,9 +133,13 @@ class LauncherControllerTest {
       assertTrue(controller.launchedUris().isEmpty());
       assertNull(controller.getState().knownPort());
       Files.writeString(readinessRelease, "ready", StandardCharsets.UTF_8);
-      awaitCondition(() -> Files.exists(actualReadinessFile), "structured readiness file");
       AppState stateWithPort =
-          awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+          awaitState(
+              controller,
+              s ->
+                  Files.isRegularFile(actualReadinessFile)
+                      && s.knownPort() != null
+                      && s.knownPort() == TEST_PORT);
       assertEquals(TEST_PORT, stateWithPort.knownPort());
       assertEquals(LauncherReadinessInfo.DEFAULT_UI_ROOT, stateWithPort.knownUiRoot());
       awaitCondition(
