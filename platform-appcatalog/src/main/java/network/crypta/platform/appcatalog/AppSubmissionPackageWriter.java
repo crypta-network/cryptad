@@ -396,30 +396,18 @@ public final class AppSubmissionPackageWriter {
           parent, "crypta-app-submission-", ".zip", ownerOnlyFileAttribute());
     } catch (UnsupportedOperationException _) {
       Path artifact = Files.createTempFile(parent, "crypta-app-submission-", ".zip");
-      trySetOwnerOnlyFilePermissions(artifact);
-      return artifact;
+      try {
+        AppCatalogFilePermissions.restrictOwnerOnlyFile(artifact);
+        return artifact;
+      } catch (IOException | RuntimeException exception) {
+        Files.deleteIfExists(artifact);
+        throw exception;
+      }
     }
   }
 
   private static FileAttribute<Set<PosixFilePermission>> ownerOnlyFileAttribute() {
     return PosixFilePermissions.asFileAttribute(OWNER_ONLY_FILE_PERMISSIONS);
-  }
-
-  private static void trySetOwnerOnlyFilePermissions(Path artifact) throws IOException {
-    try {
-      Files.setPosixFilePermissions(artifact, OWNER_ONLY_FILE_PERMISSIONS);
-    } catch (UnsupportedOperationException _) {
-      restrictPortableArtifactPermissions(artifact);
-    }
-  }
-
-  private static void restrictPortableArtifactPermissions(Path artifact) throws IOException {
-    java.io.File file = artifact.toFile();
-    if (!file.setReadable(true, true)
-        || !file.setWritable(true, true)
-        || !file.setExecutable(false, true)) {
-      throw new IOException("failed to restrict submission artifact permissions");
-    }
   }
 
   private static void addBundleEntries(

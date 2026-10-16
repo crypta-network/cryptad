@@ -599,7 +599,7 @@ class AppUpdateSchedulerTest {
         new AppCatalogReviewMetadata(AppCatalogReviewStatus.REVIEWED, null),
         AppCatalogChangelog.EMPTY,
         List.of(),
-        URI.create("file:///tmp/queue-manager-" + UPDATE_VERSION + ".zip"),
+        Path.of("queue-manager-" + UPDATE_VERSION + ".zip").toAbsolutePath().toUri(),
         DIGEST,
         1234L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,

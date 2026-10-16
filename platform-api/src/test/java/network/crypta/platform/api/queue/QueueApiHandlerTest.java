@@ -390,7 +390,7 @@ class QueueApiHandlerTest {
         queueInsertPort.lastLocalFileRequest);
     assertEquals("create_local_file_insert", result.get("operation"));
     assertEquals("file", result.get("sourceType"));
-    assertEquals("/tmp/publisher/file.txt", result.get("sourcePath"));
+    assertEquals(new File("/tmp/publisher/file.txt").getPath(), result.get("sourcePath"));
     assertEquals("SSK@publisher-file", result.get("insertUri"));
     assertEquals("publisher-file-1", result.get("identifier"));
     assertEquals("STARTED", result.get("outcome"));
@@ -517,7 +517,7 @@ class QueueApiHandlerTest {
         queueInsertPort.lastLocalDirectoryRequest);
     assertEquals("create_local_directory_insert", result.get("operation"));
     assertEquals("directory", result.get("sourceType"));
-    assertEquals("/tmp/publisher/site", result.get("sourcePath"));
+    assertEquals(new File("/tmp/publisher/site").getPath(), result.get("sourcePath"));
     assertEquals("SSK@publisher-site", result.get("insertUri"));
     assertEquals("publisher-dir-1", result.get("identifier"));
     assertEquals("IDENTIFIER_COLLISION", result.get("outcome"));
