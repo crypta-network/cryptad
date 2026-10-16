@@ -750,3 +750,27 @@ skips, and all 50 included-build tests pass without skips. Kotlin formatting pas
 implementation-evidence commitments match the current bytes. The fixed-cutoff assessment retains
 49 requirements, 47 unresolved, verified local consistency and Phase 12 incomplete. These Linux
 checks do not establish native macOS/Windows execution or original hosted admission.
+
+## Handoff restart fixture timing review
+
+[Linux job 117177928065](https://github.com/crypta-network/cryptad/actions/runs/38961648778/job/117177928065)
+fails the observed-handoff restart fixture with a clean root exit and no restart. The fixture ends
+its controlled child after a capture window that starts before the first process-tree observation.
+If that observation is delayed, the child has not actually survived the host's handoff-confirmation
+grace when the fixture ends it. The resulting clean-exit disposition does not establish a runtime
+restart defect.
+
+The fixture now observes and asserts the running child before starting the existing capture window.
+It still requires unknown exit status and exactly one automatic restart. A private 100 ms delay
+before the first tree observation exceeds the 40 ms grace and reproduces the original failure;
+the same delayed case passes after the fix. The injected delay is removed after each check and
+does not enter the committed fixture. Runtime behavior and timing configuration remain unchanged.
+Private diagnostics remain under `build/pr1423-run38961648778/`, outside public upload rosters.
+
+All 330 AppHost module cases pass with zero failures/errors and two skips. The 41 closeout tests
+pass, formatting passes, and file-level SonarLint reports no findings with the owning test
+classpath. Only the existing AppHost test commitment advances; all 631 commitments match current
+bytes. Assertions, implementation states, classpath authority and historical commitments remain
+unchanged. The fixed-cutoff assessment retains 49 requirements, 47 unresolved, verified local
+consistency and Phase 12 incomplete. These local Linux checks do not establish hosted or native
+macOS/Windows acceptance.

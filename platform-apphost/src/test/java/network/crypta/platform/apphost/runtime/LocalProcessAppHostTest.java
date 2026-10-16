@@ -2926,6 +2926,8 @@ class LocalProcessAppHostTest {
     injectRunningProcess(
         host, RUNNER_APP_ID, snapshot, process, CompletableFuture.completedFuture(null));
 
+    // Start the child's observation clock before the capture window can expire.
+    assertEquals(AppRuntimeState.RUNNING, host.runtimeStatus(RUNNER_APP_ID).state());
     invokeCapturePostExitProcessTreeHandoff(host, process);
     childHandle.markExited();
 

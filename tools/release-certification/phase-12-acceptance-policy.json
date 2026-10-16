@@ -5595,7 +5595,7 @@
           },
           {
             "assertion": "PR-321 reviews exact platform-conditional test identities for the fixed applicability registry. Only the source-owned complementary OS branch is not applicable; missing capabilities, failed setup, unknown names and duplicate rule occurrences remain blocking. No production format or path policy changes.",
-            "digest": "sha256:761aee5a84ae3f1da9c76402d82932ed1ecdb656f0aa797f9bf7a1c626518d0e",
+            "digest": "sha256:7cb5a8bd1e12e92c7ff30045483b365200090632cb051e40a8c0ca2e75c06c79",
             "path": "platform-apphost/src/test/java/network/crypta/platform/apphost/runtime/LocalProcessAppHostTest.java"
           },
           {
