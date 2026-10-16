@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import network.crypta.fs.AppEnv;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.AppBundleSigner;
 import network.crypta.platform.appdist.AppBundleVerifier;
@@ -174,8 +175,10 @@ class CatalogMutationRecoveryTest {
       throws Exception {
     Path root = Files.createDirectory(temporary.resolve("bundle-" + version));
     Path bin = Files.createDirectory(root.resolve("bin"));
-    Path executable = bin.resolve("launch.sh");
-    Files.writeString(executable, "#!/bin/sh\nexit 0\n");
+    boolean windows = new AppEnv().isWindows();
+    String launcher = windows ? "launch.cmd" : "launch.sh";
+    Path executable = bin.resolve(launcher);
+    Files.writeString(executable, windows ? "@echo off\r\nexit /b 0\r\n" : "#!/bin/sh\nexit 0\n");
     if (Files.getFileStore(root).supportsFileAttributeView("posix")) {
       Files.setPosixFilePermissions(executable, PosixFilePermissions.fromString("rwx------"));
     }
@@ -187,7 +190,9 @@ class CatalogMutationRecoveryTest {
             + APP_ID
             + "\napp.name=Synthetic recovery fixture\napp.version="
             + version
-            + "\napp.exec=bin/launch.sh\napp.ui.mode=static\napp.ui.entry=static/index.html\n");
+            + "\napp.exec=bin/"
+            + launcher
+            + "\napp.ui.mode=static\napp.ui.entry=static/index.html\n");
     AppBundleSigner.sign(root, "publisher", publisher.getPrivate());
     var identity = verifier.verify(root);
     Path artifact = temporary.resolve("bundle-" + version + ".zip");

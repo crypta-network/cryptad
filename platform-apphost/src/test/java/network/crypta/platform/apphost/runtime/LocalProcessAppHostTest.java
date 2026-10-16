@@ -1943,7 +1943,7 @@ class LocalProcessAppHostTest {
   void updateFromDirectory_whenAppIsRunning_expectFailure() throws IOException {
     AppHostLayout appHostLayout = layout();
     AppHost host = developmentHost(appHostLayout);
-    host.installFromDirectory(stageInstalledRunnerApp(DAEMONIZED_CHILD_PROCESS_SCRIPT));
+    host.installFromDirectory(stageInstalledRunnerApp(scriptContent(new AppEnv())));
     host.start(RUNNER_APP_ID);
     Path transactionRoot = Files.createDirectories(appHostLayout.appMutationTransactionsDir());
 
@@ -3923,7 +3923,7 @@ class LocalProcessAppHostTest {
     assertEquals(
         "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin:"
             + "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin",
-        environment.get("PATH"));
+        environment.get("PATH").replace('\\', '/'));
     assertEquals(DEFAULT_TOKEN, environment.get(APP_TOKEN_ENV_NAME));
     assertEquals(RUNNER_APP_ID, environment.get("CRYPTAD_APP_ID"));
     assertEquals("shell-panel", environment.get("CRYPTAD_APP_UI_MODE"));
@@ -3944,7 +3944,7 @@ class LocalProcessAppHostTest {
     assertEquals(
         "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/usr/local/sbin:"
             + "/opt/homebrew/bin:/opt/homebrew/sbin:/opt/local/bin:/opt/local/sbin",
-        environment.get("PATH"));
+        environment.get("PATH").replace('\\', '/'));
   }
 
   @Test
@@ -5087,7 +5087,7 @@ class LocalProcessAppHostTest {
       setlocal EnableExtensions
       set > "%CRYPTAD_APP_RUN_DIR%\\captured-env.txt"
       :loop
-      timeout /t 1 /nobreak >nul
+      ping -n 2 127.0.0.1 >nul
       goto loop
       """;
     }

@@ -207,9 +207,12 @@ final class CachingFreenetStoreTest {
           CHKEncodeException,
           CHKVerifyException,
           CHKDecodeException,
-          InterruptedException {
+          InterruptedException,
+          ExecutionException,
+          TimeoutException {
     // Arrange
     File f = getStorePath("testOverMaximumSize");
+    Ticker controlledTicker = org.mockito.Mockito.mock(Ticker.class);
 
     String test = "test0";
     ClientCHKBlock block = encodeBlockCHK(test);
@@ -234,7 +237,7 @@ final class CachingFreenetStoreTest {
                 new SaltedHashStoreSizing(howManyBlocks * 5L, false, true, true)))) {
       CachingFreenetStoreTracker tracker =
           new CachingFreenetStoreTracker(
-              cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, ticker);
+              cachingFreenetStoreMaxSize, cachingFreenetStorePeriod, controlledTicker);
       try (CachingFreenetStore<CHKBlock> cachingStore =
           new CachingFreenetStore<>(store, saltStore, tracker)) {
         cachingStore.start(null, true);
@@ -254,7 +257,12 @@ final class CachingFreenetStoreTest {
           chkBlocks.add(block);
         }
 
-        waitForZero(tracker);
+        ArgumentCaptor<Runnable> thresholdFlush = ArgumentCaptor.forClass(Runnable.class);
+        verify(controlledTicker).queueTimedJob(thresholdFlush.capture(), eq(0L));
+        FutureTask<Void> flush = new FutureTask<>(thresholdFlush.getValue(), null);
+        exec.execute(flush);
+        flush.get(30, TimeUnit.SECONDS);
+        assertEquals(0L, tracker.getSizeOfCache());
         // Assert: data present in underlying store and decodable via cache
         boolean atLeastOneKey = false;
         for (int i = 0; i < howManyBlocks; i++) {

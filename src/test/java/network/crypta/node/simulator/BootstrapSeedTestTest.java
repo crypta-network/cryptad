@@ -4,16 +4,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.crypt.RandomSource;
+import network.crypta.fs.AppEnv;
 import network.crypta.runtime.bootstrap.NodeStarter;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.Test;
@@ -27,7 +28,6 @@ import org.mockito.Mockito;
 import org.slf4j.event.Level;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Answers.CALLS_REAL_METHODS;
 import static org.mockito.ArgumentMatchers.any;
@@ -47,10 +47,9 @@ class BootstrapSeedTestTest {
   @TempDir Path tempDir;
 
   @Test
-  void main_whenSeednodesFileMissing_expectExitNoSeednodes() {
-    SubprocessResult result =
-        assertTimeoutPreemptively(
-            Duration.ofSeconds(15), () -> runBootstrapSeedTestInSubprocess(tempDir, "missing"));
+  void main_whenSeednodesFileMissing_expectExitNoSeednodes()
+      throws IOException, InterruptedException {
+    SubprocessResult result = runBootstrapSeedTestInSubprocess(tempDir, "missing");
 
     assertEquals(
         expectedProcessExitCode(BootstrapSeedTest.EXIT_NO_SEEDNODES),
@@ -62,10 +61,9 @@ class BootstrapSeedTestTest {
   }
 
   @Test
-  void main_whenSeednodesFileEmpty_expectExitNoSeednodes() {
-    SubprocessResult result =
-        assertTimeoutPreemptively(
-            Duration.ofSeconds(15), () -> runBootstrapSeedTestInSubprocess(tempDir, "empty"));
+  void main_whenSeednodesFileEmpty_expectExitNoSeednodes()
+      throws IOException, InterruptedException {
+    SubprocessResult result = runBootstrapSeedTestInSubprocess(tempDir, "empty");
 
     assertEquals(
         expectedProcessExitCode(BootstrapSeedTest.EXIT_NO_SEEDNODES),
@@ -77,10 +75,9 @@ class BootstrapSeedTestTest {
   }
 
   @Test
-  void main_whenGlobalTestInitThrows_expectExitThrewSomething() {
-    SubprocessResult result =
-        assertTimeoutPreemptively(
-            Duration.ofSeconds(15), () -> runBootstrapSeedTestInSubprocess(tempDir, "throw-init"));
+  void main_whenGlobalTestInitThrows_expectExitThrewSomething()
+      throws IOException, InterruptedException {
+    SubprocessResult result = runBootstrapSeedTestInSubprocess(tempDir, "throw-init");
 
     assertEquals(
         expectedProcessExitCode(BootstrapSeedTest.EXIT_THREW_SOMETHING),
@@ -105,6 +102,8 @@ class BootstrapSeedTestTest {
       throws IOException, InterruptedException {
     List<String> command = new ArrayList<>();
     command.add(javaBinaryPath());
+    // Load instrumentation at JVM startup rather than requiring a second attach process.
+    command.add("-javaagent:" + mockitoAgentPath());
     command.add("-cp");
     command.add(System.getProperty("java.class.path"));
     command.add(BootstrapSeedTestRunner.class.getName());
@@ -129,13 +128,24 @@ class BootstrapSeedTestTest {
     outputReader.setDaemon(true);
     outputReader.start();
 
-    boolean finished = process.waitFor(10, TimeUnit.SECONDS);
-    if (!finished) {
-      process.destroyForcibly();
-      throw new IOException(
-          "BootstrapSeedTest subprocess did not exit in time: " + String.join(" ", command));
+    boolean finished;
+    try {
+      finished = process.waitFor(60, TimeUnit.SECONDS);
+    } finally {
+      if (process.isAlive()) {
+        process.destroyForcibly();
+        process.waitFor(10, TimeUnit.SECONDS);
+      }
+      outputReader.join(Duration.ofSeconds(2).toMillis());
     }
-    outputReader.join(Duration.ofSeconds(2).toMillis());
+    if (!finished) {
+      throw new IOException(
+          "BootstrapSeedTest subprocess did not exit within 60 seconds (mode="
+              + mode
+              + ").\n"
+              + OUTPUT_PREFIX
+              + outputBuffer.toString(StandardCharsets.UTF_8));
+    }
     if (outputError.get() != null) {
       throw new IOException("Failed reading subprocess output", outputError.get());
     }
@@ -146,12 +156,7 @@ class BootstrapSeedTestTest {
   }
 
   private static int expectedProcessExitCode(int javaExitCode) {
-    String osName = System.getProperty("os.name");
-    if (osName == null) {
-      return javaExitCode & 0xFF;
-    }
-    String normalized = osName.toLowerCase(Locale.ROOT);
-    if (normalized.contains("win")) {
+    if (new AppEnv().isWindows()) {
       return javaExitCode;
     }
     // POSIX process exit codes are 8-bit; System.exit(>255) wraps.
@@ -160,7 +165,15 @@ class BootstrapSeedTestTest {
 
   private static String javaBinaryPath() {
     String javaHome = System.getProperty("java.home");
-    return Path.of(javaHome, "bin", "java").toString();
+    return Path.of(javaHome, "bin", new AppEnv().isWindows() ? "java.exe" : "java").toString();
+  }
+
+  private static Path mockitoAgentPath() throws IOException {
+    try {
+      return Path.of(Mockito.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    } catch (URISyntaxException exception) {
+      throw new IOException("Cannot locate the Mockito instrumentation agent", exception);
+    }
   }
 
   private record SubprocessResult(int exitCode, String output, List<String> command) {

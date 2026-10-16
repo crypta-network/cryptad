@@ -112,7 +112,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             wrapper=./gradlew.bat
           fi
-          "$wrapper" test spotbugsMain spotbugsTest errorproneReport -Pphase12Evidence=true
+          "$wrapper" test spotbugsMain spotbugsTest errorproneReport -Pphase12Evidence=true --continue
 
       # Failed jobs also retain fixed typed facts. Raw XML, diagnostics, names and payload hashes
       # remain private; authentic failed/incomplete evidence never grants acceptance.
