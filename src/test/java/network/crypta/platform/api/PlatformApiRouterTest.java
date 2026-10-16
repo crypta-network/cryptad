@@ -121,7 +121,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.invocation.InvocationOnMock;
@@ -188,10 +187,12 @@ class PlatformApiRouterTest {
 
   @TempDir private Path tempDir;
 
-  @InjectMocks private PlatformApiRouter router;
+  private PlatformApiRouter router;
 
   @BeforeEach
   void setUp() throws IOException {
+    router =
+        new PlatformApiRouter(runtimePorts, appHost, null, null, appAuditLog, appUiOriginRegistry);
     nodeInfoPort = runtimePorts.nodeInfo();
     peerPort = runtimePorts.peer();
     darknetConnectionsPort = runtimePorts.darknetConnections();

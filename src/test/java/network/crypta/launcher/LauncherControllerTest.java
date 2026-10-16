@@ -96,46 +96,65 @@ class LauncherControllerTest {
     Path actualReadinessFile = createReadinessFilePath(tempDir, "configured-runtime");
     Path daemonLogFile = createDaemonLogFilePath(tempDir);
     Path legacyDetectedMarker = tempDir.resolve("legacy-detected.marker");
-    LauncherController controller = controller(() -> initialReadinessFile, () -> daemonLogFile);
+    Path readinessRelease = tempDir.resolve("allow-readiness.marker");
+    Path exitRelease = tempDir.resolve("allow-exit.marker");
+    RecordingLauncherController controller =
+        new RecordingLauncherController(tempDir, () -> initialReadinessFile, () -> daemonLogFile);
     CopyOnWriteArrayList<String> logs = new CopyOnWriteArrayList<>();
     controller.addLogListener(logs::add);
 
     Path wrapperConf = writeWrapperConf(tempDir);
     writeStructuredReadinessCryptadScript(
-        tempDir, actualReadinessFile, daemonLogFile, legacyDetectedMarker);
+        tempDir,
+        actualReadinessFile,
+        daemonLogFile,
+        legacyDetectedMarker,
+        LauncherReadinessInfo.DEFAULT_UI_ROOT,
+        readinessRelease,
+        exitRelease);
 
-    controller.start();
+    try {
+      controller.start();
 
-    awaitState(controller, AppState::isRunning);
-    awaitLog(logs, l -> l.contains("Starting FProxy on"));
-    awaitCondition(
-        () -> Files.exists(legacyDetectedMarker),
-        "legacy FProxy marker before structured readiness");
-    assertFalse(isBrowserAutoOpened(controller));
-    assertNull(controller.getState().knownPort());
-    assertFalse(isBrowserAutoOpened(controller));
-    awaitCondition(() -> Files.exists(actualReadinessFile), "structured readiness file");
-    AppState stateWithPort =
-        awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
-    assertEquals(TEST_PORT, stateWithPort.knownPort());
-    assertEquals(LauncherReadinessInfo.DEFAULT_UI_ROOT, stateWithPort.knownUiRoot());
-    awaitCondition(() -> isBrowserAutoOpened(controller), "browser auto-open after readiness");
-    assertTrue(isBrowserAutoOpened(controller));
+      awaitState(controller, AppState::isRunning);
+      awaitLog(logs, l -> l.contains("Starting FProxy on"));
+      awaitCondition(
+          () -> Files.exists(legacyDetectedMarker),
+          "legacy FProxy marker before structured readiness");
+      assertTrue(controller.launchedUris().isEmpty());
+      assertNull(controller.getState().knownPort());
+      Files.writeString(readinessRelease, "ready", StandardCharsets.UTF_8);
+      awaitCondition(() -> Files.exists(actualReadinessFile), "structured readiness file");
+      AppState stateWithPort =
+          awaitState(controller, s -> s.knownPort() != null && s.knownPort() == TEST_PORT);
+      assertEquals(TEST_PORT, stateWithPort.knownPort());
+      assertEquals(LauncherReadinessInfo.DEFAULT_UI_ROOT, stateWithPort.knownUiRoot());
+      awaitCondition(
+          () -> !controller.launchedUris().isEmpty(), "browser auto-open after readiness");
+      assertEquals(List.of(URI.create("http://localhost:8888/")), controller.launchedUris());
 
-    AppState stopped =
-        awaitState(
-            controller, s -> !s.isRunning() && s.knownPort() != null && s.knownPort() == TEST_PORT);
-    assertFalse(stopped.isRunning());
+      awaitLog(logs, l -> l.contains("READY"));
+      Files.writeString(exitRelease, "done", StandardCharsets.UTF_8);
+      AppState stopped =
+          awaitState(
+              controller,
+              s -> !s.isRunning() && s.knownPort() != null && s.knownPort() == TEST_PORT);
+      assertFalse(stopped.isRunning());
 
-    awaitLog(logs, l -> l.contains("READY"));
-    assertFalse(logs.stream().anyMatch(l -> l.contains("Run dir:")));
-    assertTrue(logs.stream().anyMatch(l -> l.contains("Starting 'cryptad")));
-    assertTrue(logs.stream().anyMatch(l -> l.contains("exec:")));
+      assertFalse(logs.stream().anyMatch(l -> l.contains("Run dir:")));
+      assertTrue(logs.stream().anyMatch(l -> l.contains("Starting 'cryptad")));
+      assertTrue(logs.stream().anyMatch(l -> l.contains("exec:")));
 
-    var confLines = Files.readAllLines(wrapperConf, StandardCharsets.UTF_8);
-    assertTrue(confLines.stream().anyMatch(l -> l.trim().equals("wrapper.console.flush=TRUE")));
+      var confLines = Files.readAllLines(wrapperConf, StandardCharsets.UTF_8);
+      assertTrue(confLines.stream().anyMatch(l -> l.trim().equals("wrapper.console.flush=TRUE")));
 
-    controller.shutdownAndWait();
+    } finally {
+      try {
+        Files.writeString(readinessRelease, "ready", StandardCharsets.UTF_8);
+      } finally {
+        releaseFixtureProcess(controller, exitRelease);
+      }
+    }
   }
 
   @Test
@@ -1149,7 +1168,8 @@ class LauncherControllerTest {
       }
       sleepShort();
     }
-    throw new AssertionError("Timed out waiting for expected launcher log line");
+    throw new AssertionError(
+        "Timed out waiting for expected launcher log line; observed: " + lines);
   }
 
   private static AppState awaitState(
@@ -1349,14 +1369,14 @@ class LauncherControllerTest {
   }
 
   private static void writeStructuredReadinessCryptadScript(
-      Path baseDir, Path readinessFile, Path daemonLogFile, Path legacyDetectedMarker)
+      Path baseDir,
+      Path readinessFile,
+      Path daemonLogFile,
+      Path legacyDetectedMarker,
+      String uiRoot)
       throws Exception {
     writeStructuredReadinessCryptadScript(
-        baseDir,
-        readinessFile,
-        daemonLogFile,
-        legacyDetectedMarker,
-        LauncherReadinessInfo.DEFAULT_UI_ROOT);
+        baseDir, readinessFile, daemonLogFile, legacyDetectedMarker, uiRoot, null, null);
   }
 
   private static void writeStructuredReadinessCryptadScript(
@@ -1364,7 +1384,9 @@ class LauncherControllerTest {
       Path readinessFile,
       Path daemonLogFile,
       Path legacyDetectedMarker,
-      String uiRoot)
+      String uiRoot,
+      Path readinessRelease,
+      Path exitRelease)
       throws Exception {
     Path binDir = baseDir.resolve("bin");
     Files.createDirectories(binDir);
@@ -1386,7 +1408,9 @@ class LauncherControllerTest {
               "echo Starting FProxy on 127.0.0.1:" + TEST_PORT,
               "echo legacy>\"" + markerPath + "\"",
               "echo   Run dir:      " + runDir + ">>\"" + daemonLogPath + "\"",
-              "ping -n 2 127.0.0.1 > nul",
+              readinessRelease == null
+                  ? "ping -n 2 127.0.0.1 > nul"
+                  : waitForFixtureSignal(readinessRelease, true, "readiness"),
               "(",
               "echo version=" + LauncherReadinessInfo.VERSION_1,
               "echo state=" + LauncherReadinessInfo.READY_STATE,
@@ -1394,7 +1418,9 @@ class LauncherControllerTest {
               "echo ui.root=" + uiRoot,
               ") > \"" + readinessPath + "\"",
               "echo READY",
-              "ping -n 2 127.0.0.1 > nul");
+              exitRelease == null
+                  ? "ping -n 2 127.0.0.1 > nul"
+                  : waitForFixtureRelease(exitRelease, true));
     } else {
       content =
           String.join(
@@ -1403,7 +1429,9 @@ class LauncherControllerTest {
               "echo \"Starting FProxy on 127.0.0.1:" + TEST_PORT + "\"",
               "printf 'legacy\\n' > \"" + markerPath + "\"",
               "printf '  Run dir:      " + runDir + "\\n' >> \"" + daemonLogPath + "\"",
-              "sleep " + SHELL_SLEEP_SHORT,
+              readinessRelease == null
+                  ? "sleep " + SHELL_SLEEP_SHORT
+                  : waitForFixtureSignal(readinessRelease, false, "readiness"),
               "cat <<'EOF' > \"" + readinessPath + "\"",
               "version=" + LauncherReadinessInfo.VERSION_1,
               "state=" + LauncherReadinessInfo.READY_STATE,
@@ -1411,7 +1439,9 @@ class LauncherControllerTest {
               "ui.root=" + uiRoot,
               "EOF",
               "echo \"READY\"",
-              "sleep " + SHELL_SLEEP_MEDIUM);
+              exitRelease == null
+                  ? "sleep " + SHELL_SLEEP_MEDIUM
+                  : waitForFixtureRelease(exitRelease, false));
     }
     Files.writeString(script, content, StandardCharsets.UTF_8);
 
@@ -1876,6 +1906,20 @@ class LauncherControllerTest {
           "goto awaitFixtureRelease");
     }
     return "while [ ! -f \"" + path + "\" ]; do sleep " + SHELL_SLEEP_LOOP + "; done";
+  }
+
+  private static String waitForFixtureSignal(Path signalFile, boolean isWindows, String label) {
+    if (!isWindows) {
+      return waitForFixtureRelease(signalFile, false);
+    }
+    String path = signalFile.toAbsolutePath().toString();
+    return String.join(
+        "\n",
+        ":await_" + label,
+        "if exist \"" + path + "\" goto received_" + label,
+        "ping -n 2 127.0.0.1 > nul",
+        "goto await_" + label,
+        ":received_" + label);
   }
 
   private static void releaseFixtureProcess(LauncherController controller, Path releaseFile)

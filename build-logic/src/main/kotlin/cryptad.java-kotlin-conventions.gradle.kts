@@ -291,6 +291,8 @@ tasks.withType<Javadoc>().configureEach {
 // Tests: settings and module opens needed at runtime
 tasks.withType<Test>().configureEach {
   useJUnitPlatform()
+  // Security-sensitive fixtures reject symlinked ancestors, including macOS /var aliases.
+  systemProperty("java.io.tmpdir", File(System.getProperty("java.io.tmpdir")).canonicalPath)
   val sourceRoster = layout.buildDirectory.file("phase12/main-java-sources.txt")
   doFirst {
     val configuredRoot = rootProject.projectDir.toPath().toAbsolutePath().normalize()
