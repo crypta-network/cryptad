@@ -210,6 +210,21 @@ def _index_modes(root):
     return result
 
 
+def _custom_source_transforms(root, paths):
+    # Repository-local attributes/configuration are not committed source authority. Do not run
+    # a clean/process filter or trust non-injective transforms such as ident expansion while
+    # deciding whether working bytes represent a committed tree. Explicit negations also block:
+    # check-attr cannot distinguish them from drivers literally named unset/unspecified.
+    for start in range(0, len(paths), 128):
+        raw = _git(root, 'check-attr', '-z', '--all', '--', *paths[start:start + 128])
+        fields = raw.split(b'\0')
+        if fields[-1] != b'' or len(fields) % 3 != 1:
+            _deny()
+        if {b'filter', b'ident', b'working-tree-encoding'}.intersection(fields[1:-1:3]):
+            return True
+    return False
+
+
 def _working_bytes_changed(root, commit):
     # A fresh private index has no cached stat records. Git must compare contents, honoring
     # checkout attributes such as CRLF, without refreshing or trusting the user's index.
@@ -258,7 +273,7 @@ def source_roster(root):
         changed = _git(root, 'diff', '--cached', '--raw', '-z', '--no-ext-diff', '--no-textconv', commit)
         committed = set(_git_names(_git(root, 'ls-tree', '-r', '--name-only', '-z', commit)))
         dirty = (bool(changed or current) or not set(paths).issubset(committed) or _working_modes_changed(root, paths)
-                 or _working_bytes_changed(root, commit))
+                 or _custom_source_transforms(root, paths) or _working_bytes_changed(root, commit))
         return SourceRoster(paths, commit, tree, 'working-source' if dirty else 'committed-source')
     source_export = (root / SOURCE_EXPORT_ROSTER).exists() or (root / SOURCE_EXPORT_ROSTER).is_symlink()
     raw = read_source(root, SOURCE_EXPORT_ROSTER if source_export else '.restricted-manifest.json')

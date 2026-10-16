@@ -59,7 +59,10 @@ There is no recursive fallback admitting arbitrary local history.
 The active-source reader rejects linked/reparse ancestors, unsafe names, special files and private
 hardlinks, bounds reads, and checks observable file/ancestor identity before and after reading. Where
 the provider offers descriptor-relative no-follow opens it uses them. Portable Windows handle and
-reparse observations do not claim persistent race-free confinement.
+reparse observations do not claim persistent race-free confinement. Source classification disables
+Git replacement objects. Explicit filter, ident and working-tree-encoding attributes prevent a
+committed-source claim before the private-index comparison can invoke or normalize them. Ordinary
+CRLF normalization remains supported. Neither classification path mutates the checkout's index.
 
 Java and included-build Kotlin static sources consult one bounded selected roster, preserving
 tracked or export-listed history-named sources while pruning unselected files and directories.
@@ -108,16 +111,25 @@ Evidence mode also observes fresh Kotlin/Java producers, processed resources and
 Complete ordered runtime, compiler and auxiliary classpaths include every directory member.
 Retention binds standard project outputs to fresh source-owned producers and dependency bytes to
 the reviewed verification metadata and, where required, offline signatures with the pinned keyring.
-Unsupported generated inputs or unavailable verification material retain unavailable coverage.
+The `interop-wire` generated `Version.java` is authenticated against the complete committed
+source template, reviewed generator/build scripts, declared integer build number and a revision
+prefix of the selected source commit. Its full bytes must match the transformation, with LF or
+CRLF line endings, before compiler or downstream runtime coverage can match. Other unsupported
+generated inputs or unavailable verification material retain unavailable coverage.
 
 Classpath membership and order come from the committed
 [`phase-12-classpaths.json`](../tools/release-certification/phase-12-classpaths.json), which binds
-210 standard Java task classpaths to 73 build-configuration files. Entries identify project paths
-or complete dependency coordinates and filenames; host/cache prefixes are omitted. Retention checks
-the roster and configuration bytes against the source commit before comparing the observed ordered
+215 task classpaths (210 standard Java and five included-build compiler/test profiles) to 73
+build-configuration files. Entries identify project paths, complete dependency coordinates and
+filenames, or versioned Gradle distribution/generated-jar identities; host/cache prefixes are omitted.
+Retention checks the roster and configuration bytes against the source commit before comparing the observed ordered
 list. A captured list cannot provide its own expected roster. Missing, additional, duplicate or
-reordered entries are invalid; absent/stale authority and unsupported bootstrap/generated profiles
-remain unavailable. Artifact-byte and fresh-producer verification still apply after membership matches.
+reordered entries are invalid; absent/stale authority remains unavailable. The maintenance task
+captures and merges the included build under the same `:build-logic` namespace as retention.
+Artifact-byte and fresh-producer verification still apply after membership matches: Gradle runtime
+and generated API jars, Kotlin DSL generated sources and plugin metadata still require independent
+authentication. Recording their membership grants no exemption and does not establish complete
+bootstrap coverage.
 
 After a reviewed build-configuration change, prepare a candidate from a checkout without additional
 init scripts or dependency overrides:

@@ -318,6 +318,54 @@ class ActiveSourceFilesTest {
   }
 
   @Test
+  fun writeRoster_whenCleanFilterMasksEdits_expectWorkingSourceWithoutIndexMutation() {
+    committedFixture()
+    val source = root.resolve("source.java")
+    val original = Files.readAllBytes(source)
+    for (driver in listOf("mask", "unset", "unspecified")) {
+      Files.writeString(root.resolve(".git/info/attributes"), "source.java filter=$driver\n")
+      git("config", "filter.$driver.clean", "git show HEAD:source.java")
+      Files.writeString(source, "class Changed {}")
+      val index = Files.readAllBytes(root.resolve(".git/index"))
+
+      assertEquals(
+        "working-source",
+        (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
+      )
+      assertArrayEquals(index, Files.readAllBytes(root.resolve(".git/index")))
+      Files.write(source, original)
+      assertEquals(
+        "working-source",
+        (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
+      )
+    }
+    Files.writeString(root.resolve(".git/info/attributes"), "")
+    assertEquals(
+      "committed-source",
+      (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
+    )
+  }
+
+  @Test
+  fun writeRoster_whenHeadHasReplacement_expectOriginalIdentityAndWorkingSource() {
+    committedFixture()
+    val original = git("rev-parse", "HEAD").toString(Charsets.US_ASCII).trim()
+    val tree = git("rev-parse", "HEAD^{tree}").toString(Charsets.US_ASCII).trim()
+    Files.writeString(root.resolve("source.java"), "class Changed {}")
+    git("add", ".")
+    commitFixture()
+    val replacement = git("rev-parse", "HEAD").toString(Charsets.US_ASCII).trim()
+    git("update-ref", "HEAD", original)
+    git("replace", original, replacement)
+
+    val manifest = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+
+    assertEquals(original, manifest["sourceCommit"])
+    assertEquals(tree, manifest["sourceTree"])
+    assertEquals("working-source", manifest["sourceClass"])
+  }
+
+  @Test
   fun writeRoster_whenCheckoutUsesCrLf_expectCommittedSourceAndDetectChangedBytes() {
     committedFixture()
     Files.writeString(root.resolve(".gitattributes"), "*.bat text eol=crlf\n")

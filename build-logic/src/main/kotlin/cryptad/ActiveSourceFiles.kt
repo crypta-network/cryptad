@@ -151,6 +151,10 @@ internal object ActiveSourceFiles {
         .directory(root)
         .redirectError(ProcessBuilder.Redirect.DISCARD)
     builder.environment().keys.removeIf { it.startsWith("GIT_") }
+    builder.environment()["GIT_NO_REPLACE_OBJECTS"] = "1"
+    builder.environment()["GIT_CONFIG_NOSYSTEM"] = "1"
+    builder.environment()["GIT_CONFIG_GLOBAL"] =
+      if (File.separatorChar == '\\') "NUL" else "/dev/null"
     if (index != null) builder.environment()["GIT_INDEX_FILE"] = index.toString()
     val process = builder.start()
     val reader = Executors.newVirtualThreadPerTaskExecutor()
@@ -169,6 +173,22 @@ internal object ActiveSourceFiles {
       reader.shutdownNow()
     }
   }
+
+  // Explicit transform attributes cannot establish committed bytes. Include negations because
+  // check-attr's state text also names valid filter drivers (unset/unspecified).
+  private fun customSourceTransforms(base: File, selected: Set<String>): Boolean =
+    selected.toList().chunked(128).any { names ->
+      val fields =
+        git(base, "check-attr", "-z", "--all", "--", *names.toTypedArray())
+          .toString(Charsets.UTF_8)
+          .split('\u0000')
+      require(fields.last() == "" && fields.size % 3 == 1) {
+        "Source transform attributes unavailable"
+      }
+      fields.dropLast(1).chunked(3).any {
+        it[1] in setOf("filter", "ident", "working-tree-encoding")
+      }
+    }
 
   private fun workingBytesChanged(base: File, commit: String): Boolean {
     // No cached stat records: compare contents with Git's checkout attribute normalization.
@@ -399,6 +419,7 @@ internal object ActiveSourceFiles {
         .isNotEmpty() ||
         selected.any { it !in committed } ||
         workingModesChanged(base, selected, trackedModes) ||
+        customSourceTransforms(base, selected) ||
         workingBytesChanged(base, commit)
     var total = 0L
     val files =

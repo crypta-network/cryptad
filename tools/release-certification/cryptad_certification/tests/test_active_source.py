@@ -259,6 +259,52 @@ class ActiveSourceTests(unittest.TestCase):
         self.assertEqual('working-source', owner.source_roster(self.root).source_class)
         self.assertEqual(index, (self.root / '.git/index').read_bytes())
 
+    def test_custom_clean_filter_cannot_mask_changed_source_bytes(self):
+        self.repository()
+        name = self.source.relative_to(self.root).as_posix()
+        for driver in ('mask', 'unset', 'unspecified'):
+            with self.subTest(driver=driver):
+                (self.root / '.git/info/attributes').write_text(name + ' filter=' + driver + '\n')
+                self.git('config', 'filter.' + driver + '.clean', 'git show HEAD:' + name)
+                self.source.write_bytes(b'VALUE = 2\n')
+                index = (self.root / '.git/index').read_bytes()
+
+                self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+                self.assertEqual(index, (self.root / '.git/index').read_bytes())
+                # Matching bytes do not authenticate a repository-local executable filter.
+                self.source.write_bytes(b'VALUE = 1\n')
+                self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+        (self.root / '.git/info/attributes').write_text('')
+        self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
+
+    def test_local_ident_expansion_cannot_hide_substituted_working_bytes(self):
+        self.repository()
+        self.source.write_bytes(b'VALUE = "$Id$"\n')
+        self.git('add', '.')
+        self.git('commit', '--quiet', '-m', 'fixture: ident source')
+        name = self.source.relative_to(self.root).as_posix()
+        (self.root / '.git/info/attributes').write_text(name + ' ident\n')
+        self.source.write_bytes(b'VALUE = "$Id: substituted bytes $"\n')
+
+        self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+
+    def test_replacement_commit_cannot_supply_original_source_identity(self):
+        self.repository()
+        original = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        tree = self.git('rev-parse', 'HEAD^{tree}').stdout.decode().strip()
+        self.source.write_bytes(b'VALUE = 2\n')
+        self.git('add', '.')
+        self.git('commit', '--quiet', '-m', 'fixture: replacement source')
+        replacement = self.git('rev-parse', 'HEAD').stdout.decode().strip()
+        self.git('update-ref', 'HEAD', original)
+        self.git('replace', original, replacement)
+
+        roster = owner.source_roster(self.root)
+
+        self.assertEqual(original, roster.source_commit)
+        self.assertEqual(tree, roster.source_tree)
+        self.assertEqual('working-source', roster.source_class)
+
     def test_clean_crlf_checkout_remains_committed_and_changed_bytes_are_working(self):
         self.repository()
         (self.root / '.gitattributes').write_bytes(b'*.bat text eol=crlf\n')

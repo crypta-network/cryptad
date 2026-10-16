@@ -1015,6 +1015,91 @@ class ClasspathEvidenceTests(unittest.TestCase):
         self.write_roster()
         self.assertEqual("unavailable", self.coverage())
 
+    def version_fixture(self):
+        template_name = "interop-wire/src/main/java/network/crypta/node/Version.java"
+        script_names = ["build.gradle.kts", "interop-wire/build.gradle.kts"]
+        paths = [self.write(name, (ci.ROOT / name).read_bytes()) for name in script_names + [template_name]]
+        self.rosters[":interop-wire:compileJava"] = {"classpath": []}
+        self.rosters[":interop-wire:test"] = {"classpath": ["project:interop-wire/build/classes/java/main"]}
+        selected = [self.name(p) for p in (self.source, self.resource, self.metadata, self.authority, *paths)]
+        self.write_roster({name: ci.digest((self.root / name).read_bytes())
+                           for name in classpaths.configuration_paths(selected)})
+        def git(*args):
+            return subprocess.run(["git", "-c", "user.name=Source fixture", "-c",
+                "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", *args],
+                cwd=self.root, check=True, capture_output=True, timeout=15).stdout.decode().strip()
+        git("init", "--quiet")
+        git("add", "--", *selected)
+        git("commit", "--quiet", "-m", "fixture: version source authority")
+        commit = git("rev-parse", "HEAD")
+        version = ci.re.findall(rb'(?m)^version = "([0-9]+)"$', (self.root / "build.gradle.kts").read_bytes())[0]
+        raw = (self.root / template_name).read_bytes().replace(b"@build_number@", version).replace(b"@git_rev@", commit[:10].encode())
+        generated = self.write("interop-wire/build/tmp/compileVersion/network/crypta/node/Version.java", raw)
+        record = {"taskPath": ":interop-wire:compileJava", "outcome": "executed",
+                  "sourceFiles": [self.file(generated)], "inputs": {"kind": "java-compile", "classpath": []}}
+        context = ci._classpath_context([], {("interop-wire", "errorprone-main"): {self.name(generated)}}, selected, commit)
+        return generated, raw, record, context
+
+    def test_generated_version_is_authenticated_from_committed_template_and_properties(self):
+        generated, raw, record, context = self.version_fixture()
+        classes = self.root / "interop-wire/build/classes/java/main"
+        self.write("interop-wire/build/classes/java/main/network/crypta/node/Version.class", b"compiled-version")
+        record.update(startedAt=1, completedAt=2, outputObservation="complete", producedOutputs=[self.snapshot(classes)])
+        context = ci._classpath_context([record], context["sources"], context["selected"], context["sourceCommit"])
+        consumer = {"taskPath": ":interop-wire:test", "startedAt": 3, "inputs": {"classpath": [self.snapshot(classes)]}}
+        for output in (raw, raw.replace(b"\n", b"\r\n")):
+            generated.write_bytes(output)
+            record["sourceFiles"] = [self.file(generated)]
+            self.assertEqual("matched", ci._classpath_producer_inputs(record, self.root, {}, context))
+            expected = {self.name(generated)}
+            self.assertEqual("matched", ci._private_compiler_sources(record, expected, self.root, {}, context))
+            context["status"].clear()
+            self.assertEqual("matched", ci._private_classpath_coverage(consumer, "classpath", self.root, {}, context))
+
+    def test_generated_version_cannot_authenticate_tampering_or_unbound_inputs(self):
+        generated, raw, record, context = self.version_fixture()
+        mutations = [raw + b"// injected source\n", raw.replace(b'GIT_REVISION = "', b'GIT_REVISION = "f'),
+                     raw.replace(b'BUILD_NUMBER_STRING = "', b'BUILD_NUMBER_STRING = "9')]
+        for output in mutations:
+            with self.subTest(mutation=mutations.index(output)):
+                generated.write_bytes(output)
+                record["sourceFiles"] = [self.file(generated)]
+                self.assertEqual("invalid", ci._classpath_producer_inputs(record, self.root, {}, context))
+        generated.write_bytes(raw)
+        record["sourceFiles"] = [self.file(generated)]
+        template = self.root / "interop-wire/src/main/java/network/crypta/node/Version.java"
+        template.write_bytes(template.read_bytes() + b"// uncommitted template\n")
+        self.assertEqual("invalid", ci._classpath_producer_inputs(record, self.root, {}, context))
+        context["sourceCommit"] = None
+        self.assertEqual("unavailable", ci._classpath_producer_inputs(record, self.root, {}, context))
+        context["sources"][("interop-wire", "errorprone-main")].add("interop-wire/build/generated/Other.java")
+        self.assertEqual("unavailable", ci._classpath_producer_inputs(record, self.root, {}, context))
+
+    def test_checked_in_roster_includes_bootstrap_compiler_and_test_classpaths(self):
+        value = classpaths._validate(ci.parse((ci.ROOT / classpaths.ROSTER).read_bytes()))
+        for task in ("compileJava", "compileTestJava", "compileKotlin", "compileTestKotlin", "test"):
+            with self.subTest(task=task):
+                self.assertIsInstance(value["tasks"][":build-logic:" + task]["classpath"], list)
+
+    def test_bootstrap_classpath_membership_is_explicit_and_preserves_gradle_artifact_boundaries(self):
+        entries = ["project:build-logic/build/classes/kotlin/test", "gradle-generated:9.7.1:gradle-api-9.7.1.jar",
+                   "gradle:9.7.1:lib/groovy-4.0.28.jar"]
+        paths = ["build-logic/build/classes/kotlin/test",
+                 str(self.root.parent / "cache/caches/9.7.1/generated-gradle-jars/gradle-api-9.7.1.jar"),
+                 str(self.root.parent / "wrapper/dists/gradle-9.7.1-bin/hash/gradle-9.7.1/lib/groovy-4.0.28.jar")]
+        self.rosters[":build-logic:test"] = {"classpath": entries}
+        self.write_roster()
+        record = {"taskPath": ":build-logic:test"}
+        actual = [{"path": path} for path in paths]
+        self.assertEqual("matched", classpaths.membership(record, "classpath", actual, self.root, self.context()))
+        for changed in ([], actual[:-1], list(reversed(actual)), actual + actual[:1]):
+            self.assertEqual("invalid", classpaths.membership(record, "classpath", changed, self.root, self.context()))
+        # Membership alone grants no artifact-byte/provenance exemption.
+        metadata = self.write("build-logic/gradle/verification-metadata.xml", self.metadata.read_bytes())
+        context = self.context()
+        context["selected"].add(self.name(metadata))
+        self.assertEqual("unavailable", ci._verified_dependency(record, Path(paths[1]), b"unverified", self.root, context))
+
     def test_cache_location_changes_preserve_coordinates_without_admitting_wrong_artifacts(self):
         relative = "modules-2/files-2.1/fixture/dependency/1/other-hash/dependency.jar"
         relocated = self.root.parent / "different-home" / relative

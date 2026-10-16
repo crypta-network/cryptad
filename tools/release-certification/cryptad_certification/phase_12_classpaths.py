@@ -37,6 +37,16 @@ def classpath_identity(root, name):
         if any(not value or any(c in value for c in ":/\\\r\n") for value in coordinates):
             return None
         return "module:" + ":".join(coordinates)
+    # These identities establish membership only. Artifact authentication remains mandatory;
+    # an unsupported Gradle/generated artifact is unavailable, never implicitly trusted here.
+    if len(parts) >= 4 and parts[-2] == "generated-gradle-jars":
+        match = re.fullmatch(r"gradle-(?:api|test-kit)-([0-9]+(?:\.[0-9]+)+)\.jar", parts[-1])
+        if match and parts[-3] == match[1]:
+            return "gradle-generated:" + match[1] + ":" + parts[-1]
+    for index, part in enumerate(parts[:-2]):
+        match = re.fullmatch(r"gradle-([0-9]+(?:\.[0-9]+)+)", part)
+        if match and parts[index + 1] == "lib" and path.suffix == ".jar":
+            return "gradle:" + match[1] + ":" + "/".join(parts[index + 1:])
     if path.is_relative_to(root):
         relative = path.relative_to(root).as_posix()
         return "project:" + relative if relative and ":" not in relative else None
@@ -75,7 +85,7 @@ def _validate(value):
                 continue
             if (type(entries) is not list or len(entries) > 4096
                     or any(not isinstance(e, str) or len(e) > 1024
-                           or not e.startswith(("project:", "module:")) for e in entries)
+                           or not e.startswith(("project:", "module:", "gradle:", "gradle-generated:")) for e in entries)
                     or len(entries) != len(set(entries))):
                 raise ValueError("invalid-classpath-authority")
     return value

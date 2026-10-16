@@ -601,6 +601,43 @@ def _classpath_producer_member(record, member):
     return path == prefix + base or path.startswith(prefix + base + "/")
 
 
+def _generated_version_coverage(root, context):
+    """Authenticate the fixed generator's bytes from its committed template and properties."""
+    from .active_source import read_source
+    commit = context.get("sourceCommit")
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+        return "unavailable"
+    try:
+        # Bind the transformation and version declaration as well as the complete template.
+        script = _reviewed_classpath_file(root, "build.gradle.kts", context)
+        _reviewed_classpath_file(root, "interop-wire/build.gradle.kts", context)
+        template = _reviewed_classpath_file(root, "interop-wire/src/main/java/network/crypta/node/Version.java", context)
+        versions = re.findall(rb'(?m)^version = "([0-9]+)"\r?$', script)
+        if len(versions) != 1:
+            return "unavailable"
+        actual = read_source(root, "interop-wire/build/tmp/compileVersion/network/crypta/node/Version.java")
+        revisions = re.findall(rb'(?m)^  public static final String GIT_REVISION = "([0-9a-f]{7,64})";\r?$', actual)
+        if len(revisions) != 1 or not commit.startswith(revisions[0].decode("ascii")):
+            return "invalid"
+        expected = template.replace(b"\r\n", b"\n").replace(b"@build_number@", versions[0]).replace(b"@git_rev@", revisions[0])
+        return "matched" if actual in (expected, expected.replace(b"\n", b"\r\n")) else "invalid"
+    except (OSError, ValueError):
+        return "invalid"
+
+
+def _private_compiler_sources(record, expected, root, checked_sources, context):
+    if record is None or expected is None:
+        return "unavailable"
+    generated = expected - context["selected"]
+    if generated:
+        if generated != {"interop-wire/build/tmp/compileVersion/network/crypta/node/Version.java"}:
+            return "unavailable"
+        status = _generated_version_coverage(root, context)
+        if status != "matched":
+            return status
+    return _private_source_coverage(record, expected, root, checked_sources)
+
+
 def _classpath_producer_inputs(record, root, checked_sources, context):
     inputs = record.get("inputs", {})
     if type(inputs) is not dict:
@@ -618,8 +655,6 @@ def _classpath_producer_inputs(record, root, checked_sources, context):
         return "invalid"
     if kind == "java-compile":
         expected = context["sources"].get((module, "errorprone-" + source_set))
-        if expected is not None and not expected.issubset(context["selected"]):
-            return "unavailable"
     elif kind in {"resources", "kotlin-compile"}:
         folder = "resources" if kind == "resources" else "kotlin"
         expected = {p for p in context["selected"] if p.startswith(prefix + "src/" + source_set + "/" + folder + "/")}
@@ -636,7 +671,8 @@ def _classpath_producer_inputs(record, root, checked_sources, context):
         return "matched"
     else:
         return "unavailable"
-    status = _private_source_coverage(record, expected, root, checked_sources)
+    status = (_private_compiler_sources(record, expected, root, checked_sources, context)
+              if kind == "java-compile" else _private_source_coverage(record, expected, root, checked_sources))
     if status == "matched" and kind in {"java-compile", "kotlin-compile"} and record.get("outcome") != "no-source":
         status = _private_classpath_coverage(record, "classpath", root, checked_sources, context)
     return status
@@ -866,7 +902,9 @@ def retain_reports_v2(output, started_file, lane):
     for module, kind in _v2_rows():
         task = next(task for task, selected_kind in TASK_KINDS.items() if selected_kind == kind)
         record = by_task.get(_task_path(module, task))
-        coverage = _private_source_coverage(record, expected_sources.get((module, kind)), ROOT, checked_sources)
+        expected = expected_sources.get((module, kind))
+        coverage = (_private_compiler_sources(record, expected, ROOT, checked_sources, classpath_context)
+                    if kind.startswith("errorprone") else _private_source_coverage(record, expected, ROOT, checked_sources))
         if kind == "junit" and coverage == "matched":
             coverage = _private_test_coverage(record, module, ROOT, checked_sources, classpath_context)
         if kind.startswith("spotbugs") and coverage == "matched":
