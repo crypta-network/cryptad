@@ -220,6 +220,63 @@ class ActiveSourceTests(unittest.TestCase):
                 self.assertEqual('working-source', owner.source_roster(self.root).source_class)
                 self.source.chmod(0o644)
 
+    @unittest.skipUnless(os.name == 'posix', 'requires actual POSIX permission bits')
+    def test_ignored_mode_changes_cannot_pass_certification_source_clean(self):
+        from cryptad_certification import phase_12_ci as ci
+
+        self.repository()
+        name = self.source.relative_to(self.root).as_posix()
+        for indexed in (False, True):
+            self.source.chmod(0o755 if indexed else 0o644)
+            self.git('update-index', '--chmod=+x' if indexed else '--chmod=-x', '--', name)
+            self.git('commit', '--quiet', '--allow-empty', '-m', 'fixture: indexed mode')
+            self.git('config', 'core.filemode', 'false')
+            source = {'commit': self.git('rev-parse', 'HEAD').stdout.decode().strip(),
+                      'tree': self.git('rev-parse', 'HEAD^{tree}').stdout.decode().strip()}
+            for mode in ((0o644,) if indexed else (0o755, 0o654, 0o645)):
+                with self.subTest(indexed=indexed, mode=oct(mode)):
+                    self.source.chmod(mode)
+                    self.assertEqual(b'', self.git('status', '--porcelain').stdout)
+                    index = (self.root / '.git/index').read_bytes()
+                    with patch.object(ci, 'ROOT', self.root):
+                        self.assertFalse(ci._source_clean(source))
+                    self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+                    self.assertEqual(index, (self.root / '.git/index').read_bytes())
+            self.source.chmod(0o755 if indexed else 0o644)
+            self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
+
+    def test_cached_stat_cannot_hide_same_size_working_byte_edits(self):
+        self.repository()
+        self.git('config', 'core.trustctime', 'false')
+        stamp = self.source.stat().st_mtime_ns - 10_000_000_000
+        os.utime(self.source, ns=(stamp, stamp))
+        self.git('update-index', '--refresh')
+        self.source.write_bytes(b'VALUE = 2\n')
+        os.utime(self.source, ns=(stamp, stamp))
+        self.assertEqual(b'', self.git('status', '--porcelain').stdout)
+        index = (self.root / '.git/index').read_bytes()
+
+        self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+        self.assertEqual(index, (self.root / '.git/index').read_bytes())
+
+    def test_clean_crlf_checkout_remains_committed_and_changed_bytes_are_working(self):
+        self.repository()
+        (self.root / '.gitattributes').write_bytes(b'*.bat text eol=crlf\n')
+        script = self.root / 'native space é.bat'
+        script.write_bytes(b'echo one\n')
+        self.git('add', '.')
+        self.git('commit', '--quiet', '-m', 'fixture: native checkout line endings')
+        script.unlink()
+        self.git('checkout-index', '--force', '--all')
+        self.assertEqual(b'echo one\r\n', script.read_bytes())
+        self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
+        with windows_source_metadata():
+            self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
+
+        script.write_bytes(b'echo two\r\n')
+
+        self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+
     def test_tracked_deletions_select_current_files_before_and_after_staging(self):
         self.repository()
         history = self.source.parent / '.stversions'

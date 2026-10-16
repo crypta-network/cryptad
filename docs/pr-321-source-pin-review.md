@@ -468,3 +468,37 @@ and 56 transparency bundle/source consumer tests. Kotlin formatting checks pass,
 implementation-evidence file commitments match. The separate assessment at
 `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These local
 checks do not establish native hosted execution for the successor commit.
+
+## Git-independent execute modes and uncached working bytes
+
+[Comment 4291086946](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4291086946)
+identified that `core.fileMode=false` hides changes to tracked execute bits. Both the Python source
+reader and Kotlin archive writer now compare portable host execute bits with indexed modes.
+Providers without portable Unix modes retain the index's execute metadata; Windows ACL execute
+access does not establish an execute bit.
+
+Source classification now compares staged changes with HEAD and working bytes against a fresh
+temporary index initialized from that commit. This avoids trusting cached stat records while
+honoring Git checkout attributes, including CRLF batch files. The comparison disables private
+split/sparse index behavior, stat shortcuts, external diff commands and diff textconv drivers. It does
+not refresh the user's index or write Git configuration. Existing rejection of hidden index flags,
+source selection and excluded untracked history remains in force.
+
+Real-Git regressions reproduce the ignored mode change through `_source_clean()` and the archive
+writer. They cover both mode directions, group/other execute bits, same-size byte edits with
+restored timestamps, unchanged user index bytes, and clean CRLF checkouts followed by actual
+content edits. The Python CRLF case also exercises Windows metadata interpretation.
+
+Ten existing commitments advance for the four changed implementation/test files. Four additional
+stale commitments from the preceding `35ec393985` native-fixture fix advance after reviewing its
+two committed file diffs: canonical test JVM temporary roots and the federated catalog ancestor
+symlink regression. Their predecessor/current bytes are retained separately, and the catalog test
+class passes locally. Assertions, acceptance scope, implementation states and historical
+commitments remain unchanged. Private before bytes, digest reviews and verification logs remain
+under `build/pr1423-source-mode/`, outside public upload rosters.
+
+Local Linux checks pass all 43 included-build tests, 145 source/CI/closeout Python tests, 56
+transparency consumer tests and eight catalog bootstrap tests. Kotlin formatting checks pass.
+All 631 implementation-evidence file commitments match. The separate assessment at
+`2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These checks
+do not establish native hosted execution for the successor commit.

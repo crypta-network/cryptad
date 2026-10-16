@@ -134,7 +134,7 @@ internal object ActiveSourceFiles {
     return select(base, tracked, untracked, deleted)
   }
 
-  private fun git(root: File, vararg arguments: String): ByteArray {
+  private fun git(root: File, vararg arguments: String, index: Path? = null): ByteArray {
     val builder =
       ProcessBuilder(
           listOf(
@@ -149,6 +149,7 @@ internal object ActiveSourceFiles {
         .directory(root)
         .redirectError(ProcessBuilder.Redirect.DISCARD)
     builder.environment().keys.removeIf { it.startsWith("GIT_") }
+    if (index != null) builder.environment()["GIT_INDEX_FILE"] = index.toString()
     val process = builder.start()
     val reader = Executors.newVirtualThreadPerTaskExecutor()
     try {
@@ -165,6 +166,50 @@ internal object ActiveSourceFiles {
       if (process.isAlive) process.destroyForcibly()
       reader.shutdownNow()
     }
+  }
+
+  private fun workingBytesChanged(base: File, commit: String): Boolean {
+    // No cached stat records: compare contents with Git's checkout attribute normalization.
+    val directory = Files.createTempDirectory("cryptad-source-index-").toRealPath()
+    val index = directory.resolve("index")
+    val options =
+      arrayOf(
+        "-c",
+        "core.splitIndex=false",
+        "-c",
+        "core.sparseCheckout=false",
+        "-c",
+        "core.ignoreStat=false",
+        "-c",
+        "core.fileMode=false",
+      )
+    try {
+      git(base, *options, "read-tree", commit, index = index)
+      return git(
+          base,
+          *options,
+          "diff",
+          "--raw",
+          "-z",
+          "--no-ext-diff",
+          "--no-textconv",
+          index = index,
+        )
+        .isNotEmpty()
+    } finally {
+      Files.deleteIfExists(directory.resolve("index.lock"))
+      Files.deleteIfExists(index)
+      Files.delete(directory)
+    }
+  }
+
+  private fun workingModesChanged(
+    base: File,
+    selected: Set<String>,
+    indexed: Map<String, Boolean>,
+  ): Boolean = selected.any { name ->
+    val actual = executableBit(base.resolve(name).toPath())
+    name !in indexed || (actual != null && actual != indexed[name])
   }
 
   fun select(
@@ -342,8 +387,10 @@ internal object ActiveSourceFiles {
     }
     val trackedModes by lazy { trackedExecutableModes(git(base, GIT_LS_FILES, "--stage", "-z")) }
     val dirty =
-      git(base, "status", "--porcelain", "--untracked-files=no").isNotEmpty() ||
-        selected.any { it !in trackedModes }
+      git(base, "diff", "--cached", "--raw", "-z", "--no-ext-diff", "--no-textconv", commit)
+        .isNotEmpty() ||
+        workingModesChanged(base, selected, trackedModes) ||
+        workingBytesChanged(base, commit)
     var total = 0L
     val files =
       selected

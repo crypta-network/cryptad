@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
+import tempfile
 import threading
 
 MAX_PATHS = 100000
@@ -147,10 +148,12 @@ def read_source(root, name, maximum=MAX_ROSTER):
         _deny()
 
 
-def _git(root, *args):
+def _git(root, *args, index=None):
     try:
         environment = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
         environment.update(GIT_NO_REPLACE_OBJECTS='1', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+        if index is not None:
+            environment['GIT_INDEX_FILE'] = str(index)
         with subprocess.Popen(['git', '-c', 'safe.directory=', '-c', f'safe.directory={root}',
                                '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false',
                                '--no-optional-locks', *args], cwd=root, env=environment,
@@ -187,6 +190,46 @@ def _git_names(raw):
     return names
 
 
+def _index_modes(root):
+    raw = _git(root, 'ls-files', '--stage', '-z')
+    if raw and not raw.endswith(b'\0'):
+        _deny()
+    result = {}
+    for row in raw.split(b'\0')[:-1]:
+        metadata, separator, name = row.partition(b'\t')
+        match = re.fullmatch(b'(100644|100755) [0-9a-f]{40}(?:[0-9a-f]{24})? 0', metadata)
+        if not separator or match is None:
+            _deny()
+        names = _git_names(name + b'\0')
+        if len(names) != 1:
+            _deny()
+        selected = names[0]
+        if selected in result or len(result) >= MAX_PATHS:
+            _deny()
+        result[selected] = match[1] == b'100755'
+    return result
+
+
+def _working_bytes_changed(root, commit):
+    # A fresh private index has no cached stat records. Git must compare contents, honoring
+    # checkout attributes such as CRLF, without refreshing or trusting the user's index.
+    options = ('-c', 'core.splitIndex=false', '-c', 'core.sparseCheckout=false',
+               '-c', 'core.ignoreStat=false', '-c', 'core.fileMode=false')
+    with tempfile.TemporaryDirectory(prefix='cryptad-source-index-') as temporary:
+        index = Path(temporary) / 'index'
+        _git(root, *options, 'read-tree', commit, index=index)
+        return bool(_git(root, *options, 'diff', '--raw', '-z', '--no-ext-diff',
+                         '--no-textconv', index=index))
+
+
+def _working_modes_changed(root, paths):
+    if os.name == 'nt':
+        return False  # Windows execute access is not a portable Unix execute bit.
+    modes = _index_modes(root)
+    return any(name not in modes or bool(_checked_path(root, name).stat().st_mode & 0o111) != modes[name]
+               for name in paths)
+
+
 def source_roster(root):
     """Select current Git bytes or a manifest-bound source export; never recursively scan."""
     root = Path(root).absolute()
@@ -212,8 +255,10 @@ def source_roster(root):
         tagged = _git(root, 'ls-files', '--cached', '-v', '-z')
         if any(row and not row.startswith(b'H ') for row in tagged.split(b'\0')):
             _deny()
-        changed = _git(root, 'status', '--porcelain', '--untracked-files=no')
-        return SourceRoster(paths, commit, tree, 'working-source' if changed or current else 'committed-source')
+        changed = _git(root, 'diff', '--cached', '--raw', '-z', '--no-ext-diff', '--no-textconv', commit)
+        dirty = (bool(changed or current) or _working_modes_changed(root, paths)
+                 or _working_bytes_changed(root, commit))
+        return SourceRoster(paths, commit, tree, 'working-source' if dirty else 'committed-source')
     source_export = (root / SOURCE_EXPORT_ROSTER).exists() or (root / SOURCE_EXPORT_ROSTER).is_symlink()
     raw = read_source(root, SOURCE_EXPORT_ROSTER if source_export else '.restricted-manifest.json')
     try:

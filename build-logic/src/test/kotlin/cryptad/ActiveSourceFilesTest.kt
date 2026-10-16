@@ -6,6 +6,7 @@ import java.net.URI
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
 import java.nio.file.attribute.PosixFilePermissions
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
@@ -268,12 +269,88 @@ class ActiveSourceFilesTest {
     assertThrows(IllegalArgumentException::class.java) { writeRepositoryRoster() }
   }
 
+  @Test
+  fun writeRoster_whenGitIgnoresExecuteModes_expectPortableHostComparison() {
+    committedFixture()
+    val source = root.resolve("source.java")
+    val posix = Files.getFileStore(source).supportsFileAttributeView("posix")
+    git("config", "core.filemode", "false")
+    for (indexed in listOf(false, true)) {
+      git("update-index", if (indexed) "--chmod=+x" else "--chmod=-x", "--", "source.java")
+      commitFixture()
+      for (permissions in listOf("rw-r--r--", "rwxr-xr-x", "rw-r-xr--", "rw-r--r-x")) {
+        if (posix)
+          Files.setPosixFilePermissions(source, PosixFilePermissions.fromString(permissions))
+        assertArrayEquals(byteArrayOf(), git("status", "--porcelain", "--untracked-files=no"))
+        val index = Files.readAllBytes(root.resolve(".git/index"))
+
+        val manifest = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+
+        val executable = if (posix) permissions.contains('x') else indexed
+        assertEquals(
+          if (executable != indexed) "working-source" else "committed-source",
+          manifest["sourceClass"],
+        )
+        val record = (manifest["files"] as Map<*, *>)["source.java"] as Map<*, *>
+        assertEquals(executable, record["executable"])
+        assertArrayEquals(index, Files.readAllBytes(root.resolve(".git/index")))
+      }
+    }
+  }
+
+  @Test
+  fun writeRoster_whenGitStatCacheHidesByteEdits_expectWorkingSourceWithoutIndexMutation() {
+    committedFixture()
+    val source = root.resolve("source.java")
+    val stamp = FileTime.fromMillis(Files.getLastModifiedTime(source).toMillis() - 10000)
+    git("config", "core.trustctime", "false")
+    Files.setLastModifiedTime(source, stamp)
+    git("update-index", "--refresh")
+    Files.writeString(source, "class Changed {}")
+    Files.setLastModifiedTime(source, stamp)
+    assertArrayEquals(byteArrayOf(), git("status", "--porcelain"))
+    val index = Files.readAllBytes(root.resolve(".git/index"))
+
+    val manifest = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+
+    assertEquals("working-source", manifest["sourceClass"])
+    assertArrayEquals(index, Files.readAllBytes(root.resolve(".git/index")))
+  }
+
+  @Test
+  fun writeRoster_whenCheckoutUsesCrLf_expectCommittedSourceAndDetectChangedBytes() {
+    committedFixture()
+    Files.writeString(root.resolve(".gitattributes"), "*.bat text eol=crlf\n")
+    val script = root.resolve("native space é.bat")
+    Files.writeString(script, "echo one\n")
+    git("add", ".")
+    commitFixture()
+    Files.delete(script)
+    git("checkout-index", "--force", "--all")
+    assertEquals("echo one\r\n", Files.readString(script))
+    assertEquals(
+      "committed-source",
+      (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
+    )
+
+    Files.writeString(script, "echo two\r\n")
+
+    assertEquals(
+      "working-source",
+      (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
+    )
+  }
+
   private fun committedFixture() {
     git("init", "--quiet")
     Files.writeString(root.resolve("source.java"), "class Example {}")
     Files.createDirectories(root.resolve(".stversions"))
     Files.writeString(root.resolve(".stversions/kept.kt"), "class Kept")
     git("add", ".")
+    commitFixture()
+  }
+
+  private fun commitFixture() {
     git(
       "-c",
       "user.name=Source roster fixture",
@@ -281,6 +358,7 @@ class ActiveSourceFilesTest {
       "user.email=fixture@example.invalid",
       "commit",
       "--quiet",
+      "--allow-empty",
       "-m",
       "fixture: committed sources",
     )
@@ -296,10 +374,11 @@ class ActiveSourceFilesTest {
     return output.readBytes()
   }
 
-  private fun git(vararg arguments: String) {
+  private fun git(vararg arguments: String): ByteArray {
     val process = ProcessBuilder(listOf("git") + arguments).directory(root.toFile()).start()
     assertEquals(true, process.waitFor(15, TimeUnit.SECONDS))
     assertEquals(0, process.exitValue(), process.errorStream.bufferedReader().readText())
+    return process.inputStream.readBytes()
   }
 
   @Test
