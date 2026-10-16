@@ -86,6 +86,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -212,7 +213,7 @@ final class CachingFreenetStoreTest {
           TimeoutException {
     // Arrange
     File f = getStorePath("testOverMaximumSize");
-    Ticker controlledTicker = org.mockito.Mockito.mock(Ticker.class);
+    Ticker controlledTicker = mock(Ticker.class);
 
     String test = "test0";
     ClientCHKBlock block = encodeBlockCHK(test);
@@ -816,7 +817,7 @@ final class CachingFreenetStoreTest {
     // Arrange
     File f = getStorePath("testTimeExpireCHK");
     long delay = 100;
-    Ticker controlledTicker = org.mockito.Mockito.mock(Ticker.class);
+    Ticker controlledTicker = mock(Ticker.class);
 
     CHKStore store = new CHKStore();
     try (SaltedHashFreenetStore<CHKBlock> saltStore =

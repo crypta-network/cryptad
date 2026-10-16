@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -124,11 +125,10 @@ public final class AppBundlePackager {
     Path bundleRealRoot = normalizedBundleRoot.toRealPath();
     Path normalizedOutput = requireSafeOutputPath(outputZip, normalizedBundleRoot, bundleRealRoot);
     PackagingValidation validation = validateBundleForPackaging(normalizedBundleRoot);
-    Set<String> migrationCommands = new HashSet<>();
-    for (AppDataMigrationStep step :
-        validation.validatedBundle().manifest().dataSchemaContract().migrations()) {
-      migrationCommands.add(step.command().pathText());
-    }
+    Set<String> migrationCommands =
+        validation.validatedBundle().manifest().dataSchemaContract().migrations().stream()
+            .map(step -> step.command().pathText())
+            .collect(Collectors.toSet());
     ZipInventory inventory =
         collectZipInventory(normalizedBundleRoot, bundleRealRoot, migrationCommands);
     AppBundleDigest bundleDigest = createBundleDigest(inventory, validation.validatedBundle());
