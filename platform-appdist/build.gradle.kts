@@ -14,6 +14,7 @@ dependencies {
   testImplementation(mainSourceSet.map { it.output })
   testImplementation(libs.junitJupiterApi)
   testImplementation(libs.junitJupiterParams)
+  testImplementation(libs.mockitoCore)
   testRuntimeOnly(libs.junitJupiterEngine)
   testRuntimeOnly(libs.junitPlatformLauncher)
 }

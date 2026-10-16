@@ -2,6 +2,7 @@ package network.crypta.platform.appdist;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -26,6 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 
 class AppBundlePackagerTest {
   private static final int END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054B50;
@@ -239,6 +244,27 @@ class AppBundlePackagerTest {
 
     assertArrayEquals(expectedBytes, Files.readAllBytes(outputZip));
     assertEquals(sha256Hex(outputZip), overwritten.artifactSha256());
+  }
+
+  @Test
+  void packageBundle_whenNonPosixFilesReportExecutable_expectNoUnixExecuteBits() throws Exception {
+    Path bundleRoot = createBundle("non-posix");
+    Path outputZip = tempDir.resolve("non-posix.zip");
+    FileStore fileStore = mock(FileStore.class);
+    try (var files = mockStatic(Files.class, CALLS_REAL_METHODS)) {
+      files.when(() -> Files.getFileStore(any(Path.class))).thenReturn(fileStore);
+      files.when(() -> Files.isExecutable(any(Path.class))).thenReturn(true);
+
+      AppBundlePackager.packageBundle(bundleRoot, outputZip);
+    }
+
+    Map<String, CentralDirectoryMode> modes = centralDirectoryModes(outputZip);
+    assertTrue(modes.containsKey(AppBundleDigest.MANIFEST_FILE_NAME));
+    assertTrue(modes.containsKey("bin/start.sh"));
+    for (CentralDirectoryMode mode : modes.values()) {
+      assertEquals(UNIX_HOST_PLATFORM, mode.hostPlatform());
+      assertEquals(32_768 | 0644, mode.unixMode());
+    }
   }
 
   @Test

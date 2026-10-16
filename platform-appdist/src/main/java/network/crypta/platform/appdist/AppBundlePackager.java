@@ -637,9 +637,7 @@ public final class AppBundlePackager {
       if (Files.getFileStore(file).supportsFileAttributeView("posix")) {
         return posixExecutableBits(Files.getPosixFilePermissions(file));
       }
-      if (Files.isExecutable(file)) {
-        return UNIX_OWNER_EXECUTE | UNIX_GROUP_EXECUTE | UNIX_OTHER_EXECUTE;
-      }
+      // Non-POSIX access checks (notably Windows ACLs) do not describe Unix execute bits.
       return 0;
     }
 

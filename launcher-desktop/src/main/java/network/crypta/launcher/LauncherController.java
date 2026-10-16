@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import network.crypta.fs.AppEnv;
@@ -73,6 +74,7 @@ public class LauncherController {
       };
   private final ExecutorService io = Executors.newCachedThreadPool(IO_THREAD_FACTORY);
   private final Path cwd;
+  private final Function<Path, List<String>> launchCommand;
   private final List<Consumer<String>> logListeners = new CopyOnWriteArrayList<>();
   private final List<Consumer<AppState>> stateListeners = new CopyOnWriteArrayList<>();
 
@@ -157,10 +159,25 @@ public class LauncherController {
       Supplier<Path> readinessFileResolver,
       Supplier<Path> daemonLogFileResolver,
       TimingConfig timing) {
+    this(
+        cwd,
+        readinessFileResolver,
+        daemonLogFileResolver,
+        timing,
+        LauncherUtils::buildCryptadCommand);
+  }
+
+  LauncherController(
+      Path cwd,
+      Supplier<Path> readinessFileResolver,
+      Supplier<Path> daemonLogFileResolver,
+      TimingConfig timing,
+      Function<Path, List<String>> launchCommand) {
     this.cwd = Objects.requireNonNull(cwd);
     this.readinessFileResolver = Objects.requireNonNull(readinessFileResolver);
     this.daemonLogFileResolver = Objects.requireNonNull(daemonLogFileResolver);
     this.timing = Objects.requireNonNull(timing);
+    this.launchCommand = Objects.requireNonNull(launchCommand);
   }
 
   /**
@@ -277,7 +294,7 @@ public class LauncherController {
     Path wrapperLogFile = resolveWrapperLogFile(wrapperConf);
     long wrapperLogOffset = currentFileLength(wrapperLogFile);
 
-    List<String> command = LauncherUtils.buildCryptadCommand(cryptadPath);
+    List<String> command = launchCommand.apply(cryptadPath);
     emitLog(
         ts() + " exec: " + formatCommandForLog(command) + " (cwd=" + cwd.toAbsolutePath() + ")");
     ProcessBuilder pb = new ProcessBuilder(command);

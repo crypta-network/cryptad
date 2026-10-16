@@ -73,7 +73,16 @@ class LauncherControllerTest {
   private LauncherController controller(
       Supplier<Path> readinessFileResolver, Supplier<Path> daemonLogFileResolver) {
     return new LauncherController(
-        tempDir, readinessFileResolver, daemonLogFileResolver, TEST_TIMING);
+        tempDir,
+        readinessFileResolver,
+        daemonLogFileResolver,
+        TEST_TIMING,
+        LauncherControllerTest::directLaunchCommand);
+  }
+
+  private static List<String> directLaunchCommand(Path executable) {
+    // Readiness tests exercise process I/O directly; PTY selection is covered by LauncherUtilsTest.
+    return List.of(executable.toString());
   }
 
   @Test
@@ -724,22 +733,25 @@ class LauncherControllerTest {
     writeWrapperConf(tempDir);
     writeLongRunningCryptadScript(tempDir, heartbeat);
 
-    controller.start();
+    try {
+      controller.start();
 
-    awaitState(controller, AppState::isRunning);
-    awaitLog(logs, l -> l.contains("Starting FProxy on"));
-    awaitHeartbeat(heartbeat);
-    sleepMillis(POST_STARTUP_SETTLE_MS);
-    assertNull(controller.getState().knownPort());
-    assertFalse(isBrowserAutoOpened(controller));
+      awaitState(controller, AppState::isRunning);
+      awaitLog(logs, l -> l.contains("Starting FProxy on"));
+      awaitHeartbeat(heartbeat);
+      sleepMillis(POST_STARTUP_SETTLE_MS);
+      assertNull(controller.getState().knownPort());
+      assertFalse(isBrowserAutoOpened(controller));
 
-    controller.stop();
+      controller.stop();
 
-    AppState stopped = awaitState(controller, s -> !s.isRunning() && !s.isStopping());
-    assertFalse(stopped.isRunning());
-    assertNull(stopped.knownPort());
+      AppState stopped = awaitState(controller, s -> !s.isRunning() && !s.isStopping());
+      assertFalse(stopped.isRunning());
+      assertNull(stopped.knownPort());
 
-    controller.shutdownAndWait();
+    } finally {
+      controller.shutdownAndWait();
+    }
   }
 
   @Test
@@ -1952,7 +1964,12 @@ class LauncherControllerTest {
         Path cwd,
         java.util.function.Supplier<Path> readinessFileResolver,
         java.util.function.Supplier<Path> daemonLogFileResolver) {
-      super(cwd, readinessFileResolver, daemonLogFileResolver, TEST_TIMING);
+      super(
+          cwd,
+          readinessFileResolver,
+          daemonLogFileResolver,
+          TEST_TIMING,
+          LauncherControllerTest::directLaunchCommand);
     }
 
     @Override
