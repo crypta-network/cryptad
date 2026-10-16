@@ -11,10 +11,10 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1035,17 +1035,13 @@ class LauncherControllerTest {
   void shutdownAndWait_whenReaderWaitIsInterrupted_expectCallerInterruptRestored()
       throws Exception {
     LauncherController controller = controller();
-    CountDownLatch started = new CountDownLatch(1);
-    CompletableFuture<Void> release = new CompletableFuture<>();
+    Semaphore release = new Semaphore(0);
     Thread reader =
         Thread.ofPlatform()
-            .start(
-                () -> {
-                  started.countDown();
-                  release.join();
-                });
+            .name("launcher-test-held-reader")
+            .start(release::acquireUninterruptibly);
     try {
-      assertTrue(started.await(5, TimeUnit.SECONDS));
+      awaitCondition(() -> reader.getState() == Thread.State.WAITING, "blocked fixture reader");
       setLogTailer(controller, reader);
       Thread.currentThread().interrupt();
 
@@ -1055,11 +1051,11 @@ class LauncherControllerTest {
       assertTrue(reader.isAlive(), "The controlled reader remains held until cleanup");
     } finally {
       Thread.interrupted();
-      release.complete(null);
-      reader.join(TimeUnit.SECONDS.toMillis(5));
+      release.release();
+      reader.join(TimeUnit.SECONDS.toMillis(30));
       controller.shutdownAndWait();
     }
-    assertFalse(reader.isAlive());
+    assertFalse(reader.isAlive(), "Released fixture reader must terminate during cleanup");
   }
 
   private static void setLogTailer(LauncherController controller, Thread reader)
