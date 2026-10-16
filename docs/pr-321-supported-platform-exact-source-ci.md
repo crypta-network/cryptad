@@ -115,13 +115,22 @@ directory member. The annotation-processor path is the Error Prone execution cla
 jar and transitive tools must match the independently reviewed ordered list and existing artifact
 verification policy. Unchanged compiler arguments or provider class names cannot authenticate a
 substituted analyzer binary. Fresh Java outputs consumed downstream require the same tool-path proof.
-Retention binds standard project outputs to fresh source-owned producers and dependency bytes to
-the reviewed verification metadata and, where required, offline signatures with the pinned keyring.
+Retention checks standard project output bytes, producer freshness, selected sources and input
+classpaths. These checks do not authenticate the producer's effective transformation: an external
+init script or plugin can append an action that replaces outputs before they are observed. There
+is currently no independent authority for effective producer actions or their resulting bytes.
+Consequently, executed Java/Kotlin, resource and JAR producers retain unavailable downstream
+coverage, including self-consistent output replacements. Task-supplied action names or approval
+labels cannot grant coverage. Source-free tasks may authenticate only missing or empty outputs.
+Retention continues checking other classpath entries so a known byte mismatch remains invalid
+even when another entry lacks transformation provenance. Dependency bytes require the reviewed
+verification metadata and, where required, offline signatures with the pinned keyring.
 The `interop-wire` generated `Version.java` is authenticated against the complete committed
 source template, reviewed generator/build scripts, declared integer build number and a revision
 prefix of the selected source commit. Its full bytes must match the transformation, with LF or
-CRLF line endings, before compiler or downstream runtime coverage can match. Other unsupported
-generated inputs or unavailable verification material retain unavailable coverage.
+CRLF line endings, before compiler source coverage can match. That generator proof does not
+authenticate subsequent compilation actions or output bytes. Other unsupported generated inputs
+or unavailable verification material retain unavailable coverage.
 
 Classpath membership and order come from the committed
 [`phase-12-classpaths.json`](../tools/release-certification/phase-12-classpaths.json), which binds

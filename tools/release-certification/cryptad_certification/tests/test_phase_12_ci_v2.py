@@ -818,9 +818,11 @@ class ClasspathEvidenceTests(unittest.TestCase):
     def coverage(self, record=None, field="classpath"):
         return ci._private_classpath_coverage(record or self.record, field, self.root, {}, self.context())
 
-    def test_complete_runtime_classpath_requires_fresh_sources_resources_and_verified_jars(self):
-        self.assertEqual("matched", self.coverage())
-        self.assertEqual("matched", ci._private_test_coverage(self.record, "sample", self.root, {}, self.context()))
+    def test_fresh_input_proofs_do_not_authenticate_runtime_output_transformations(self):
+        for producer in self.producers:
+            self.assertEqual("matched", ci._classpath_producer_inputs(producer, self.root, {}, self.context()))
+        self.assertEqual("unavailable", self.coverage())
+        self.assertEqual("unavailable", ci._private_test_coverage(self.record, "sample", self.root, {}, self.context()))
         omitted = copy.deepcopy(self.record)
         omitted["inputs"]["classpath"] = omitted["inputs"]["classpath"][1:]
         self.assertEqual("invalid", ci._private_test_coverage(omitted, "sample", self.root, {}, self.context()))
@@ -828,7 +830,7 @@ class ClasspathEvidenceTests(unittest.TestCase):
     def test_analyzed_classes_require_their_own_fresh_compiler_outputs(self):
         rows = [self.file(self.class_file)]
         record = {"startedAt": 3, "inputClasses": 1, "inputs": {"ownedClasses": rows, "classes": rows}}
-        self.assertEqual("matched", ci._private_spotbugs_coverage(record, "sample", "spotbugs-test", self.root, {}, self.context()))
+        self.assertEqual("unavailable", ci._private_spotbugs_coverage(record, "sample", "spotbugs-test", self.root, {}, self.context()))
         self.compiler["outcome"] = "from-cache"
         self.assertEqual("unavailable", ci._private_spotbugs_coverage(record, "sample", "spotbugs-test", self.root, {}, self.context()))
 
@@ -916,7 +918,7 @@ class ClasspathEvidenceTests(unittest.TestCase):
         for field in ("classpath", "auxClasspath"):
             task = ":sample:compileJava" if field == "classpath" else ":sample:spotbugsTest"
             record = {"taskPath": task, "startedAt": 3, "inputs": {field: copy.deepcopy(self.record["inputs"]["classpath"])}}
-            self.assertEqual("matched", self.coverage(record, field))
+            self.assertEqual("unavailable", self.coverage(record, field))
             self.resource_file.write_bytes(b"stale-processed-resource")
             self.assertEqual("invalid", self.coverage(record, field))
             self.resource_file.write_bytes(b"reviewed-resource")
@@ -930,9 +932,60 @@ class ClasspathEvidenceTests(unittest.TestCase):
         self.rosters[":sample:test"] = {"classpath": ["project:sample/build/libs/sample.jar"]}
         self.write_roster()
         record = {"taskPath": ":sample:test", "startedAt": 5, "inputs": {"classpath": [self.file(jar)]}}
-        self.assertEqual("matched", self.coverage(record))
+        self.assertEqual("unavailable", self.coverage(record))
         self.copier["outcome"] = "up-to-date"
         self.assertEqual("unavailable", self.coverage(record))
+
+    def test_recaptured_replaced_producer_outputs_cannot_authenticate_their_transformation(self):
+        for kind, task, folder in (("java-compile", "compileJava", "classes/java/main"),
+                                   ("kotlin-compile", "compileKotlin", "classes/kotlin/main"),
+                                   ("resources", "processResources", "resources/main"),
+                                   ("jar", "jar", "libs")):
+            with self.subTest(kind=kind):
+                language = {"java-compile": "java", "kotlin-compile": "kotlin"}.get(kind, "resources")
+                source = self.write("sample/src/main/" + language + "/reviewed.txt", b"reviewed-input")
+                output = self.write("sample/build/" + folder + "/output", b"original-output")
+                producer = self.producer(":sample:" + task, kind, [source], output.parent)
+                producer.update(startedAt=3, completedAt=4)
+                producer["inputs"]["classpath"] = []
+                if kind == "jar":
+                    producer["sourceFiles"] = [self.file(self.resource_file)]
+                # Model an appended action that replaces bytes before both observations.
+                output.write_bytes(b"unreviewed-output-substitution")
+                member = self.file(output) if kind == "jar" else self.snapshot(output.parent)
+                producer["producedOutputs"] = [member]
+                producer["outputTransformation"] = "reviewed"
+                producer["effectiveActions"] = ["claimed-reviewed-action"]
+                self.rosters[":sample:" + task] = {"classpath": [], "annotationProcessorPath": []}
+                self.rosters[":sample:test"] = {"classpath": ["project:" + member["path"]]}
+                self.write_roster()
+                context = ci._classpath_context([producer, self.copier],
+                    {("sample", "errorprone-main"): {self.name(source)}},
+                    [self.name(p) for p in (source, self.resource, self.metadata, self.authority)])
+                if kind != "jar":
+                    self.assertEqual("matched", ci._classpath_producer_inputs(producer, self.root, {}, context))
+                consumer = {"taskPath": ":sample:test", "startedAt": 5, "inputs": {"classpath": [member]}}
+                self.assertEqual("unavailable", ci._private_classpath_coverage(consumer, "classpath", self.root, {}, context))
+
+    def test_independently_verified_external_only_classpath_can_match(self):
+        self.rosters[":sample:test"] = {"classpath": ["module:fixture:dependency:1:dependency.jar"]}
+        self.write_roster()
+        record = {"taskPath": ":sample:test", "inputs": {"classpath": [self.file(self.dependency)]}}
+        self.assertEqual("matched", self.coverage(record))
+
+    def test_no_source_producer_can_authenticate_only_an_empty_output(self):
+        self.class_file.unlink()
+        self.compiler.update(outcome="no-source", sourceFiles=[], producedOutputs=[self.snapshot(self.classes)])
+        self.rosters[":sample:test"] = {"classpath": ["project:" + self.name(self.classes)]}
+        self.write_roster()
+        context = self.context()
+        context["sources"]["sample", "errorprone-test"] = set()
+        record = {"taskPath": ":sample:test", "startedAt": 3, "inputs": {"classpath": [self.snapshot(self.classes)]}}
+        self.assertEqual("matched", ci._private_classpath_coverage(record, "classpath", self.root, {}, context))
+        self.class_file.write_bytes(b"injected-output")
+        self.compiler["producedOutputs"] = [self.snapshot(self.classes)]
+        record["inputs"]["classpath"] = [self.snapshot(self.classes)]
+        self.assertEqual("invalid", ci._private_classpath_coverage(record, "classpath", self.root, {}, self.context()))
 
     def test_empty_removed_reordered_or_added_approved_entries_cannot_match(self):
         extra = self.root.parent / "cache/modules-2/files-2.1/fixture/extra/1/hash/extra.jar"
@@ -967,19 +1020,19 @@ class ClasspathEvidenceTests(unittest.TestCase):
         for kind, task, field, inputs in (("errorprone-main", ":sample:compileJava", "classpath", errorprone_inputs()),
                                           ("spotbugs-test", ":sample:spotbugsTest", "auxClasspath", spotbugs)):
             original = self.record["inputs"]["classpath"]
-            for entries, status in ((original, "matched"), ([], "invalid"), (list(reversed(original)), "invalid")):
+            for entries, status in ((original, "unavailable"), ([], "invalid"), (list(reversed(original)), "invalid")):
                 with self.subTest(kind=kind, expected=status):
                     record = {"taskPath": task, "startedAt": 3, "inputs": {**inputs, field: entries}}
                     self.assertEqual(status, ci._private_analyzer_configuration(record, kind, self.root, {}, self.context()))
 
     def test_java_producer_tool_classpath_is_required_for_downstream_runtime_coverage(self):
-        self.assertEqual("matched", self.coverage())
+        self.assertEqual("unavailable", self.coverage())
         del self.compiler["inputs"]["annotationProcessorPath"]
         self.assertEqual("unavailable", self.coverage())
         self.compiler["inputs"]["annotationProcessorPath"] = [self.file(self.dependency)]
         self.assertEqual("invalid", self.coverage())
         self.compiler["inputs"]["annotationProcessorPath"] = []
-        self.assertEqual("matched", self.coverage())
+        self.assertEqual("unavailable", self.coverage())
 
     def test_errorprone_execution_classpath_is_bound_independently_of_source_classpath(self):
         tools = []
@@ -993,10 +1046,11 @@ class ClasspathEvidenceTests(unittest.TestCase):
             tools.append(tool)
         self.rosters[":sample:compileJava"]["annotationProcessorPath"] = [
             "module:fixture:analyzer:1:analyzer.jar", "module:fixture:processor-helper:1:processor-helper.jar"]
+        self.rosters[":sample:compileJava"]["classpath"] = ["module:fixture:dependency:1:dependency.jar"]
         self.write_roster()
         entries = [self.file(p) for p in tools]
         record = {"taskPath": ":sample:compileJava", "startedAt": 3, "inputs": {
-            **errorprone_inputs(), "classpath": self.record["inputs"]["classpath"], "annotationProcessorPath": entries}}
+            **errorprone_inputs(), "classpath": [self.file(self.dependency)], "annotationProcessorPath": entries}}
         def coverage(value):
             return ci._private_analyzer_configuration(value, "errorprone-main", self.root, {}, self.context())
         self.assertEqual("matched", coverage(record))
@@ -1021,7 +1075,8 @@ class ClasspathEvidenceTests(unittest.TestCase):
         self.write_roster({"build.gradle.kts": ci.digest(script.read_bytes())})
         context = self.context()
         context["selected"].add("build.gradle.kts")
-        self.assertEqual("matched", ci._private_classpath_coverage(self.record, "classpath", self.root, {}, context))
+        self.assertEqual("matched", classpaths.membership(self.record, "classpath", self.record["inputs"]["classpath"], self.root, context))
+        self.assertEqual("unavailable", ci._private_classpath_coverage(self.record, "classpath", self.root, {}, context))
         script.write_bytes(b"dependencies { altered() }")
         context = self.context()
         context["selected"].add("build.gradle.kts")
@@ -1040,7 +1095,8 @@ class ClasspathEvidenceTests(unittest.TestCase):
         commit = git("rev-parse", "HEAD")
         context = self.context()
         context["sourceCommit"] = commit
-        self.assertEqual("matched", ci._private_classpath_coverage(self.record, "classpath", self.root, {}, context))
+        self.assertEqual("matched", classpaths.membership(self.record, "classpath", self.record["inputs"]["classpath"], self.root, context))
+        self.assertEqual("unavailable", ci._private_classpath_coverage(self.record, "classpath", self.root, {}, context))
         self.rosters[":sample:test"]["classpath"] = []
         self.write_roster()
         record = {"taskPath": ":sample:test", "inputs": {"classpath": [], "expectedClasspath": []}}
@@ -1095,7 +1151,7 @@ class ClasspathEvidenceTests(unittest.TestCase):
             expected = {self.name(generated)}
             self.assertEqual("matched", ci._private_compiler_sources(record, expected, self.root, {}, context))
             context["status"].clear()
-            self.assertEqual("matched", ci._private_classpath_coverage(consumer, "classpath", self.root, {}, context))
+            self.assertEqual("unavailable", ci._private_classpath_coverage(consumer, "classpath", self.root, {}, context))
 
     def test_generated_version_cannot_authenticate_tampering_or_unbound_inputs(self):
         generated, raw, record, context = self.version_fixture()

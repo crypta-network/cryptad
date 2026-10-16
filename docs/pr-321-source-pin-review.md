@@ -683,3 +683,36 @@ Local verification passes all 239 focused Python cases and 48 included-build tes
 application suite passes 17,550 cases with zero failures/errors and nine skips. Repeated normal
 Gradle resolution reproduces the reviewed authority byte for byte, including every new processor
 path. These Linux checks do not establish native macOS/Windows execution or hosted acceptance.
+
+## Producer transformation provenance review
+
+[Comment 4298683820](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4298683820)
+identified an output-authentication gap after the input checks. A real evidence-mode Gradle init
+script appends a `doLast` action to `:thirdparty-onion:processResources` and replaces
+`fec.properties`. The task succeeds, its input source still matches and its final output snapshot
+contains the replacement. The previous validator incorrectly grants matched downstream provenance.
+
+Retention now treats executed project output transformations as unavailable even when input,
+freshness, membership and final-byte checks match. The current authority authenticates neither
+effective producer actions nor independent expected output bytes; a task-provided action list or
+approval label cannot close that gap. This applies to Java/Kotlin compilers, processed resources
+and JARs. Independent dependency verification and source-free empty/missing outputs retain their
+existing contracts. Classpath checks continue after unavailable entries so later detectable
+content mismatches remain invalid. No new public field, waiver or acceptance claim is introduced.
+
+The new replacement regression covers all four producer kinds with self-consistent observations
+and forged approval labels. All four falsely match with the previous validator and remain
+unavailable with the fix. The real modified Gradle resource observation also changes from matched
+to unavailable while its input proof remains matched. A subsequent ordinary evidence-mode task
+restores the owned resource output. Additional positive cases preserve independently verified
+external-only classpaths and empty source-free outputs; a populated source-free output is invalid.
+Private observations remain under `build/pr1423-review4298683820/`, outside public upload rosters.
+
+Only the existing CI validator and v2 test commitments advance. Assertions, implementation states,
+acceptance scope, historical commitments and the reviewed classpath authority remain unchanged.
+
+Local verification passes all 398 Phase 12, transparency and self-test cases with no failures,
+errors or skips. All 631 implementation-evidence commitments match the current bytes. The
+fixed-cutoff assessment retains 49 requirements, 47 unresolved, verified local consistency and
+Phase 12 incomplete. These Linux checks do not establish native macOS/Windows execution or original
+hosted acceptance; independent producer transformation authentication remains unavailable.

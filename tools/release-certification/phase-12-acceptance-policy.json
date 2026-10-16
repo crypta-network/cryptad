@@ -5457,7 +5457,7 @@
         "sourceEvidence": [
           {
             "assertion": "Authenticate immutable hosted attempt/jobs, checked source kind, totals/skips and non-blocking analyzer dispositions; retain historical failures without reusing previous-head success.",
-            "digest": "sha256:51968350ff88832cdf08f0d51e3f5c278bd614a651344c70313fe42db4b4d590",
+            "digest": "sha256:7728a7fdd15df540b97c2d77b39b1511ec495cfe12d8de5819480c2583edbbfd",
             "path": "tools/release-certification/cryptad_certification/phase_12_ci.py"
           },
           {
@@ -5555,7 +5555,7 @@
           },
           {
             "assertion": "PR-321 complete fixed-lane CI graph and substitution, freshness, exact source/class coverage, completion report bytes, analyzer policy, applicability and safe-projection regressions exercise original admission through declared external provider fixtures; they do not establish actual hosted execution.",
-            "digest": "sha256:6e6bc554b96c0539390af5fac44ade6c07c56ca38960b9ce8f34645ad3545bb7",
+            "digest": "sha256:1cdfcc9e7ae4a2207534343aad24155bedb591e56947c19e9383759d5822c074",
             "path": "tools/release-certification/cryptad_certification/tests/test_phase_12_ci_v2.py"
           },
           {

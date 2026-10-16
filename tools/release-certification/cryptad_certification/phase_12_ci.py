@@ -572,6 +572,12 @@ def _classpath_producer(record, member, consumer, root, checked_sources, context
     context["pending"].add(identity)
     try:
         status = _classpath_producer_inputs(record, root, checked_sources, context)
+        if status == "matched" and record["outcome"] == "executed":
+            # Inputs, freshness and output digests do not authenticate the transformation.
+            # Init scripts/plugins can append actions that replace outputs before capture.
+            # No reviewed effective-action or independent output authority exists yet;
+            # even a self-consistent observation must remain unavailable downstream.
+            status = "unavailable"
         context["status"][identity] = status
         return status
     finally:
@@ -707,7 +713,7 @@ def _private_classpath_coverage(record, field, root, checked_sources, context=No
     roster = membership(record, field, entries, root, context)
     if roster != "matched":
         return roster
-    seen = set()
+    seen, coverage = set(), "matched"
     try:
         for entry in entries:
             if type(entry) is not dict or not isinstance(entry.get("path"), str) or entry["path"] in seen:
@@ -747,11 +753,13 @@ def _private_classpath_coverage(record, field, root, checked_sources, context=No
                     status = _verified_dependency(record, candidate, raw, root, context)
             else:
                 return "invalid"
-            if status != "matched":
+            if status == "invalid":
                 return status
+            if status != "matched":
+                coverage = "unavailable"
     except (OSError, ValueError, KeyError, TypeError, IndexError, ET.ParseError, subprocess.SubprocessError):
         return "invalid"
-    return "matched"
+    return coverage
 
 
 def _private_spotbugs_coverage(record, module, kind, root, checked_sources, context=None):
