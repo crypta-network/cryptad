@@ -207,6 +207,11 @@ def source_roster(root):
         paths = tuple(sorted((set(tracked) - set(deleted)) | set(current)))
         if len(paths) > MAX_PATHS:
             _deny()
+        # Status deliberately trusts assume-unchanged/skip-worktree entries. Refuse those
+        # flags even when bytes currently match: they cannot support a committed-source claim.
+        tagged = _git(root, 'ls-files', '--cached', '-v', '-z')
+        if any(row and not row.startswith(b'H ') for row in tagged.split(b'\0')):
+            _deny()
         changed = _git(root, 'status', '--porcelain', '--untracked-files=no')
         return SourceRoster(paths, commit, tree, 'working-source' if changed or current else 'committed-source')
     source_export = (root / SOURCE_EXPORT_ROSTER).exists() or (root / SOURCE_EXPORT_ROSTER).is_symlink()

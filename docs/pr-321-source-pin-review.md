@@ -441,3 +441,30 @@ on Linux; they do not establish execution of the batch wrapper on native Windows
 All 41 focused v2 CI evidence tests pass, and all 631 implementation-evidence file commitments
 match. The separate assessment at `2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and
 Phase 12 incomplete.
+
+## Hidden Git index flags and committed source
+
+[Comment 4291003989](https://github.com/crypta-network/cryptad/pull/1423#discussion_r4291003989)
+identified that `git status` can hide tracked edits when the index marks a file `assume-unchanged`
+or `skip-worktree`. The Python source reader and Kotlin source archive writer now inspect the
+index's visibility tags and reject these flags before declaring source committed. This also
+rejects flagged files whose current bytes happen to match; certification and source archiving
+require the flags to be cleared first.
+
+Real-Git regressions reproduce the previous acceptance of hidden byte edits, including through
+the certification `_source_clean()` consumer, and hidden archive state. The corrected checks cover
+both flags separately and together, unchanged flagged files, byte edits and deletions. A Python
+POSIX regression also covers hidden execute-bit edits. Clearing the flags restores ordinary
+working-source classification; restoring the committed bytes restores committed-source classification.
+
+Ten existing file commitments advance across the two implementations and their test files, under
+`p12-302-bundle`, `p12-302-deployment`, `p12-302-observation` and `p12-303-ci`. All other policy fields,
+acceptance scope, implementation states and historical commitments remain unchanged. Before bytes,
+the exact digest review and local verification logs remain private under
+`build/pr1423-hidden-index/`, outside public upload rosters.
+
+Local Linux verification passes all 40 included-build tests, 142 source/CI/closeout Python tests
+and 56 transparency bundle/source consumer tests. Kotlin formatting checks pass, and all 631
+implementation-evidence file commitments match. The separate assessment at
+`2026-09-13T10:30:00Z` retains 49 requirements, 47 unresolved and Phase 12 incomplete. These local
+checks do not establish native hosted execution for the successor commit.

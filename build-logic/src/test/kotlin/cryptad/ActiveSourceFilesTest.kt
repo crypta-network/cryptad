@@ -227,6 +227,47 @@ class ActiveSourceFilesTest {
     }
   }
 
+  @Test
+  fun writeRoster_whenIndexFlagsHideSourceState_expectRejectionUntilFlagsAreCleared() {
+    committedFixture()
+    val source = root.resolve("source.java")
+    val original = Files.readAllBytes(source)
+    for (flag in listOf("--assume-unchanged", "--skip-worktree")) {
+      git("update-index", flag, "--", "source.java")
+      assertThrows(IllegalArgumentException::class.java) { writeRepositoryRoster() }
+      Files.writeString(source, "class Changed {}")
+      assertThrows(IllegalArgumentException::class.java) { writeRepositoryRoster() }
+      Files.delete(source)
+      assertThrows(IllegalArgumentException::class.java) { writeRepositoryRoster() }
+
+      git("update-index", "--no-assume-unchanged", "--", "source.java")
+      git("update-index", "--no-skip-worktree", "--", "source.java")
+      val deleted = JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>
+      assertEquals("working-source", deleted["sourceClass"])
+      assertEquals(setOf(".stversions/kept.kt"), (deleted["files"] as Map<*, *>).keys)
+      Files.writeString(source, "class Changed {}")
+      assertEquals(
+        "working-source",
+        (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
+      )
+      Files.write(source, original)
+      assertEquals(
+        "committed-source",
+        (JsonSlurper().parse(writeRepositoryRoster()) as Map<*, *>)["sourceClass"],
+      )
+    }
+  }
+
+  @Test
+  fun writeRoster_whenBothHiddenIndexFlagsAreSet_expectRejection() {
+    committedFixture()
+    git("update-index", "--assume-unchanged", "--", "source.java")
+    git("update-index", "--skip-worktree", "--", "source.java")
+    Files.writeString(root.resolve("source.java"), "class Changed {}")
+
+    assertThrows(IllegalArgumentException::class.java) { writeRepositoryRoster() }
+  }
+
   private fun committedFixture() {
     git("init", "--quiet")
     Files.writeString(root.resolve("source.java"), "class Example {}")

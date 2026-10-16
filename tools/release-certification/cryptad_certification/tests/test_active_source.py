@@ -67,6 +67,10 @@ class ActiveSourceTests(unittest.TestCase):
         self.git('add', '.')
         self.git('commit', '--quiet', '-m', 'fixture: selected source')
 
+    def clear_hidden_flags(self, name):
+        self.git('update-index', '--no-assume-unchanged', '--', name)
+        self.git('update-index', '--no-skip-worktree', '--', name)
+
     def manifest(self):
         source = self.root / 'tools/release-certification/cryptad_certification/owner.py'
         source.parent.mkdir(parents=True, exist_ok=True)
@@ -143,6 +147,78 @@ class ActiveSourceTests(unittest.TestCase):
         history.write_bytes(b'EXPLICITLY SELECTED\n')
         self.git('add', '.')
         self.assertIn(history.relative_to(self.root).as_posix(), owner.active_files(self.root))
+
+    def test_hidden_index_flags_cannot_declare_even_unchanged_source_committed(self):
+        self.repository()
+        name = self.source.relative_to(self.root).as_posix()
+        for flag in ('--assume-unchanged', '--skip-worktree'):
+            with self.subTest(flag=flag):
+                self.clear_hidden_flags(name)
+                self.git('update-index', flag, '--', name)
+                self.assertEqual(b'', self.git('status', '--porcelain').stdout)
+                with self.assertRaises(owner.SourceRosterError):
+                    owner.source_roster(self.root)
+                self.clear_hidden_flags(name)
+                self.assertEqual('committed-source', owner.source_roster(self.root).source_class)
+
+    def test_hidden_index_byte_edits_cannot_pass_certification_source_clean(self):
+        from cryptad_certification import phase_12_ci as ci
+
+        self.repository()
+        name = self.source.relative_to(self.root).as_posix()
+        source = {'commit': self.git('rev-parse', 'HEAD').stdout.decode().strip(),
+                  'tree': self.git('rev-parse', 'HEAD^{tree}').stdout.decode().strip()}
+        for flags in (('--assume-unchanged',), ('--skip-worktree',),
+                      ('--assume-unchanged', '--skip-worktree')):
+            with self.subTest(flags=flags):
+                self.clear_hidden_flags(name)
+                self.source.write_bytes(b'VALUE = 1\n')
+                for flag in flags:
+                    self.git('update-index', flag, '--', name)
+                self.source.write_bytes(b'VALUE = 2\n')
+                self.assertEqual(b'', self.git('status', '--porcelain').stdout)
+                with patch.object(ci, 'ROOT', self.root), self.assertRaises(owner.SourceRosterError):
+                    ci._source_clean(source)
+                self.clear_hidden_flags(name)
+                with patch.object(ci, 'ROOT', self.root):
+                    self.assertFalse(ci._source_clean(source))
+                self.source.write_bytes(b'VALUE = 1\n')
+                with patch.object(ci, 'ROOT', self.root):
+                    self.assertTrue(ci._source_clean(source))
+
+    def test_hidden_index_deletions_cannot_declare_committed_source(self):
+        self.repository()
+        name = self.source.relative_to(self.root).as_posix()
+        for flag in ('--assume-unchanged', '--skip-worktree'):
+            with self.subTest(flag=flag):
+                self.clear_hidden_flags(name)
+                self.source.write_bytes(b'VALUE = 1\n')
+                self.git('update-index', flag, '--', name)
+                self.source.unlink()
+                self.assertEqual(b'', self.git('status', '--porcelain').stdout)
+                with self.assertRaises(owner.SourceRosterError):
+                    owner.source_roster(self.root)
+                self.clear_hidden_flags(name)
+                self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+                self.source.write_bytes(b'VALUE = 1\n')
+
+    @unittest.skipUnless(os.name == 'posix', 'requires actual POSIX permission bits')
+    def test_hidden_index_execute_edits_cannot_declare_committed_source(self):
+        self.repository()
+        self.git('config', 'core.filemode', 'true')
+        name = self.source.relative_to(self.root).as_posix()
+        for flag in ('--assume-unchanged', '--skip-worktree'):
+            with self.subTest(flag=flag):
+                self.clear_hidden_flags(name)
+                self.source.chmod(0o644)
+                self.git('update-index', flag, '--', name)
+                self.source.chmod(0o755)
+                self.assertEqual(b'', self.git('status', '--porcelain').stdout)
+                with self.assertRaises(owner.SourceRosterError):
+                    owner.source_roster(self.root)
+                self.clear_hidden_flags(name)
+                self.assertEqual('working-source', owner.source_roster(self.root).source_class)
+                self.source.chmod(0o644)
 
     def test_tracked_deletions_select_current_files_before_and_after_staging(self):
         self.repository()

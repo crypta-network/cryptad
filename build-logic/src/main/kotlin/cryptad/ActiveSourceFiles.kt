@@ -329,6 +329,12 @@ internal object ActiveSourceFiles {
       writeOutput(output, raw)
       return
     }
+    // Status trusts assume-unchanged/skip-worktree entries, so their state cannot establish
+    // a committed-source claim even when their bytes happen to match at this observation.
+    val tagged = git(base, GIT_LS_FILES, "--cached", "-v", "-z").toString(Charsets.UTF_8)
+    require(tagged.split('\u0000').filter { it.isNotEmpty() }.all { it.startsWith("H ") }) {
+      "Hidden source index flags are unsupported"
+    }
     val commit = git(base, "rev-parse", "HEAD").toString(Charsets.US_ASCII).trim()
     val tree = git(base, "rev-parse", "HEAD^{tree}").toString(Charsets.US_ASCII).trim()
     require(commit.matches(Regex(GIT_SHA1_PATTERN)) && tree.matches(Regex(GIT_SHA1_PATTERN))) {
